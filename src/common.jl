@@ -2,7 +2,6 @@
 module Common
 
 using ..Header
-
 using LinearAlgebra
 
 # The ith basis vector
@@ -36,6 +35,17 @@ function Ec(k :: Int, zd :: Vector{Int})
     Ec = [E(k, zd); E(1, zd); E(lenzd, zd)]
   end
   return Ec
+end
+
+# Select the ith block from the kth clique
+function F(k :: Int, i :: Int, zd :: Vector{Int})
+  lenzd = length(zd)
+  @assert 1 <= k <= lenzd - 1
+  @assert zd[end] == 1
+  @assert 1 <= i <= 3
+  a = k
+  b = k < lenzd - 1 ? k + 1 : 1
+  return E(i, [zd[a]; zd[b]; 1])
 end
 
 # Ways to define Yk, for k < K the length of the network
@@ -134,7 +144,7 @@ function PolytopeP(H, h, Γ)
   return P
 end
 
-export e, E, Ec
+export e, E, Ec, F
 export Yk, YK, Qrelu, BoxP, PolytopeP
 
 end # End module
