@@ -24,7 +24,7 @@ abstract type NeuralNetwork end
   K :: Int = length(M)
 
   # Assert a non-trivial structural integrity of the network
-  @assert length(xdims) > 1
+  @assert length(xdims) > 2
   @assert length(xdims) == K + 1
   @assert [size(Mk) for Mk in M] == [(xdims[k+1], xdims[k] + 1) for k in 1:K]
 end
@@ -55,7 +55,7 @@ end
 @with_kw struct SolutionOutput{M, S}
   model :: M
   summary :: S
-  message :: String
+  status :: String
   total_time :: Float64
   solve_time :: Float64
 end

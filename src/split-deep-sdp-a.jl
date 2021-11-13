@@ -22,14 +22,12 @@ function setup(ffnet, input, safety)
   if input isa BoxConstraint
     @variable(model, γ[1:xd[1]] >= 0)
     P = BoxP(input.xbot, input.xtop, γ)
-
   elseif input isa PolytopeConstraint
     @variable(model, Γ[1:xd[1], 1:xd[1]] >= 0)
     for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
-
   else
-    error("DeepSDP:setup: unsupported input " * string(input))
+    error("SplitDeepSDP:setup: unsupported input " * string(input))
   end
 
   Y = Vector{Any}()
@@ -49,13 +47,11 @@ function setup(ffnet, input, safety)
       _Yk = Yk(k, Qk, ffnet)
       push!(Y, _Yk)
     end
-
     # The final YK
     _YK = YK(P, safety.S, ffnet)
     push!(Y, _YK)
-
   else
-    error("DeepSDP:setup: unsupported network " * string(ffnet))
+    error("SplitDeepSDP:setup: unsupported network " * string(ffnet))
   end
 
   @assert length(Y) == ffnet.K
@@ -71,25 +67,16 @@ function setup(ffnet, input, safety)
   zd = [xd[1:K]; 1]
 
   for k = 1:K
-    if k == 1
-      a = K
-      b = 2
-    elseif k == K
-      a = k - 1
-      b = 1
-    else
-      a = k - 1
-      b = k + 1
-    end
+    a = (k == 1) ? K : k - 1
+    b = (k == K) ? 1 : k + 1
 
-    _Z11 = F(a, 2, zd) * Y[a] * F(a, 2, zd)'
-    _Z12 = F(k, 1, zd) * Y[k] * F(k, 2, zd)'
-    _Z13 = F(k, 1, zd) * Y[k] * F(k, 3, zd)'
-    _Z22 = F(b, 1, zd) * Y[b] * F(b, 1, zd)'
-    _Z23 = F(k, 2, zd) * Y[k] * F(k, 3, zd)'
-    _Z33 = F(k, 3, zd) * Y[k] * F(k, 3, zd)'
-    
-    Zk = [_Z11 _Z12 _Z13; _Z12' _Z22 _Z23; _Z13' _Z23' _Z33]
+    _Zk11 = F(a, 2, zd) * Y[a] * F(a, 2, zd)'
+    _Zk12 = F(k, 1, zd) * Y[k] * F(k, 2, zd)'
+    _Zk13 = F(k, 1, zd) * Y[k] * F(k, 3, zd)'
+    _Zk22 = F(b, 1, zd) * Y[b] * F(b, 1, zd)'
+    _Zk23 = F(k, 2, zd) * Y[k] * F(k, 3, zd)'
+    _Zk33 = F(k, 3, zd) * Y[k] * F(k, 3, zd)'
+    Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
     
     @SDconstraint(model, Zk <= 0)
   end
@@ -112,11 +99,11 @@ function run(ffnet :: FeedForwardNetwork, input :: IC, safety :: SafetyConstrain
   total_time = end_time - start_time
 
   output = SolutionOutput(
-            model=model,
-            summary=summary,
-            message="split deep sdp (a)",
-            total_time=total_time,
-            solve_time=summary.solve_time)
+            model = model,
+            summary = summary,
+            status = string(summary.termination_status),
+            total_time = total_time,
+            solve_time = summary.solve_time)
   return output
 end
 

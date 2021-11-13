@@ -26,7 +26,6 @@ function setup(ffnet, input, safety)
     @variable(model, Γ[1:xd[1], 1:xd[1]] >= 0)
     for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
-
   else
     error("DeepSDP:setup: unsupported input " * string(input))
   end
@@ -48,11 +47,9 @@ function setup(ffnet, input, safety)
       _Yk = Yk(k, Qk, ffnet)
       push!(Y, _Yk)
     end
-
     # The final YK
     _YK = YK(P, safety.S, ffnet)
     push!(Y, _YK)
-
   else
     error("DeepSDP:setup: unsupported network " * string(ffnet))
   end
@@ -69,7 +66,6 @@ function setup(ffnet, input, safety)
   end
 
   @SDconstraint(model, Z <= 0)
-
   return model
 end
 
@@ -88,11 +84,11 @@ function run(ffnet :: FeedForwardNetwork, input :: IC, safety :: SafetyConstrain
   total_time = end_time - start_time
 
   output = SolutionOutput(
-            model=model,
-            summary=summary,
-            message="deep sdp",
-            total_time=total_time,
-            solve_time=summary.solve_time)
+            model = model,
+            summary = summary,
+            status = string(summary.termination_status),
+            total_time = total_time,
+            solve_time = summary.solve_time)
   return output
 end
 

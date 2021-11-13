@@ -24,7 +24,7 @@ function E(k :: Int, zd :: Vector{Int})
   return B
 end
 
-# The clique index matrix for {d[1], ..., d[K], d[K+1]}
+# The clique index matrix for {d[1], ..., d[K], 1}
 function Ec(k :: Int, zd :: Vector{Int})
   lenzd = length(zd)
   @assert 1 <= k <= lenzd - 1
@@ -37,10 +37,10 @@ function Ec(k :: Int, zd :: Vector{Int})
   return Ec
 end
 
-# Select the ith block from the kth clique
+# Select the ith block from the kth state clique
 function F(k :: Int, i :: Int, zd :: Vector{Int})
   lenzd = length(zd)
-  @assert 1 <= k <= lenzd - 1
+  @assert 1 <= k < lenzd
   @assert zd[end] == 1
   @assert 1 <= i <= 3
   a = k
@@ -49,7 +49,7 @@ function F(k :: Int, i :: Int, zd :: Vector{Int})
 end
 
 # Ways to define Yk, for k < K the length of the network
-function Yk(k, Q, ffnet :: FeedForwardNetwork)
+function Yk(k :: Int, Q, ffnet :: FeedForwardNetwork)
   @assert k < ffnet.K
   xd = ffnet.xdims
   Wk = ffnet.M[k][1:end, 1:end-1]
@@ -79,6 +79,7 @@ function YK(P, S, ffnet :: FeedForwardNetwork)
   _U12 = zeros(Sh-Ph, Pw)
   _U22 = P
   U = [_U11 _U12; _U12' _U22]
+  U = U + S
 
   xd = ffnet.xdims
   K = ffnet.K
@@ -144,8 +145,84 @@ function PolytopeP(H, h, Γ)
   return P
 end
 
+# Some variants that are parameterized with a single γ vector
+
+# Projection matrices for the parameters γ1 ... γk
+function H(k :: Int, γd :: Vector{Int})
+  @assert 1 <= k <= length(γd)
+  width = sum(γd)
+  low = sum(γd[1:k-1]) + 1
+  high = sum(γd[1:k])
+  B = zeros(γd[k], width)
+  B[1:γd[k], low:high] = I(γd[k])
+  return B
+end
+
+# Projection matrices for the triplets ω[k] = [γ[k-1]; γ[k]; γ[k+1]]
+# a = k-1 and b = k-1, with appropriate overflow and underflow
+function Hc(k :: Int, γd :: Vector{Int})
+  K = length(γd)
+  @assert 1 <= k <= K
+  a = (k == 1) ? K : k - 1
+  b = (k == K) ? 1 : k + 1
+  Bc = [H(a, γd); H(k, γd); H(b, γd)]
+  return Bc
+end
+
+# For ωk = [γ[k-1]; γ[k]; γ[k+1]], ith block selector for i = 1,2,3
+function G(k :: Int, i :: Int, γd :: Vector{Int64})
+  K = length(γd)
+  @assert 1 <= k <= K
+  @assert 1 <= i <= 3
+  a = (k == 1) ? K : k - 1
+  b = (k == K) ? 1 : k + 1
+  return H(i, [γd[a]; γd[k]; γd[b]])
+end
+
+# Re-definition of Qk wrt to a vectorized parameters γ
+function Qγk(k :: Int, γk, ffnet :: FeedForwardNetwork)
+  @assert 1 <= k < ffnet.K
+  xdk1 = ffnet.xdims[k+1]
+  if ffnet.nettype isa ReluNetwork
+    @assert length(γk) == xdk1 * xdk1 + xdk1 + xdk1
+    λ = γk[1:(xdk1 * xdk1)]
+    Λ = reshape(λ, xdk1, xdk1)
+    ν = γk[(length(λ)+1):(length(λ)+xdk1)]
+    η = γk[(end-xdk1+1):end]
+    Qk = Qrelu(Λ, ν, η)
+  else
+    error("Qγk: unsupported network " * string(ffnet))
+  end
+  return Qk
+end
+
+# Define a Yyk wrt vectorized parameters γk
+function Yγk(k :: Int, γk, ffnet :: FeedForwardNetwork)
+  @assert 1 <= k < ffnet.K
+  Qk = Qγk(k, γk, ffnet)
+  return Yk(k, Qk, ffnet)
+end
+
+# And for the final YγK
+function YγK(γK, input, safety, ffnet :: FeedForwardNetwork)
+  xdims = ffnet.xdims
+  if input isa BoxConstraint
+    @assert length(γK) == xdims[1]
+    P = BoxP(input.xbot, input.xtop, γK)
+  elseif input isa PolytopeConstraint
+    @assert length(γK) == xdims[1] * xdims[1]
+    Γ = reshape(γK, (xdims[1], xdims[1]))
+    P = PolytopeP(input.H, input.h, Γ)
+  else
+    error("YγK: unsupported input " * string(input))
+  end
+  return YK(P, safety.S, ffnet)
+end
+
+# Slowly using up the English alphabet
 export e, E, Ec, F
 export Yk, YK, Qrelu, BoxP, PolytopeP
+export H, Hc, G, Qγk, Yγk, YγK
 
 end # End module
 

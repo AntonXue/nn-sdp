@@ -1,4 +1,5 @@
 # Some useful utilities, such as file IO
+# Should only be used within main.jl or a similar file
 module Utils
 
 using ..Header
@@ -41,7 +42,7 @@ end
 
 # ||f(x)||^2 <= C
 function safetyNormBound(C, xdims :: Vector{Int64})
-  @assert C > 0
+  # @assert C > 0
   @assert length(xdims) > 1
   _S11 = zeros(xdims[1], xdims[1])
   _S12 = zeros(xdims[1], xdims[end])
