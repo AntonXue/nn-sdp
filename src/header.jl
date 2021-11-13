@@ -1,4 +1,4 @@
-
+# Define a bunch of types we would like to have around
 module Header
 
 using Parameters
@@ -8,6 +8,7 @@ abstract type NetworkType end
 struct ReluNetwork <: NetworkType end
 struct TanhNetwork <: NetworkType end
 
+# Generic neural network supertype
 abstract type NeuralNetwork end
 
 # Parameters needed to define the feed-forward network
@@ -28,15 +29,13 @@ abstract type NeuralNetwork end
   @assert [size(Mk) for Mk in M] == [(xdims[k+1], xdims[k] + 1) for k in 1:K]
 end
 
-#
-
+# Generic input constraint supertype
 abstract type InputConstraint end
 
 # The set where {x : xbot <= x <= xtop}
 @with_kw struct BoxConstraint <: InputConstraint
   xbot :: Vector{Float64}
   xtop :: Vector{Float64}
-
   @assert length(xbot) == length(xtop)
 end
 
@@ -44,18 +43,13 @@ end
 @with_kw struct PolytopeConstraint <: InputConstraint
   H :: Matrix{Float64}
   h :: Vector{Float64}
-
   @assert size(H)[1] == length(h)
 end
-
-#
 
 # The set {x : [x; f(x); 1]' * S * [x; f(x); 1] <= 0
 @with_kw struct SafetyConstraint
   S :: Matrix{Float64}
 end
-
-#
 
 # The solution that is to be output by an algorithm
 @with_kw struct SolutionOutput{M, S}
@@ -65,8 +59,6 @@ end
   total_time :: Float64
   solve_time :: Float64
 end
-
-#
 
 export NetworkType, ReluNetwork, TanhNetwork
 export NeuralNetwork, FeedForwardNetwork

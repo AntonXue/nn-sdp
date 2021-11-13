@@ -1,4 +1,4 @@
-
+# Some functionalities that will be common across different algorithms
 module Common
 
 using ..Header
@@ -8,7 +8,6 @@ using LinearAlgebra
 # The ith basis vector
 function e(i :: Int, n :: Int)
   @assert 1 <= i <= n
-
   b = zeros(n)
   b[i] = 1.0
   return b
@@ -18,7 +17,6 @@ end
 function E(k :: Int, zd :: Vector{Int})
   @assert 1 <= k <= length(zd)
   @assert zd[end] == 1
-
   width = sum(zd)
   low = sum(zd[1:k-1]) + 1
   high = sum(zd[1:k])
@@ -32,7 +30,6 @@ function Ec(k :: Int, zd :: Vector{Int})
   lenzd = length(zd)
   @assert 1 <= k <= lenzd - 1
   @assert zd[end] == 1
-
   if k < lenzd - 1
     Ec = [E(k, zd); E(k+1, zd); E(lenzd, zd)]
   else
@@ -41,23 +38,18 @@ function Ec(k :: Int, zd :: Vector{Int})
   return Ec
 end
 
-#
-
 # Ways to define Yk, for k < K the length of the network
 function Yk(k, Q, ffnet :: FeedForwardNetwork)
-  @assert k <= ffnet.K
-
+  @assert k < ffnet.K
   xd = ffnet.xdims
-
   Wk = ffnet.M[k][1:end, 1:end-1]
   bk = ffnet.M[k][1:end, end]
-  Ik1 = I(xd[k+1])
   
   _R11 = Wk
   _R12 = zeros(xd[k+1], xd[k+1])
   _R13 = bk
   _R21 = zeros(xd[k+1], xd[k])
-  _R22 = Ik1
+  _R22 = I(xd[k+1])
   _R23 = zeros(xd[k+1], 1)
   _R31 = zeros(1, xd[k])
   _R32 = zeros(1, xd[k+1])
@@ -69,24 +61,39 @@ function Yk(k, Q, ffnet :: FeedForwardNetwork)
 end
 
 # YK, for the input and safety constraint
-function YK(P, S)
+function YK(P, S, ffnet :: FeedForwardNetwork)
   (Ph, Pw) = size(P)
   (Sh, Sw) = size(S)
 
-  _R11 = zeros(Sh-Ph, Sw-Pw)
-  _R12 = zeros(Sh-Ph, Pw)
-  _R22 = P
-  R = [_R11 _R12; _R12' _R22]
-  return S + R
-end
+  _U11 = zeros(Sh-Ph, Sw-Pw)
+  _U12 = zeros(Sh-Ph, Pw)
+  _U22 = P
+  U = [_U11 _U12; _U12' _U22]
 
-#
+  xd = ffnet.xdims
+  K = ffnet.K
+  WK = ffnet.M[K][1:end, 1:end-1]
+  bK = ffnet.M[K][1:end, end]
+
+  _R11 = WK
+  _R12 = zeros(xd[K+1], xd[1])
+  _R13 = bK
+  _R21 = zeros(xd[1], xd[K])
+  _R22 = I(xd[1])
+  _R23 = zeros(xd[1], 1)
+  _R31 = zeros(1, xd[K])
+  _R32 = zeros(1, xd[1])
+  _R33 = 1
+  R = [_R11 _R12 _R13; _R21 _R22 _R23; _R31 _R32 _R33]
+
+  Y = R' * U * R
+  return Y
+end
 
 # Define the global QC for the ReLU function
 function Qrelu(Λ, ν, η, α=0.0, β=1.0)
   @assert length(ν) == length(η)
   @assert size(Λ) == (length(ν), length(η))
-
   d = length(ν)
   T = zeros(d, d)
   for i = 1:d-1
@@ -109,7 +116,6 @@ end
 # P function for a box
 function BoxP(xbot, xtop, γ)
   @assert length(xbot) == length(xtop) == length(γ)
-
   Γ = Diagonal(γ)
   _P11 = -2 * Γ
   _P12 = Γ * (xbot + xtop)
@@ -121,7 +127,6 @@ end
 # P function for a polytope
 function PolytopeP(H, h, Γ)
   @assert true
-
   _P11 = H' * Γ * H
   _P12 = -H' * Γ * h
   _P22 = h' * Γ * h
@@ -133,5 +138,4 @@ export e, E, Ec
 export Yk, YK, Qrelu, BoxP, PolytopeP
 
 end # End module
-
 

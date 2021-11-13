@@ -1,9 +1,8 @@
-
+# Implementation of the DeepSDP algorithm
 module DeepSDP
 
 using ..Header
 using ..Common
-
 using LinearAlgebra
 using JuMP
 using MosekTools
@@ -52,7 +51,7 @@ function setup(ffnet, input, safety)
     end
 
     # The final YK
-    _YK = YK(P, safety.S)
+    _YK = YK(P, safety.S, ffnet)
     push!(Y, _YK)
 
   else
