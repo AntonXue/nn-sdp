@@ -1,6 +1,6 @@
-# A different implementation of the chordal decomposition of DeepSDP
+# A different implementation of the chordal decomposition of DeepSdp
 # This one is based on projections partitions of a single large γ variable
-module SplitDeepSDPb
+module SplitDeepSdpB
 
 using ..Header
 using ..Common
@@ -10,7 +10,7 @@ using MosekTools
 using Mosek
 
 #=
-  Let Ya = Y[k-1] and Yb = Y[k+1]; we use the decomposition as in DeepSDPa
+  Let Ya = Y[k-1] and Yb = Y[k+1]; we use the decomposition as in DeepSdpa
   Zk = [Ya[2,2] Yk[1,2] Yk[1,3]
                 Yb[1,1] Yk[2,3]
                         Yk[3,3]]
@@ -68,15 +68,19 @@ function Zk(k, γd, ωk, zd, input, safety, ffnet)
 end
 
 #
-function setup(ffnet, input, safety)
+function setup(inst :: VerificationInstance)
+  @assert inst.net isa FeedForwardNetwork
+  ffnet = inst.net
+  input = inst.input
+  safety= inst.safety
+  xd = ffnet.xdims
+  K = ffnet.K
+
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
     "INTPNT_CO_TOL_DFEAS" => 1e-6
     ))
-
-  xd = ffnet.xdims
-  K = ffnet.K
 
   # First populate the γd dimensions
   γd = Vector{Int}(zeros(K))
@@ -87,7 +91,7 @@ function setup(ffnet, input, safety)
   elseif input isa PolytopeConstraint
     γd[K] = xd[1] * xd[1]
   else
-    error("DeepSDPb:setup: unsupported input " * string(input))
+    error("DeepSdpB:setup: unsupported input " * string(input))
   end
 
   # Now set up the varibales
@@ -117,9 +121,9 @@ function solve(model)
 end
 
 # The interface to call
-function run(ffnet :: FeedForwardNetwork, input :: IC, safety :: SafetyConstraint) where {IC <: InputConstraint}
+function run(inst :: VerificationInstance)
   start_time = time()
-  model = setup(ffnet, input, safety)
+  model = setup(inst)
   summary = solve(model)
   end_time = time()
   total_time = end_time - start_time

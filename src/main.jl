@@ -2,9 +2,10 @@
 include("header.jl"); using .Header
 include("common.jl"); using .Common
 include("utils.jl"); using .Utils
-include("deep-sdp.jl"); using .DeepSDP
-include("split-deep-sdp-a.jl"); using .SplitDeepSDPa
-include("split-deep-sdp-b.jl"); using .SplitDeepSDPb
+include("deep-sdp.jl"); using .DeepSdp
+include("split-deep-sdp-a.jl"); using .SplitDeepSdpA
+include("split-deep-sdp-b.jl"); using .SplitDeepSdpB
+# include("admm-deep-sdp.jl"); using .AdmmDeepSdp
 using JuMP
 using Random
 
@@ -15,15 +16,16 @@ zdims = [xdims[1:end-1]; 1]
 
 relunet = randomReluNetwork(xdims)
 pbox = inputUnitBox(xdims)
-safety = safetyNormBound(7.75, xdims)
+safety = safetyNormBound(8, xdims)
+inst = VerificationInstance(net=relunet, input=pbox, safety=safety)
 
-println("Beginning DeepSDP stuff")
-soln = DeepSDP.run(relunet, pbox, safety)
+println("Beginning DeepSdp stuff")
+soln = DeepSdp.run(inst)
 
-println("Beginning SplitDeepSDPa stuff")
-solna = SplitDeepSDPa.run(relunet, pbox, safety)
+println("Beginning SplitDeepSdpA stuff")
+solna = SplitDeepSdpA.run(inst)
 
-println("Beginning SplitDeepSDPb stuff")
-solnb = SplitDeepSDPb.run(relunet, pbox, safety)
+println("Beginning SplitDeepSdpB stuff")
+solnb = SplitDeepSdpB.run(inst)
 
 

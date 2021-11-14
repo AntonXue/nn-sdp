@@ -51,6 +51,13 @@ end
   S :: Matrix{Float64}
 end
 
+# A verifiction instance
+@with_kw struct VerificationInstance
+  net :: NeuralNetwork
+  input :: InputConstraint
+  safety :: SafetyConstraint
+end
+
 # The solution that is to be output by an algorithm
 @with_kw struct SolutionOutput{M, S}
   model :: M
@@ -64,6 +71,7 @@ export NetworkType, ReluNetwork, TanhNetwork
 export NeuralNetwork, FeedForwardNetwork
 export InputConstraint, BoxConstraint, PolytopeConstraint
 export SafetyConstraint
+export VerificationInstance
 export SolutionOutput
 
 end # End module

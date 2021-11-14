@@ -1,5 +1,5 @@
-# Implementation of the DeepSDP algorithm
-module DeepSDP
+# Implementation of the DeepSdp algorithm
+module DeepSdp
 
 using ..Header
 using ..Common
@@ -9,15 +9,19 @@ using MosekTools
 using Mosek
 
 # Set up the jump model
-function setup(ffnet, input, safety)
+function setup(inst :: VerificationInstance)
+  @assert inst.net isa FeedForwardNetwork
+  ffnet = inst.net
+  input = inst.input
+  safety = inst.safety
+  xd = ffnet.xdims
+  K = ffnet.K
+
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
     "INTPNT_CO_TOL_DFEAS" => 1e-6
     ))
-
-  xd = ffnet.xdims
-  K = ffnet.K
 
   if input isa BoxConstraint
     @variable(model, γ[1:xd[1]] >= 0)
@@ -27,7 +31,7 @@ function setup(ffnet, input, safety)
     for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
   else
-    error("DeepSDP:setup: unsupported input " * string(input))
+    error("DeepSdp:setup: unsupported input " * string(input))
   end
 
   Y = Vector{Any}()
@@ -51,7 +55,7 @@ function setup(ffnet, input, safety)
     _YK = YK(P, safety.S, ffnet)
     push!(Y, _YK)
   else
-    error("DeepSDP:setup: unsupported network " * string(ffnet))
+    error("DeepSdp:setup: unsupported network " * string(ffnet))
   end
 
   @assert length(Y) == ffnet.K
@@ -76,9 +80,9 @@ function solve(model)
 end
 
 # The interface to call
-function run(ffnet :: FeedForwardNetwork, input :: IC, safety :: SafetyConstraint) where {IC <: InputConstraint}
+function run(inst :: VerificationInstance)
   start_time = time()
-  model = setup(ffnet, input, safety)
+  model = setup(inst)
   summary = solve(model)
   end_time = time()
   total_time = end_time - start_time
