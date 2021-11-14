@@ -14,7 +14,7 @@ function setup(inst :: VerificationInstance)
   ffnet = inst.net
   input = inst.input
   safety = inst.safety
-  xd = ffnet.xdims
+  xdims = ffnet.xdims
   K = ffnet.K
 
   model = Model(optimizer_with_attributes(
@@ -24,21 +24,21 @@ function setup(inst :: VerificationInstance)
     ))
 
   if input isa BoxConstraint
-    @variable(model, γ[1:xd[1]] >= 0)
+    @variable(model, γ[1:xdims[1]] >= 0)
     P = BoxP(input.xbot, input.xtop, γ)
   elseif input isa PolytopeConstraint
-    @variable(model, Γ[1:xd[1], 1:xd[1]] >= 0)
-    # for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
+    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0)
+    # for i in 1:xdims[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
   else
     error("SplitDeepSdpA:setup: unsupported input " * string(input))
   end
 
-  Y = Vector{Any}()
+  Ys = Vector{Any}()
   if ffnet.nettype isa ReluNetwork
     # Setup the variables
     for k = 1:K-1
-      xdk1 = xd[k+1]
+      xdk1 = xdims[k+1]
       Λ = @variable(model, [1:xdk1, 1:xdk1])
       ν = @variable(model, [1:xdk1])
       η = @variable(model, [1:xdk1])
@@ -49,39 +49,36 @@ function setup(inst :: VerificationInstance)
 
       Qk = Qrelu(Λ, ν, η)
       _Yk = Yk(k, Qk, ffnet)
-      push!(Y, _Yk)
+      push!(Ys, _Yk)
     end
     # The final YK
     _YK = YK(P, safety.S, ffnet)
-    push!(Y, _YK)
+    push!(Ys, _YK)
   else
     error("SplitDeepSdpA:setup: unsupported network " * string(ffnet))
   end
 
-  @assert length(Y) == ffnet.K
+  @assert length(Ys) == ffnet.K
 
   # But the way we set up Zk needs to be different!
   #=
-    Let Ya = Y[k-1] and Yb = Y[k+1]; we use the decomposition
+    Let Ya = Ys[k-1] and Yb = Ys[k+1]; we use the decomposition
 
     Zk = [Ya[2,2] Yk[1,2] Yk[1,3]
                   Yb[1,1] Yk[2,3]
                           Yk[3,3]]
   =#
-  zd = [xd[1:K]; 1]
-
+  zdims = [xdims[1:K]; 1]
   for k = 1:K
     a = (k == 1) ? K : k - 1
     b = (k == K) ? 1 : k + 1
-
-    _Zk11 = F(a, 2, zd) * Y[a] * F(a, 2, zd)'
-    _Zk12 = F(k, 1, zd) * Y[k] * F(k, 2, zd)'
-    _Zk13 = F(k, 1, zd) * Y[k] * F(k, 3, zd)'
-    _Zk22 = F(b, 1, zd) * Y[b] * F(b, 1, zd)'
-    _Zk23 = F(k, 2, zd) * Y[k] * F(k, 3, zd)'
-    _Zk33 = F(k, 3, zd) * Y[k] * F(k, 3, zd)'
+    _Zk11 = F(a, 2, zdims) * Ys[a] * F(a, 2, zdims)'
+    _Zk12 = F(k, 1, zdims) * Ys[k] * F(k, 2, zdims)'
+    _Zk13 = F(k, 1, zdims) * Ys[k] * F(k, 3, zdims)'
+    _Zk22 = F(b, 1, zdims) * Ys[b] * F(b, 1, zdims)'
+    _Zk23 = F(k, 2, zdims) * Ys[k] * F(k, 3, zdims)'
+    _Zk33 = F(k, 3, zdims) * Ys[k] * F(k, 3, zdims)'
     Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
-    
     @SDconstraint(model, Zk <= 0)
   end
 
@@ -89,7 +86,7 @@ function setup(inst :: VerificationInstance)
 end
 
 # Run the optimization call and return the solution summary
-function solve(model)
+function solve!(model)
   optimize!(model)
   return solution_summary(model)
 end
@@ -98,7 +95,7 @@ end
 function run(inst :: VerificationInstance)
   start_time = time()
   model = setup(inst)
-  summary = solve(model)
+  summary = solve!(model)
   end_time = time()
   total_time = end_time - start_time
 
@@ -112,7 +109,7 @@ function run(inst :: VerificationInstance)
 end
 
 # For debugging purposes we export more than what is needed
-export setup, solve, run
+export setup, solve!, run
 
 end # End module
 

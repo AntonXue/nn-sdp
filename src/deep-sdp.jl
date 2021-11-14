@@ -14,7 +14,7 @@ function setup(inst :: VerificationInstance)
   ffnet = inst.net
   input = inst.input
   safety = inst.safety
-  xd = ffnet.xdims
+  xdims = ffnet.xdims
   K = ffnet.K
 
   model = Model(optimizer_with_attributes(
@@ -24,21 +24,21 @@ function setup(inst :: VerificationInstance)
     ))
 
   if input isa BoxConstraint
-    @variable(model, γ[1:xd[1]] >= 0)
+    @variable(model, γ[1:xdims[1]] >= 0)
     P = BoxP(input.xbot, input.xtop, γ)
   elseif input isa PolytopeConstraint
-    @variable(model, Γ[1:xd[1], 1:xd[1]] >= 0)
-    # for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
+    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0)
+    # for i in 1:xdims[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
   else
     error("DeepSdp:setup: unsupported input " * string(input))
   end
 
-  Y = Vector{Any}()
+  Ys = Vector{Any}()
   if ffnet.nettype isa ReluNetwork
     # Setup the variables
     for k = 1:K-1
-      xdk1 = xd[k+1]
+      xdk1 = xdims[k+1]
       Λ = @variable(model, [1:xdk1, 1:xdk1])
       ν = @variable(model, [1:xdk1])
       η = @variable(model, [1:xdk1])
@@ -49,24 +49,24 @@ function setup(inst :: VerificationInstance)
 
       Qk = Qrelu(Λ, ν, η)
       _Yk = Yk(k, Qk, ffnet)
-      push!(Y, _Yk)
+      push!(Ys, _Yk)
     end
     # The final YK
     _YK = YK(P, safety.S, ffnet)
-    push!(Y, _YK)
+    push!(Ys, _YK)
   else
     error("DeepSdp:setup: unsupported network " * string(ffnet))
   end
 
-  @assert length(Y) == ffnet.K
+  @assert length(Ys) == ffnet.K
 
   # Now setup big Z
-  zd = [xd[1:K]; 1]
-  sumzd = sum(zd)
-  Z = zeros(sumzd, sumzd)
+  zdims = [xdims[1:K]; 1]
+  sumzds = sum(zdims)
+  Z = zeros(sumzds, sumzds)
   for k = 1:K
-    Eck = Ec(k, zd)
-    Z = Z + Eck' * Y[k] * Eck
+    Eck = Ec(k, zdims)
+    Z = Z + Eck' * Ys[k] * Eck
   end
 
   @SDconstraint(model, Z <= 0)
@@ -74,7 +74,7 @@ function setup(inst :: VerificationInstance)
 end
 
 # Run the optimization scheme and query the solution summary
-function solve(model)
+function solve!(model)
   optimize!(model)
   return solution_summary(model)
 end
@@ -83,7 +83,7 @@ end
 function run(inst :: VerificationInstance)
   start_time = time()
   model = setup(inst)
-  summary = solve(model)
+  summary = solve!(model)
   end_time = time()
   total_time = end_time - start_time
 
@@ -97,7 +97,7 @@ function run(inst :: VerificationInstance)
 end
 
 # For debugging purposes we export more than what is needed
-export setup, solve, run
+export setup, solve!, run
 
 end # End module
 

@@ -7,62 +7,62 @@ using LinearAlgebra
 # The ith basis vector
 function e(i :: Int, n :: Int)
   @assert 1 <= i <= n
-  b = zeros(n)
-  b[i] = 1.0
-  return b
+  e = zeros(n)
+  e[i] = 1.0
+  return e
 end
 
-# The block index matrix for {zd[1], ..., zd[K], 1};
-function E(k :: Int, zd :: Vector{Int})
-  @assert 1 <= k <= length(zd)
-  @assert zd[end] == 1
-  width = sum(zd)
-  low = sum(zd[1:k-1]) + 1
-  high = sum(zd[1:k])
-  B = zeros(zd[k], width)
-  B[1:zd[k], low:high] = I(zd[k])
-  return B
+# The block index matrix for {zdims[1], ..., zdims[K], 1};
+function E(k :: Int, zdims :: Vector{Int})
+  @assert 1 <= k <= length(zdims)
+  @assert zdims[end] == 1
+  width = sum(zdims)
+  low = sum(zdims[1:k-1]) + 1
+  high = sum(zdims[1:k])
+  E = zeros(zdims[k], width)
+  E[1:zdims[k], low:high] = I(zdims[k])
+  return E
 end
 
 # The clique index matrix for {d[1], ..., d[K], 1}
-function Ec(k :: Int, zd :: Vector{Int})
-  lenzd = length(zd)
-  @assert 1 <= k <= lenzd - 1
-  @assert zd[end] == 1
-  if k < lenzd - 1
-    Ec = [E(k, zd); E(k+1, zd); E(lenzd, zd)]
+function Ec(k :: Int, zdims :: Vector{Int})
+  lenzds = length(zdims)
+  @assert 1 <= k <= lenzds - 1
+  @assert zdims[end] == 1
+  if k < lenzds - 1
+    Ec = [E(k, zdims); E(k+1, zdims); E(lenzds, zdims)]
   else
-    Ec = [E(k, zd); E(1, zd); E(lenzd, zd)]
+    Ec = [E(k, zdims); E(1, zdims); E(lenzds, zdims)]
   end
   return Ec
 end
 
 # Select the ith block from the kth state clique
-function F(k :: Int, i :: Int, zd :: Vector{Int})
-  lenzd = length(zd)
-  @assert 1 <= k < lenzd
-  @assert zd[end] == 1
+function F(k :: Int, i :: Int, zdims :: Vector{Int})
+  lenzds = length(zdims)
+  @assert 1 <= k < lenzds
+  @assert zdims[end] == 1
   @assert 1 <= i <= 3
   a = k
-  b = k < lenzd - 1 ? k + 1 : 1
-  return E(i, [zd[a]; zd[b]; 1])
+  b = k < lenzds - 1 ? k + 1 : 1
+  return E(i, [zdims[a]; zdims[b]; 1])
 end
 
 # Ways to define Yk, for k < K the length of the network
 function Yk(k :: Int, Q, ffnet :: FeedForwardNetwork)
   @assert k < ffnet.K
-  xd = ffnet.xdims
+  xdims = ffnet.xdims
   Wk = ffnet.M[k][1:end, 1:end-1]
   bk = ffnet.M[k][1:end, end]
   
   _R11 = Wk
-  _R12 = zeros(xd[k+1], xd[k+1])
+  _R12 = zeros(xdims[k+1], xdims[k+1])
   _R13 = bk
-  _R21 = zeros(xd[k+1], xd[k])
-  _R22 = I(xd[k+1])
-  _R23 = zeros(xd[k+1], 1)
-  _R31 = zeros(1, xd[k])
-  _R32 = zeros(1, xd[k+1])
+  _R21 = zeros(xdims[k+1], xdims[k])
+  _R22 = I(xdims[k+1])
+  _R23 = zeros(xdims[k+1], 1)
+  _R31 = zeros(1, xdims[k])
+  _R32 = zeros(1, xdims[k+1])
   _R33 = 1
   R = [_R11 _R12 _R13; _R21 _R22 _R23; _R31 _R32 _R33]
 
@@ -81,19 +81,19 @@ function YK(P, S, ffnet :: FeedForwardNetwork)
   U = [_U11 _U12; _U12' _U22]
   U = U + S
 
-  xd = ffnet.xdims
+  xdims = ffnet.xdims
   K = ffnet.K
   WK = ffnet.M[K][1:end, 1:end-1]
   bK = ffnet.M[K][1:end, end]
 
   _R11 = WK
-  _R12 = zeros(xd[K+1], xd[1])
+  _R12 = zeros(xdims[K+1], xdims[1])
   _R13 = bK
-  _R21 = zeros(xd[1], xd[K])
-  _R22 = I(xd[1])
-  _R23 = zeros(xd[1], 1)
-  _R31 = zeros(1, xd[K])
-  _R32 = zeros(1, xd[1])
+  _R21 = zeros(xdims[1], xdims[K])
+  _R22 = I(xdims[1])
+  _R23 = zeros(xdims[1], 1)
+  _R31 = zeros(1, xdims[K])
+  _R32 = zeros(1, xdims[1])
   _R33 = 1
   R = [_R11 _R12 _R13; _R21 _R22 _R23; _R31 _R32 _R33]
 
@@ -148,35 +148,35 @@ end
 # Some variants that are parameterized with a single γ vector
 
 # Projection matrices for the parameters γ1 ... γk
-function H(k :: Int, γd :: Vector{Int})
-  @assert 1 <= k <= length(γd)
-  width = sum(γd)
-  low = sum(γd[1:k-1]) + 1
-  high = sum(γd[1:k])
-  B = zeros(γd[k], width)
-  B[1:γd[k], low:high] = I(γd[k])
-  return B
+function H(k :: Int, γdims :: Vector{Int})
+  @assert 1 <= k <= length(γdims)
+  width = sum(γdims)
+  low = sum(γdims[1:k-1]) + 1
+  high = sum(γdims[1:k])
+  H = zeros(γdims[k], width)
+  H[1:γdims[k], low:high] = I(γdims[k])
+  return H
 end
 
 # Projection matrices for the triplets ω[k] = [γ[k-1]; γ[k]; γ[k+1]]
 # a = k-1 and b = k-1, with appropriate overflow and underflow
-function Hc(k :: Int, γd :: Vector{Int})
-  K = length(γd)
+function Hc(k :: Int, γdims :: Vector{Int})
+  K = length(γdims)
   @assert 1 <= k <= K
   a = (k == 1) ? K : k - 1
   b = (k == K) ? 1 : k + 1
-  Bc = [H(a, γd); H(k, γd); H(b, γd)]
-  return Bc
+  Hc = [H(a, γdims); H(k, γdims); H(b, γdims)]
+  return Hc
 end
 
 # For ωk = [γ[k-1]; γ[k]; γ[k+1]], ith block selector for i = 1,2,3
-function G(k :: Int, i :: Int, γd :: Vector{Int64})
-  K = length(γd)
+function G(k :: Int, i :: Int, γdims :: Vector{Int64})
+  K = length(γdims)
   @assert 1 <= k <= K
   @assert 1 <= i <= 3
   a = (k == 1) ? K : k - 1
   b = (k == K) ? 1 : k + 1
-  return H(i, [γd[a]; γd[k]; γd[b]])
+  return H(i, [γdims[a]; γdims[k]; γdims[b]])
 end
 
 # Re-definition of Qk wrt to a vectorized parameters γ
