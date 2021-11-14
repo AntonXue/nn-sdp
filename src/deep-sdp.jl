@@ -28,7 +28,7 @@ function setup(inst :: VerificationInstance)
     P = BoxP(input.xbot, input.xtop, γ)
   elseif input isa PolytopeConstraint
     @variable(model, Γ[1:xd[1], 1:xd[1]] >= 0)
-    for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
+    # for i in 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
   else
     error("DeepSdp:setup: unsupported input " * string(input))

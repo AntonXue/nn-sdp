@@ -25,7 +25,7 @@ function randomReluNetwork(xdims :: Vector{Int64})
   @assert length(xdims) > 1
   M = Vector{Any}()
   for k = 1:length(xdims) - 1
-    # Width is xsimds[k]+1 because Mk = [Wk bk]
+    # Width is xdims[k]+1 because Mk = [Wk bk]
     Mk = randn(xdims[k+1], xdims[k]+1)
     push!(M, Mk)
   end
@@ -54,7 +54,7 @@ function safetyNormBound(C, xdims :: Vector{Int64})
   return SafetyConstraint(S=S)
 end
 
-
+#
 export fileWriteFloat64, fileReadFloat64
 export randomReluNetwork
 export inputUnitBox, safetyNormBound

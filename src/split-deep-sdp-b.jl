@@ -67,7 +67,7 @@ function Zk(k, γd, ωk, zd, input, safety, ffnet)
   return Zk
 end
 
-#
+# Set up the model
 function setup(inst :: VerificationInstance)
   @assert inst.net isa FeedForwardNetwork
   ffnet = inst.net
@@ -82,10 +82,15 @@ function setup(inst :: VerificationInstance)
     "INTPNT_CO_TOL_DFEAS" => 1e-6
     ))
 
-  # First populate the γd dimensions
-  γd = Vector{Int}(zeros(K))
-  for k = 1:K-1; γd[k] = (xd[k+1] * xd[k+1]) + (2 * xd[k+1]) end
+  # Calculate the dimensions of γ and store them in γd
+  if ffnet.nettype isa ReluNetwork
+    γd = Vector{Int}(zeros(K))
+    for k = 1:K-1; γd[k] = (xd[k+1] * xd[k+1]) + (2 * xd[k+1]) end
+  else
+    error("DeepSdpB:setup: unsupported network " * string(ffnet))
+  end
 
+  # The last dimension is dependent on the input constraint
   if input isa BoxConstraint
     γd[K] = xd[1]
   elseif input isa PolytopeConstraint
@@ -94,22 +99,22 @@ function setup(inst :: VerificationInstance)
     error("DeepSdpB:setup: unsupported input " * string(input))
   end
 
-  # Now set up the varibales
+  # zd denotes the dimensions that partition the big Z matrix
   zd = [xd[1:K]; 1]
-  @variable(model, ω[1:sum(γd)] >= 0)
+  @variable(model, γ[1:sum(γd)] >= 0) # Really γ = ω notation-wise
 
   for k = 1:K
-    ωk = Hc(k, γd) * ω
+    ωk = Hc(k, γd) * γ
     _Zk = Zk(k, γd, ωk, zd, input, safety, ffnet)
     @SDconstraint(model, _Zk <= 0)
   end
 
-  # When input isa PolytopeConstraint, also need diagonals == 0
-  if input isa PolytopeConstraint
-    γK = H(K, γd) * ω
-    Γ = reshape(γ, (xd[1], xd[1]))
-    for i = 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
-  end
+  # When input isa PolytopeConstraint, also need diagonals == 0 ...maybe not
+  # if input isa PolytopeConstraint
+  #   γK = H(K, γd) * γ
+  #   Γ = reshape(γ, (xd[1], xd[1]))
+  #   for i = 1:xd[1]; @constraint(model, Γ[i,i] == 0) end
+  # end
 
   return model
 end
@@ -138,7 +143,7 @@ function run(inst :: VerificationInstance)
 end
 
 #
-export setup, solve, run
+export setup, solve, run, Zk
 
 end # End module
 
