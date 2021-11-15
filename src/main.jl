@@ -19,7 +19,7 @@ zdims = [xdims[1:end-1]; 1]
 
 relunet = randomReluNetwork(xdims)
 pbox = inputUnitBox(xdims)
-safety = safetyNormBound(8.0, xdims) # 8.0 is SAT, 7.75 is not with xdims = [10; 14; 12; 8]
+safety = safetyNormBound(7.75, xdims) # 8.0 is SAT, 7.75 is not with xdims = [10; 14; 12; 8]
 inst = VerificationInstance(net=relunet, input=pbox, safety=safety)
 
 println("Beginning DeepSdp stuff")

@@ -44,10 +44,10 @@ function setup(inst :: VerificationInstance)
       η = @variable(model, [1:xdk1])
 
       @constraint(model, Λ[1:xdk1, 1:xdk1] .>= 0)
-      @constraint(model, ν[1:xdk1] .>= 0)
       @constraint(model, η[1:xdk1] .>= 0)
+      @constraint(model, ν[1:xdk1] .>= 0)
 
-      Qk = Qrelu(Λ, ν, η)
+      Qk = Qrelu(Λ, η, ν)
       _Yk = Yk(k, Qk, ffnet)
       push!(Ys, _Yk)
     end

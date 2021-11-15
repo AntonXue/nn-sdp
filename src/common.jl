@@ -102,7 +102,7 @@ function YK(P, S, ffnet :: FeedForwardNetwork)
 end
 
 # Define the global QC for the ReLU function
-function Qrelu(Λ, ν, η, α=0.0, β=1.0)
+function Qrelu(Λ, η, ν, α=0.0, β=1.0)
   @assert length(ν) == length(η)
   @assert size(Λ) == (length(ν), length(η))
   d = length(ν)
@@ -187,9 +187,9 @@ function Qγk(k :: Int, γk, ffnet :: FeedForwardNetwork)
     @assert length(γk) == xdk1 * xdk1 + xdk1 + xdk1
     λ = γk[1:(xdk1 * xdk1)]
     Λ = reshape(λ, xdk1, xdk1)
-    ν = γk[(length(λ)+1):(length(λ)+xdk1)]
-    η = γk[(end-xdk1+1):end]
-    Qk = Qrelu(Λ, ν, η)
+    η = γk[(length(λ)+1):(length(λ)+xdk1)]
+    ν = γk[(end-xdk1+1):end]
+    Qk = Qrelu(Λ, η, ν)
   else
     error("Qγk: unsupported network " * string(ffnet))
   end
