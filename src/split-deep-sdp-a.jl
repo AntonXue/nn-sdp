@@ -61,13 +61,8 @@ function setup(inst :: VerificationInstance)
   @assert length(Ys) == ffnet.K
 
   # But the way we set up Zk needs to be different!
-  #=
-    Let Ya = Ys[k-1] and Yb = Ys[k+1]; we use the decomposition
-
-    Zk = [Ya[2,2] Yk[1,2] Yk[1,3]
-                  Yb[1,1] Yk[2,3]
-                          Yk[3,3]]
-  =#
+  # Let Ya = Ys[k-1] and Yb = Ys[k+1]; we use the decomposition
+  # Zk = [Ya[2,2] Yk[1,2] Yk[1,3]; ... Yb[1,1] Yk[2,3]; ... ... Yk[3,3]]
   zdims = [xdims[1:K]; 1]
   for k = 1:K
     a = (k == 1) ? K : k - 1

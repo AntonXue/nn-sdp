@@ -9,60 +9,28 @@ using JuMP
 using MosekTools
 using Mosek
 
-#=
-  Let a = k-1 and b = k+1; we use the decomposition as in DeepSdpa
-  Zk = [Ya[2,2] Yk[1,2] Yk[1,3]
-                Yb[1,1] Yk[2,3]
-                        Yk[3,3]]
-=#
-
+# Let a = k-1 and b = k+1; we use the decomposition as in DeepSdpa
+# Zk = [Ya[2,2] Yk[1,2] Yk[1,3]; ... Yb[1,1] Yk[2,3]; ... ... Yk[3,3]]
 # ωk = [γa; γk; γb], with block-wise indexing of course!
-
-function Zk11(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk(k :: Int, ωk, γdims :: Vector{Int}, zdims :: Vector{Int}, input, safety, ffnet :: FeedForwardNetwork)
   a = (k == 1) ? ffnet.K : k - 1
-  γa = G(k, 1, γdims) * ωk
-  _Ya = (a == ffnet.K) ? YγK(γa, input, safety, ffnet) : Yγk(a, γa, ffnet)
-  return F(a, 2, zdims) * _Ya * F(a, 2, zdims)' # Ya[2,2]
-end
-
-function Zk12(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
-  γk = G(k, 2, γdims) * ωk
-  _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
-  return F(k, 1, zdims) * _Yk * F(k, 2, zdims)' # Yk[1,2]
-end
-
-function Zk13(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
-  γk = G(k, 2, γdims) * ωk
-  _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
-  return F(k, 1, zdims) * _Yk * F(k, 3, zdims)' # Yk[1,3]
-end
-
-function Zk22(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   b = (k == ffnet.K) ? 1 : k + 1
+
+  γa = G(k, 1, γdims) * ωk
+  γk = G(k, 2, γdims) * ωk
   γb = G(k, 3, γdims) * ωk
+
+  _Ya = (a == ffnet.K) ? YγK(γa, input, safety, ffnet) : Yγk(a, γa, ffnet)
+  _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
   _Yb = (b == ffnet.K) ? YγK(γb, input, safety, ffnet) : Yγk(b, γb, ffnet)
-  return F(b, 1, zdims) * _Yb * F(b, 1, zdims)' # Yb[1,1]
-end
 
-function Zk23(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
-  γk = G(k, 2, γdims) * ωk
-  _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
-  return F(k, 2, zdims) * _Yk * F(k, 3, zdims)' # Yk[2,3]
-end
+  _Zk11 = F(a, 2, zdims) * _Ya * F(a, 2, zdims)' # Ya[2,2]
+  _Zk12 = F(k, 1, zdims) * _Yk * F(k, 2, zdims)' # Yk[1,2]
+  _Zk13 = F(k, 1, zdims) * _Yk * F(k, 3, zdims)' # Yk[1,3]
+  _Zk22 = F(b, 1, zdims) * _Yb * F(b, 1, zdims)' # Yb[1,1]
+  _Zk23 = F(k, 2, zdims) * _Yk * F(k, 3, zdims)' # Yk[2,3]
+  _Zk33 = F(k, 3, zdims) * _Yk * F(k, 3, zdims)' # Yk[3,3]
 
-function Zk33(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
-  γk = G(k, 2, γdims) * ωk
-  _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
-  return F(k, 3, zdims) * _Yk * F(k, 3, zdims)' # Yk[3,3]
-end
-
-function Zk(k, ωk, γdims, zdims, input, safety, ffnet)
-  _Zk11 = Zk11(k, ωk, γdims, zdims, input, safety, ffnet)
-  _Zk12 = Zk12(k, ωk, γdims, zdims, input, safety, ffnet)
-  _Zk13 = Zk13(k, ωk, γdims, zdims, input, safety, ffnet)
-  _Zk22 = Zk22(k, ωk, γdims, zdims, input, safety, ffnet)
-  _Zk23 = Zk23(k, ωk, γdims, zdims, input, safety, ffnet)
-  _Zk33 = Zk33(k, ωk, γdims, zdims, input, safety, ffnet)
   Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
   return Zk
 end
@@ -108,13 +76,6 @@ function setup(inst :: VerificationInstance)
     _Zk = Zk(k, ωk, γdims, zdims, input, safety, ffnet)
     @SDconstraint(model, _Zk <= 0)
   end
-
-  # When input isa PolytopeConstraint, also need diagonals == 0 ...maybe not
-  # if input isa PolytopeConstraint
-  #   γK = H(K, γdims) * γ
-  #   Γ = reshape(γ, (xdims[1], xdims[1]))
-  #   for i = 1:xdims[1]; @constraint(model, Γ[i,i] == 0) end
-  # end
 
   return model
 end

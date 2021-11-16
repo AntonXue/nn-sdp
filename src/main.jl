@@ -22,7 +22,7 @@ zdims = [xdims[1:end-1]; 1]
 
 ffnet = randomReluNetwork(xdims)
 input = inputUnitBox(xdims)
-safety = safetyNormBound(8.0, xdims) # 8.0 is SAT, 7.75 is not with xdims = [10; 14; 12; 8]
+safety = safetyNormBound(7.75, xdims) # 8.0 is SAT, 7.75 is not with xdims = [10; 14; 12; 8]
 inst = VerificationInstance(net=ffnet, input=input, safety=safety)
 K = ffnet.K
 
@@ -35,8 +35,8 @@ solna = SplitDeepSdpA.run(inst)
 
 println("Beginning SplitDeepSdpB stuff")
 solnb = SplitDeepSdpB.run(inst)
-=#
 
+=#
 
 (γdims, γ, vs, ωs, λs, μs) = AdmmDeepSdp.initParams(inst)
 
