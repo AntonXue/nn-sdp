@@ -18,51 +18,51 @@ using Mosek
 
 # ωk = [γa; γk; γb], with block-wise indexing of course!
 
-function Zk11(k, γdims, ωk, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk11(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   a = (k == 1) ? ffnet.K : k - 1
   γa = G(k, 1, γdims) * ωk
   _Ya = (a == ffnet.K) ? YγK(γa, input, safety, ffnet) : Yγk(a, γa, ffnet)
   return F(a, 2, zdims) * _Ya * F(a, 2, zdims)' # Ya[2,2]
 end
 
-function Zk12(k, γdims, ωk, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk12(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   γk = G(k, 2, γdims) * ωk
   _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
   return F(k, 1, zdims) * _Yk * F(k, 2, zdims)' # Yk[1,2]
 end
 
-function Zk13(k, γdims, ωk, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk13(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   γk = G(k, 2, γdims) * ωk
   _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
   return F(k, 1, zdims) * _Yk * F(k, 3, zdims)' # Yk[1,3]
 end
 
-function Zk22(k, γdims, ωk, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk22(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   b = (k == ffnet.K) ? 1 : k + 1
   γb = G(k, 3, γdims) * ωk
   _Yb = (b == ffnet.K) ? YγK(γb, input, safety, ffnet) : Yγk(b, γb, ffnet)
   return F(b, 1, zdims) * _Yb * F(b, 1, zdims)' # Yb[1,1]
 end
 
-function Zk23(k, γdims, ωk, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk23(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   γk = G(k, 2, γdims) * ωk
   _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
   return F(k, 2, zdims) * _Yk * F(k, 3, zdims)' # Yk[2,3]
 end
 
-function Zk33(k, γdims, ωk, zdims, input, safety, ffnet :: FeedForwardNetwork)
+function Zk33(k, ωk, γdims, zdims, input, safety, ffnet :: FeedForwardNetwork)
   γk = G(k, 2, γdims) * ωk
   _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
   return F(k, 3, zdims) * _Yk * F(k, 3, zdims)' # Yk[3,3]
 end
 
-function Zk(k, γdims, ωk, zdims, input, safety, ffnet)
-  _Zk11 = Zk11(k, γdims, ωk, zdims, input, safety, ffnet)
-  _Zk12 = Zk12(k, γdims, ωk, zdims, input, safety, ffnet)
-  _Zk13 = Zk13(k, γdims, ωk, zdims, input, safety, ffnet)
-  _Zk22 = Zk22(k, γdims, ωk, zdims, input, safety, ffnet)
-  _Zk23 = Zk23(k, γdims, ωk, zdims, input, safety, ffnet)
-  _Zk33 = Zk33(k, γdims, ωk, zdims, input, safety, ffnet)
+function Zk(k, ωk, γdims, zdims, input, safety, ffnet)
+  _Zk11 = Zk11(k, ωk, γdims, zdims, input, safety, ffnet)
+  _Zk12 = Zk12(k, ωk, γdims, zdims, input, safety, ffnet)
+  _Zk13 = Zk13(k, ωk, γdims, zdims, input, safety, ffnet)
+  _Zk22 = Zk22(k, ωk, γdims, zdims, input, safety, ffnet)
+  _Zk23 = Zk23(k, ωk, γdims, zdims, input, safety, ffnet)
+  _Zk33 = Zk33(k, ωk, γdims, zdims, input, safety, ffnet)
   Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
   return Zk
 end
@@ -105,7 +105,7 @@ function setup(inst :: VerificationInstance)
 
   for k = 1:K
     ωk = Hc(k, γdims) * γ
-    _Zk = Zk(k, γdims, ωk, zdims, input, safety, ffnet)
+    _Zk = Zk(k, ωk, γdims, zdims, input, safety, ffnet)
     @SDconstraint(model, _Zk <= 0)
   end
 
@@ -130,8 +130,7 @@ function run(inst :: VerificationInstance)
   start_time = time()
   model = setup(inst)
   summary = solve(model)
-  end_time = time()
-  total_time = end_time - start_time
+  total_time = time() - start_time
 
   output = SolutionOutput(
             model = model,

@@ -96,8 +96,7 @@ function run(inst :: VerificationInstance)
   start_time = time()
   model = setup(inst)
   summary = solve!(model)
-  end_time = time()
-  total_time = end_time - start_time
+  total_time = time() - start_time
 
   output = SolutionOutput(
             model = model,
