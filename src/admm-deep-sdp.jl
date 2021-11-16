@@ -28,8 +28,8 @@ function initParams(inst :: VerificationInstance)
   end
 
   # All the variables that matter to each ωk
-  γ = randn(sum(γdims))
-  # γ = zeros(sum(γdims))
+  # γ = randn(sum(γdims))
+  γ = zeros(sum(γdims))
 
   # ωk are the 3-clique projections of γ, where ωk = ωs[k]
   ωs = [Hc(k, γdims) * γ for k in 1:K]
@@ -44,20 +44,75 @@ function initParams(inst :: VerificationInstance)
   # μk are the dual vars for ωk = Hk * γ
   μs = [zeros(length(ωs[k])) for k in 1:K]
 
-  return (γdims, γ, vs, ωs, λs, μs)
+  # A guess
+  ρ = 1
+
+  #
+  params = (γ, vs, ωs, λs, μs, ρ, γdims)
+  return params
 end
 
 # Computes some potentially expensive things
-function precompute(γ, ωs, γdims, zdims, input, safety, ffnet)
+# function precompute(γ, ωs, γdims, zdims, input, safety, ffnet)
+function precompute(params, inst)
+  γ, vs, ωs, λs, μs, ρ, γdims = params
+
+  input = inst.input
+  safety = inst.safety
+  ffnet = inst.net
+
+  K = length(γdims)
+  zdims = [ffnet.xdims[1:K]; 1]
+
+  Ys = Vector{Any}()
+  zs = Vector{Any}()
   Js = Vector{Any}()
   Jtzas = Vector{Any}()
   I_JtJ_invs = Vector{Any}()
-  K = length(γdims)
   println("precompute: k loop start, total K = " * string(K))
+
+  # Calculate the Ys
   for k = 1:K
     kstart_time = time()
-    lenωk = length(ωs[k])
+    Yka = (k == K) ? YγK(zeros(γdims[k]), input, safety, ffnet) : Yγk(k, zeros(γdims[k]), ffnet)
+    
+    Ykparts = Vector{Any}()
+    for j = 1:γdims[k]
+      tmp = (k == K) ? YγK(e(j, γdims[k]), input, safety, ffnet) : Yγk(k, e(j, γdims[k]), ffnet)
+      Ykj = tmp - Yka
+      push!(Ykparts, Ykj)
+    end
+    push!(Ykparts, Yka)
+    push!(Ys, Ykparts)
 
+    k_time = time() - kstart_time
+    println("precompute: k = " * string(k) * "/" * string(K) * ", time = " * string(k_time))
+  end
+
+  # Populate the Zk
+  for k = 1:K
+    #=
+    a = (k == 1) ? K : k - 1
+    b = (k == K) ? 1 : k + 1
+
+    Ya = Ys[a]
+    Yk = Ys[k]
+    Yb = Ys[b]
+
+    _Zk11 = Ec3(a, 2, zdims) * _Ya * Ec3(a, 2, zdims)' # Ya[2,2]
+    _Zk12 = Ec3(k, 1, zdims) * _Yk * Ec3(k, 2, zdims)' # Yk[1,2]
+    _Zk13 = Ec3(k, 1, zdims) * _Yk * Ec3(k, 3, zdims)' # Yk[1,3]
+    _Zk22 = Ec3(b, 1, zdims) * _Yb * Ec3(b, 1, zdims)' # Yb[1,1]
+    _Zk23 = Ec3(k, 2, zdims) * _Yk * Ec3(k, 3, zdims)' # Yk[2,3]
+    _Zk33 = Ec3(k, 3, zdims) * _Yk * Ec3(k, 3, zdims)' # Yk[3,3]
+
+    Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
+    =#
+
+
+
+    #=
+    lenωk = length(ωs[k])
     # Jk
     _zka = zk(k, zeros(lenωk), γdims, zdims, input, safety, ffnet)
     _Jk = hcat([zk(k, e(j, lenωk), γdims, zdims, input, safety, ffnet) - _zka for j in 1:lenωk]...)
@@ -71,13 +126,13 @@ function precompute(γ, ωs, γdims, zdims, input, safety, ffnet)
     _I_JktJk = Symmetric(I + _Jk' * _Jk)
     _I_JktJk_inv = inv(_I_JktJk)
     push!(I_JtJ_invs, _I_JktJk_inv)
+    =#
 
     #
-    k_time = time() - kstart_time
-    println("precompute: k = " * string(k) * "/" * string(K) * ", time = " * string(k_time))
   end
 
-  return (Js, Jtzas, I_JtJ_invs)
+  cache = (Js, Jtzas, I_JtJ_invs)
+  return cache
 end
 
 # The vectorized version
@@ -87,7 +142,8 @@ function zk(k, ωk, γdims, zdims, input, safety, ffnet)
 end
 
 # Project onto the non-negative orthant
-function projectΓ(γ)
+function projectΓ(params)
+  γ, _, _, _, _, _, _ = params
   return max.(abs.(γ), 0)
 end
 

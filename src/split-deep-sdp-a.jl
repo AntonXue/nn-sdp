@@ -67,12 +67,12 @@ function setup(inst :: VerificationInstance)
   for k = 1:K
     a = (k == 1) ? K : k - 1
     b = (k == K) ? 1 : k + 1
-    _Zk11 = F(a, 2, zdims) * Ys[a] * F(a, 2, zdims)'
-    _Zk12 = F(k, 1, zdims) * Ys[k] * F(k, 2, zdims)'
-    _Zk13 = F(k, 1, zdims) * Ys[k] * F(k, 3, zdims)'
-    _Zk22 = F(b, 1, zdims) * Ys[b] * F(b, 1, zdims)'
-    _Zk23 = F(k, 2, zdims) * Ys[k] * F(k, 3, zdims)'
-    _Zk33 = F(k, 3, zdims) * Ys[k] * F(k, 3, zdims)'
+    _Zk11 = Ec3(a, 2, zdims) * Ys[a] * Ec3(a, 2, zdims)'
+    _Zk12 = Ec3(k, 1, zdims) * Ys[k] * Ec3(k, 2, zdims)'
+    _Zk13 = Ec3(k, 1, zdims) * Ys[k] * Ec3(k, 3, zdims)'
+    _Zk22 = Ec3(b, 1, zdims) * Ys[b] * Ec3(b, 1, zdims)'
+    _Zk23 = Ec3(k, 2, zdims) * Ys[k] * Ec3(k, 3, zdims)'
+    _Zk33 = Ec3(k, 3, zdims) * Ys[k] * Ec3(k, 3, zdims)'
     Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
     @SDconstraint(model, Zk <= 0)
   end

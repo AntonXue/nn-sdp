@@ -38,7 +38,7 @@ function Ec(k :: Int, zdims :: Vector{Int})
 end
 
 # Select the ith block from the kth state clique
-function F(k :: Int, i :: Int, zdims :: Vector{Int})
+function Ec3(k :: Int, i :: Int, zdims :: Vector{Int})
   lenzds = length(zdims)
   @assert 1 <= k < lenzds
   @assert zdims[end] == 1
@@ -72,8 +72,8 @@ end
 
 # YK, for the input and safety constraint
 function YK(P, S, ffnet :: FeedForwardNetwork)
-  (Ph, Pw) = size(P)
-  (Sh, Sw) = size(S)
+  Ph, Pw = size(P)
+  Sh, Sw = size(S)
 
   _U11 = zeros(Sh-Ph, Sw-Pw)
   _U12 = zeros(Sh-Ph, Pw)
@@ -170,7 +170,7 @@ function Hc(k :: Int, γdims :: Vector{Int})
 end
 
 # For ωk = [γ[k-1]; γ[k]; γ[k+1]], ith block selector for i = 1,2,3
-function G(k :: Int, i :: Int, γdims :: Vector{Int64})
+function Hc3(k :: Int, i :: Int, γdims :: Vector{Int64})
   K = length(γdims)
   @assert 1 <= k <= K
   @assert 1 <= i <= 3
@@ -220,9 +220,9 @@ function YγK(γK, input, safety, ffnet :: FeedForwardNetwork)
 end
 
 # Slowly using up the English alphabet
-export e, E, Ec, F
+export e, E, Ec, Ec3
 export Yk, YK, Qrelu, BoxP, PolytopeP
-export H, Hc, G, Qγk, Yγk, YγK
+export H, Hc, Hc3, Qγk, Yγk, YγK
 
 end # End module
 

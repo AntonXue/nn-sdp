@@ -16,20 +16,20 @@ function Zk(k :: Int, ωk, γdims :: Vector{Int}, zdims :: Vector{Int}, input, s
   a = (k == 1) ? ffnet.K : k - 1
   b = (k == ffnet.K) ? 1 : k + 1
 
-  γa = G(k, 1, γdims) * ωk
-  γk = G(k, 2, γdims) * ωk
-  γb = G(k, 3, γdims) * ωk
+  γa = Hc3(k, 1, γdims) * ωk
+  γk = Hc3(k, 2, γdims) * ωk
+  γb = Hc3(k, 3, γdims) * ωk
 
   _Ya = (a == ffnet.K) ? YγK(γa, input, safety, ffnet) : Yγk(a, γa, ffnet)
   _Yk = (k == ffnet.K) ? YγK(γk, input, safety, ffnet) : Yγk(k, γk, ffnet)
   _Yb = (b == ffnet.K) ? YγK(γb, input, safety, ffnet) : Yγk(b, γb, ffnet)
 
-  _Zk11 = F(a, 2, zdims) * _Ya * F(a, 2, zdims)' # Ya[2,2]
-  _Zk12 = F(k, 1, zdims) * _Yk * F(k, 2, zdims)' # Yk[1,2]
-  _Zk13 = F(k, 1, zdims) * _Yk * F(k, 3, zdims)' # Yk[1,3]
-  _Zk22 = F(b, 1, zdims) * _Yb * F(b, 1, zdims)' # Yb[1,1]
-  _Zk23 = F(k, 2, zdims) * _Yk * F(k, 3, zdims)' # Yk[2,3]
-  _Zk33 = F(k, 3, zdims) * _Yk * F(k, 3, zdims)' # Yk[3,3]
+  _Zk11 = Ec3(a, 2, zdims) * _Ya * Ec3(a, 2, zdims)' # Ya[2,2]
+  _Zk12 = Ec3(k, 1, zdims) * _Yk * Ec3(k, 2, zdims)' # Yk[1,2]
+  _Zk13 = Ec3(k, 1, zdims) * _Yk * Ec3(k, 3, zdims)' # Yk[1,3]
+  _Zk22 = Ec3(b, 1, zdims) * _Yb * Ec3(b, 1, zdims)' # Yb[1,1]
+  _Zk23 = Ec3(k, 2, zdims) * _Yk * Ec3(k, 3, zdims)' # Yk[2,3]
+  _Zk33 = Ec3(k, 3, zdims) * _Yk * Ec3(k, 3, zdims)' # Yk[3,3]
 
   Zk = [_Zk11 _Zk12 _Zk13; _Zk12' _Zk22 _Zk23; _Zk13' _Zk23' _Zk33]
   return Zk
