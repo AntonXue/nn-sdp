@@ -7,12 +7,25 @@ using ..SplitDeepSdpB: Zk # Helpful to re-use
 using Parameters
 using LinearAlgebra
 
-
+# Track the parameters that are updated at each ADMM tsep
 @with_kw mutable struct AdmmParams
-  γ; vs; ωs; λs; μs;
-  ρ :: Float64;
-  γdims :: Vector{Int};
+  γ :: Vector{Float64}
+  vs :: Vector{Vector{Float64}}
+  ωs :: Vector{Vector{Float64}}
+  λs :: Vector{Vector{Float64}}
+  μs :: Vector{Vector{Float64}}
+  ρ :: Float64
+  γdims :: Vector{Int}
+  zdims :: Vector{Int}
   K :: Int = length(γdims)
+end
+
+# Precompute stuff
+@with_kw struct AdmmCache
+  Js :: Vector{Matrix{Float64}}
+  zaffs :: Vector{Vector{Float64}}
+  Jtzaffs :: Vector{Vector{Float64}}
+  I_JtJ_invs :: Vector{Matrix{Float64}}
 end
 
 # Initialize zero parameters of the appropriate size
@@ -53,14 +66,14 @@ function initParams(inst :: VerificationInstance)
   μs = [zeros(length(ωs[k])) for k in 1:K]
 
   # A guess
-  ρ = 1.0
+  ρ = 0.2
 
-  params = AdmmParams(γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs, ρ=ρ, γdims=γdims)
+  params = AdmmParams(γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs, ρ=ρ, γdims=γdims, zdims=zdims)
   return params
 end
 
 # Computes some potentially expensive things
-function precompute(params, inst)
+function precompute(params :: AdmmParams, inst :: VerificationInstance)
   @assert inst.net.nettype isa ReluNetwork # Only handle this for now
   @assert params.K == inst.net.K
 
@@ -70,7 +83,7 @@ function precompute(params, inst)
   safety = inst.safety
   ffnet = inst.net
   K = ffnet.K
-  zdims = [ffnet.xdims[1:K]; 1]
+  zdims = params.zdims
   γdims = params.γdims
 
   # Each Yss[k] contains the non-affine components of Yk
@@ -99,6 +112,7 @@ function precompute(params, inst)
   end
 
   Js = Vector{Any}()
+  zaffs = Vector{Any}()
   Jtzaffs = Vector{Any}()
   I_JtJ_invs = Vector{Any}()
 
@@ -174,6 +188,7 @@ function precompute(params, inst)
     aug_Za_aff22 = Fk2t_Fb1 * Yaffs[b] * Fb1t_Fk2
     Zkaff = aug_Za_aff11 + aff_tmp + aug_Za_aff22
     zkaff = vec(Zkaff)
+    push!(zaffs, zkaff)
 
     # Jk' * zkaff
     _Jktzaff = Jk' * zkaff
@@ -187,29 +202,31 @@ function precompute(params, inst)
     println("precompute: Js k = " * string(k) * "/" * string(K) * ", time = " * string(ktotal_time))
   end
 
-  cache = (Js, Jtzaffs, I_JtJ_invs)
+  cache = AdmmCache(Js=Js, zaffs=zaffs, Jtzaffs=Jtzaffs, I_JtJ_invs=I_JtJ_invs)
   return cache
 end
 
+# Calculate the vectorized Zk
+function zk(k :: Int, ωk :: Vector{Float64}, cache :: AdmmCache)
+  # ωk = Hc(k, params.γdims) * params.γ
+  # return cache.Js[k] * ωk + cache.zaffs[k]
+  return cache.Js[k] * ωk + cache.zaffs[k]
+end
+
 # Project onto the non-negative orthant
-function projectΓ(γ)
+function projectΓ(γ :: Vector{Float64})
   return max.(abs.(γ), 0)
 end
 
 # The γ update
-function stepγ(params, cache)
-  ωs = params.ωs
-  μs = params.μs
-  ρ = params.ρ
-  γdims = params.γdims
-  K = params.K
-  tmp = [Hc(k, γdims)' * (ωs[k] + (μs[k] / ρ)) for k in 1:K]
+function stepγ(params :: AdmmParams, cache :: AdmmCache)
+  tmp = [Hc(k, params.γdims)' * (params.ωs[k] + (params.μs[k] / params.ρ)) for k in 1:params.K]
   tmp = sum(tmp) / 3 # D = 3I
   return projectΓ(tmp)
 end
 
 # Project a vector onto the negative semidefinite cone
-function projectNsd(vk)
+function projectNsd(vk :: Vector{Float64})
   dim = Int(round(sqrt(length(vk)))) # :)
   @assert length(vk) == dim * dim
   tmp = reshape(vk, (dim, dim))
@@ -219,85 +236,84 @@ function projectNsd(vk)
 end
 
 # The vk update
-function stepvk(k, params, cache)
-  ωk = params.ωs[k]
-  λk = params.λs[k]
-  ρ = params.ρ
-  Js, _, _ = cache
-  tmp = Js[k] * ωk
-  tmp = tmp - (λk / ρ)
+function stepvk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+  # tmp = cache.Js[k] * params.ωs[k]
+  tmp = zk(k, params.ωs[k], cache)
+  tmp = tmp - (params.λs[k] / params.ρ)
   return projectNsd(tmp)
 end
 
 # The ωk update
-# function stepωk(k, γ, vk, λk, μk, ρ, γdims, Jk, Jtzak, I_JtJ_invk)
-function stepωk(k, params, cache)
-  γ = params.γ
-  vs = params.vs
-  λs = params.λs
-  μs = params.μs
-  ρ = params.ρ
-  γdims = params.γdims
-  Js, Jtzaffs, I_JtJ_invs = cache
-  tmp = Js[k]' * vs[k]
-  tmp = tmp + Hc(k, γdims) * γ
-  tmp = tmp + (Js[k]' * λs[k] - μs[k]) / ρ
-  tmp = tmp - Jtzaffs[k]
-  tmp = I_JtJ_invs[k] * tmp
+function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+  tmp = cache.Js[k]' * params.vs[k]
+  tmp = tmp + Hc(k, params.γdims) * params.γ
+  tmp = tmp + (cache.Js[k]' * params.λs[k] - params.μs[k]) / params.ρ
+  tmp = tmp - cache.Jtzaffs[k]
+  tmp = cache.I_JtJ_invs[k] * tmp
   return tmp
 end
 
 # The λk update
-function stepλk(k, params, cache)
-  vs = params.vs
-  ωs = params.ωs
-  λs = params.λs
-  ρ = params.ρ
-  Js, _, _ = cache
-  tmp = vs[k] - Js[k] * ωs[k]
-  tmp = λs[k] + ρ * tmp
+function stepλk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+  # tmp = params.vs[k] - cache.Js[k] * params.ωs[k]
+  tmp = params.vs[k] - zk(k, params.ωs[k], cache)
+  tmp = params.λs[k] + params.ρ * tmp
   return tmp
 end
 
 # The μk update
-function stepμk(k, params, cache)
-  γ = params.γ
-  ωs = params.ωs
-  μs = params.μs
-  ρ = params.ρ
-  γdims = params.γdims
-  tmp = μs[k] + ρ * (ωs[k] - Hc(k, γdims) * γ)
+function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+  tmp = params.μs[k] + params.ρ * (params.ωs[k] - Hc(k, params.γdims) * params.γ)
   return tmp
 end
 
 #
-function stepX(params, cache)
+function stepX(params :: AdmmParams, cache :: AdmmCache)
   new_γ = stepγ(params, cache)
   new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
   return (new_γ, new_vs)
 end
 
 #
-function stepY(params, cache)
+function stepY(params :: AdmmParams, cache :: AdmmCache)
   new_ωs = Vector([stepωk(k, params, cache) for k in 1:params.K])
   return new_ωs
 end
 
 #
-function stepZ(params, cache)
+function stepZ(params :: AdmmParams, cache :: AdmmCache)
   new_λs = Vector([stepλk(k, params, cache) for k in 1:params.K])
   new_μs = Vector([stepμk(k, params, cache) for k in 1:params.K])
   return (new_λs, new_μs)
 end
 
 #
-function stopcond(γ, vs, ωs, λs, μs)
+# Check that each Qk <= 0
+function γisSat(params :: AdmmParams, cache :: AdmmCache)
+  for k in 1:params.K
+    ωk = Hc(k, params.γdims) * params.γ
+    # zk = cache.Js[k] * ωk + cache.zaffs[k] # old method
+    _zk = zk(k, ωk, cache)
+    dim = Int(round(sqrt(length(_zk))))
+    tmp = reshape(_zk, (dim, dim))
+    eig = eigen(tmp)
+
+    if maximum(eig.values) > 0
+      return false
+    end
+  end
+  return true
+end
+
+
+#
+function stopcond(t, params, inst)
   return True
 end
 
 
 #
-function admm(params, cache)
+function admm(params :: AdmmParams, cache :: AdmmCache)
 
   iter_params = AdmmParams(
         γ = params.γ,
@@ -305,28 +321,38 @@ function admm(params, cache)
         ωs = params.ωs,
         λs = params.λs,
         μs = params.μs,
+        ρ = params.ρ,
         γdims = params.γdims,
-        ρ = params.ρ)
+        zdims = params.zdims)
 
-  T = 10
+  T = 30
 
   for t = 1:T
     step_start_time = time()
 
+    xstart_time = time()
     (new_γ, new_vs) = stepX(iter_params, cache)
     iter_params.γ = new_γ
     iter_params.vs = new_vs
+    xtotal_time = time() - xstart_time
 
+    ystart_time = time()
     new_ωs = stepY(iter_params, cache)
     iter_params.ωs = new_ωs
+    ytotal_time = time() - ystart_time
 
+    zstart_time = time()
     (new_λs, new_μs) = stepZ(iter_params, cache)
     iter_params.λs = new_λs
     iter_params.μs = new_μs
+    ztotal_time = time() - zstart_time
 
     #
     step_total_time = time() - step_start_time
-    println("ADMM step t = " * string(t) * "/" * string(T) * ", time = " * string(step_total_time))
+    println("ADMM step t = " * string(t) * "/" * string(T)
+              * ", time = " * string(round.(step_total_time, digits=2))
+              * ", indiv x,y,z time = " * string(round.((xtotal_time, ytotal_time, ztotal_time), digits=2))
+              * ", feasible: " * string(γisSat(iter_params, cache)))
   end
 
   return iter_params
@@ -339,3 +365,4 @@ end
 export stepω
 
 end # End module
+
