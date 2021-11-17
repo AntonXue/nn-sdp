@@ -13,10 +13,10 @@ using Random
 
 # xdims = [2; 20; 30; 20; 20; 30; 15; 2]
 # xdims = [9; 8; 7; 6; 5; 6; 7; 8; 9]
-xdims = [10; 14; 12; 8]
+# xdims = [10; 14; 12; 8]
 # xdims = [2; 3; 4; 5; 6; 5; 4; 3; 2]
 
-# xdims = [40; 40; 40; 40; 40; 40]
+xdims = [2; 40; 40; 40; 40; 40; 2]
 
 # xdims = [8; 9; 10; 11; 10; 9; 8]
 
@@ -60,7 +60,8 @@ println("")
 
 println("Beginning ADMM iterations")
 admm_start_time = time()
-new_params = AdmmDeepSdp.admm(start_params, cache)
+param_hist = AdmmDeepSdp.admm(start_params, cache)
+new_params = param_hist[end]
 
 admm_total_time = time() - admm_start_time
 println("Admm iter time: " * string(admm_total_time))
@@ -70,6 +71,22 @@ println("Admm iter time: " * string(admm_total_time))
 
 # Extract the final Zks that would have been generated with new_params
 
+
+solnbγ = value.(solnb.model[:γ])
+solnbω1 = Hc(1, new_params.γdims) * solnbγ
+solnbω2 = Hc(2, new_params.γdims) * solnbγ
+solnbω3 = Hc(3, new_params.γdims) * solnbγ
+
+solnbz1 = AdmmDeepSdp.zk(1, solnbω1, cache)
+solnbz2 = AdmmDeepSdp.zk(2, solnbω2, cache)
+solnbz3 = AdmmDeepSdp.zk(3, solnbω3, cache)
+
+solnbZ1 = reshape(solnbz1, (Int(round(sqrt(length(solnbz1)))), Int(round(sqrt(length(solnbz1))))))
+solnbZ2 = reshape(solnbz2, (Int(round(sqrt(length(solnbz2)))), Int(round(sqrt(length(solnbz2))))))
+solnbZ3 = reshape(solnbz3, (Int(round(sqrt(length(solnbz3)))), Int(round(sqrt(length(solnbz3))))))
+
+
+
 new_Zks = Vector{Any}()
 for k = 1:K
   ωk = Hc(k, new_params.γdims) * new_params.γ
@@ -77,7 +94,6 @@ for k = 1:K
   dim = Int(round(sqrt(length(zk))))
   push!(new_Zks, reshape(zk, (dim, dim)))
 end
-
 
 Js = cache.Js
 zaffs = cache.zaffs

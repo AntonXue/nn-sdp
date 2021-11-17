@@ -6,6 +6,9 @@ using ..Common
 using ..SplitDeepSdpB: Zk # Helpful to re-use
 using Parameters
 using LinearAlgebra
+using JuMP
+using Mosek
+using MosekTools
 
 # Track the parameters that are updated at each ADMM tsep
 @with_kw mutable struct AdmmParams
@@ -66,7 +69,7 @@ function initParams(inst :: VerificationInstance)
   μs = [zeros(length(ωs[k])) for k in 1:K]
 
   # A guess
-  ρ = 0.2
+  ρ = 10.0
 
   params = AdmmParams(γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs, ρ=ρ, γdims=γdims, zdims=zdims)
   return params
@@ -208,8 +211,6 @@ end
 
 # Calculate the vectorized Zk
 function zk(k :: Int, ωk :: Vector{Float64}, cache :: AdmmCache)
-  # ωk = Hc(k, params.γdims) * params.γ
-  # return cache.Js[k] * ωk + cache.zaffs[k]
   return cache.Js[k] * ωk + cache.zaffs[k]
 end
 
@@ -231,13 +232,13 @@ function projectNsd(vk :: Vector{Float64})
   @assert length(vk) == dim * dim
   tmp = reshape(vk, (dim, dim))
   eig = eigen(tmp)
-  tmp = Symmetric(eig.vectors * Diagonal(min.(eig.values, 0)) * eig.vectors')
+  # tmp = Symmetric(eig.vectors * Diagonal(min.(eig.values, 0)) * eig.vectors')
+  tmp = Symmetric(eig.vectors * Diagonal(min.(real.(eig.values), 0)) * eig.vectors')
   return tmp[:]
 end
 
 # The vk update
 function stepvk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
-  # tmp = cache.Js[k] * params.ωs[k]
   tmp = zk(k, params.ωs[k], cache)
   tmp = tmp - (params.λs[k] / params.ρ)
   return projectNsd(tmp)
@@ -255,7 +256,6 @@ end
 
 # The λk update
 function stepλk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
-  # tmp = params.vs[k] - cache.Js[k] * params.ωs[k]
   tmp = params.vs[k] - zk(k, params.ωs[k], cache)
   tmp = params.λs[k] + params.ρ * tmp
   return tmp
@@ -263,7 +263,8 @@ end
 
 # The μk update
 function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
-  tmp = params.μs[k] + params.ρ * (params.ωs[k] - Hc(k, params.γdims) * params.γ)
+  tmp = params.ωs[k] - Hc(k, params.γdims) * params.γ
+  tmp = params.μs[k] + params.ρ * tmp
   return tmp
 end
 
@@ -272,6 +273,56 @@ function stepX(params :: AdmmParams, cache :: AdmmCache)
   new_γ = stepγ(params, cache)
   new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
   return (new_γ, new_vs)
+end
+
+function stepXsolver(params :: AdmmParams, cache :: AdmmCache)
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_DFEAS" => 1e-9
+  ))
+  @variable(model, var_γ[1:length(params.γ)] >= 0)
+  var_Vs = Vector{Any}()
+  for k in 1:params.K
+    vkdim = Int(round(sqrt(length(params.vs[k]))))
+    var_Vk = @variable(model, [1:vkdim, 1:vkdim])
+    @SDconstraint(model, var_Vk <= 0)
+    push!(var_Vs, var_Vk)
+  end
+
+  vparts = Vector{Any}()
+  γparts = Vector{Any}()
+  for k in 1:params.K
+    push!(vparts, vec(var_Vs[k]) - zk(k, params.ωs[k], cache) + (params.λs[k] / params.ρ))
+    push!(γparts, params.ωs[k] - Hc(k, params.γdims) * var_γ + (params.μs[k] / params.ρ))
+  end
+
+  vsum = sum(vparts[k]' * vparts[k] for k in 1:params.K)
+  γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
+
+  @objective(model, Min, vsum + γsum)
+  optimize!(model)
+  new_γ = value.(var_γ)
+  new_vs = [vec(value.(var_Vs[k])) for k in 1:params.K]
+  return (new_γ, new_vs)
+end
+
+function stepXsolveγonly(params :: AdmmParams, cache :: AdmmCache)
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_DFEAS" => 1e-9
+  ))
+  @variable(model, var_γ[1:length(params.γ)] >= 0)
+
+  γparts = [params.ωs[k] - Hc(k, params.γdims) * var_γ + (params.μs[k] / params.ρ) for k in 1:params.K]
+  γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
+  @objective(model, Min, γsum)
+  optimize!(model)
+
+  new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
+  new_γ = value.(var_γ)
+  return (new_γ, real.(new_vs))
 end
 
 #
@@ -289,7 +340,7 @@ end
 
 #
 # Check that each Qk <= 0
-function γisSat(params :: AdmmParams, cache :: AdmmCache)
+function isγSat(params :: AdmmParams, cache :: AdmmCache)
   for k in 1:params.K
     ωk = Hc(k, params.γdims) * params.γ
     # zk = cache.Js[k] * ωk + cache.zaffs[k] # old method
@@ -298,7 +349,7 @@ function γisSat(params :: AdmmParams, cache :: AdmmCache)
     tmp = reshape(_zk, (dim, dim))
     eig = eigen(tmp)
 
-    if maximum(eig.values) > 0
+    if maximum(real.(eig.values)) > 1e-3
       return false
     end
   end
@@ -315,23 +366,19 @@ end
 #
 function admm(params :: AdmmParams, cache :: AdmmCache)
 
-  iter_params = AdmmParams(
-        γ = params.γ,
-        vs = params.vs,
-        ωs = params.ωs,
-        λs = params.λs,
-        μs = params.μs,
-        ρ = params.ρ,
-        γdims = params.γdims,
-        zdims = params.zdims)
+  iter_params = deepcopy(params)
 
-  T = 30
+  param_hist = Vector{Any}()
+  push!(param_hist, deepcopy(iter_params))
 
+  T = 50
   for t = 1:T
     step_start_time = time()
 
     xstart_time = time()
-    (new_γ, new_vs) = stepX(iter_params, cache)
+    # new_γ, new_vs = stepX(iter_params, cache)
+    # new_γ, new_vs = stepXsolver(iter_params, cache)
+    new_γ, new_vs = stepXsolveγonly(iter_params, cache)
     iter_params.γ = new_γ
     iter_params.vs = new_vs
     xtotal_time = time() - xstart_time
@@ -342,7 +389,7 @@ function admm(params :: AdmmParams, cache :: AdmmCache)
     ytotal_time = time() - ystart_time
 
     zstart_time = time()
-    (new_λs, new_μs) = stepZ(iter_params, cache)
+    new_λs, new_μs = stepZ(iter_params, cache)
     iter_params.λs = new_λs
     iter_params.μs = new_μs
     ztotal_time = time() - zstart_time
@@ -352,10 +399,13 @@ function admm(params :: AdmmParams, cache :: AdmmCache)
     println("ADMM step t = " * string(t) * "/" * string(T)
               * ", time = " * string(round.(step_total_time, digits=2))
               * ", indiv x,y,z time = " * string(round.((xtotal_time, ytotal_time, ztotal_time), digits=2))
-              * ", feasible: " * string(γisSat(iter_params, cache)))
+              * ", feasible: " * string(isγSat(iter_params, cache)))
+    
+    push!(param_hist, deepcopy(iter_params))
   end
 
-  return iter_params
+  # return iter_params
+  return param_hist
 end
 
 
