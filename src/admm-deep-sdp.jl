@@ -237,13 +237,39 @@ function precompute(params :: AdmmParams, inst :: VerificationInstance, opts :: 
   return cache
 end
 
-# Fast Hc access
-function cachedHcSelect(k, γ, cache :: AdmmCache)
+# Fast Hc multiplication
+function indexedHc(k, γ, cache :: AdmmCache)
   (alow, ahigh), (klow, khigh), (blow, bhigh) = cache.Hcinds[k]
   γa = γ[alow:ahigh]
   γk = γ[klow:khigh]
   γb = γ[blow:bhigh]
   return [γa; γk; γb]
+end
+
+# Fast Hc' multiplication
+function indexedHct(k, ζ, params :: AdmmParams, cache :: AdmmCache)
+  (alow, ahigh), (klow, khigh), (blow, bhigh) = cache.Hcinds[k]
+  K = params.K
+  γdims = params.γdims
+  a = (k == 1) ? K : k - 1
+  b = (k == K) ? 1 : k + 1
+
+  # The segments of ζ to select
+  a0 = 1
+  a1 = γdims[a]
+  k0 = a1 + 1
+  k1 = a1 + γdims[k]
+  b0 = k1 + 1
+  b1 = k1 + γdims[b]
+  ζa = ζ[a0:a1]
+  ζk = ζ[k0:k1]
+  ζb = ζ[b0:b1]
+
+  tmp = zeros(sum(γdims))
+  tmp[alow:ahigh] = ζa
+  tmp[klow:khigh] = ζk
+  tmp[blow:bhigh] = ζb
+  return tmp
 end
 
 # Calculate the vectorized Zk
@@ -258,7 +284,7 @@ end
 
 # The γ update
 function stepγ(params :: AdmmParams, cache :: AdmmCache)
-  tmp = [Hc(k, params.γdims)' * (params.ωs[k] + (params.μs[k] / params.ρ)) for k in 1:params.K]
+  tmp = [indexedHct(k, (params.ωs[k] + (params.μs[k] / params.ρ)), params, cache) for k in 1:params.K]
   tmp = sum(tmp) / 3 # D = 3I
   return projectΓ(tmp)
 end
@@ -283,7 +309,7 @@ end
 # The ωk update
 function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
   tmp = cache.Js[k]' * params.vs[k]
-  tmp = tmp + cachedHcSelect(k, params.γ, cache)
+  tmp = tmp + indexedHc(k, params.γ, cache)
   tmp = tmp + (cache.Js[k]' * params.λs[k] - params.μs[k]) / params.ρ
   tmp = tmp - cache.Jtzaffs[k]
   tmp = cache.I_JtJ_invs[k] * tmp
@@ -299,7 +325,7 @@ end
 
 # The μk update
 function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
-  tmp = params.ωs[k] - cachedHcSelect(k, params.γ, cache)
+  tmp = params.ωs[k] - indexedHc(k, params.γ, cache)
   tmp = params.μs[k] + params.ρ * tmp
   return tmp
 end
@@ -320,7 +346,7 @@ function stepXNewton(params :: AdmmParams, cache :: AdmmCache)
 
   γt = stepγ(params, cache)
   α = 0.5 # step size
-  T = 3
+  T = 2
   for t = 1:T
     oldγt = γt
     ∇f = 3*γt - sum(Hc(k, params.γdims)' * (params.ωs[k] + (params.μs[k] / params.ρ)) for k in 1:params.K)
@@ -348,7 +374,7 @@ end
 # Check that each Qk <= 0
 function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   for k in 1:params.K
-    ωk = cachedHcSelect(k, params.γ, cache)
+    ωk = indexedHc(k, params.γ, cache)
     _zk = zk(k, ωk, cache)
     dim = Int(round(sqrt(length(_zk))))
     tmp = Symmetric(reshape(_zk, (dim, dim)))
