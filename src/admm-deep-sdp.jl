@@ -31,8 +31,17 @@ end
   I_JtJ_invs :: Vector{Matrix{Float64}}
 end
 
+@with_kw struct AdmmOptions
+  max_iters :: Int = 40
+  begin_check_at_iter :: Int = 5
+  check_every_k_iters :: Int = 2
+  nsd_tol :: Float64 = 1e-4
+  ρ :: Float64 = 1.0
+  verbose :: Bool = false
+end
+
 # Initialize zero parameters of the appropriate size
-function initParams(inst :: VerificationInstance)
+function initParams(inst :: VerificationInstance, opts :: AdmmOptions)
   @assert inst.net isa FeedForwardNetwork
   ffnet = inst.net
   input = inst.input
@@ -52,7 +61,6 @@ function initParams(inst :: VerificationInstance)
   end
 
   # All the variables that matter to each ωk
-  # γ = randn(sum(γdims))
   γ = zeros(sum(γdims))
 
   # ωk are the 3-clique projections of γ, where ωk = ωs[k]
@@ -68,19 +76,21 @@ function initParams(inst :: VerificationInstance)
   # μk are the dual vars for ωk = Hk * γ
   μs = [zeros(length(ωs[k])) for k in 1:K]
 
-  # A guess
-  ρ = 10.0
+  #
+  ρ = opts.ρ
 
   params = AdmmParams(γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs, ρ=ρ, γdims=γdims, zdims=zdims)
   return params
 end
 
 # Computes some potentially expensive things
-function precompute(params :: AdmmParams, inst :: VerificationInstance)
+function precompute(params :: AdmmParams, inst :: VerificationInstance, opts :: AdmmOptions)
   @assert inst.net.nettype isa ReluNetwork # Only handle this for now
   @assert params.K == inst.net.K
 
-  println("precompute: start!" )
+  if opts.verbose
+    println("precompute: start!" )
+  end
 
   input = inst.input
   safety = inst.safety
@@ -97,7 +107,7 @@ function precompute(params :: AdmmParams, inst :: VerificationInstance)
 
   # Calculate the Ys parts
   for k = 1:K
-    kstart_time = time()
+    iterk_start_time = time()
 
     Ykaff = (k == K) ? YγK(zeros(γdims[k]), input, safety, ffnet) : Yγk(k, zeros(γdims[k]), ffnet)
     Ykparts = Vector{Any}()
@@ -110,8 +120,10 @@ function precompute(params :: AdmmParams, inst :: VerificationInstance)
     push!(Yss, Ykparts)
     push!(Yaffs, Ykaff)
 
-    ktotal_time = time() - kstart_time
-    println("precompute: Yss k = " * string(k) * "/" * string(K) * ", time = " * string(ktotal_time))
+    iterk_time = time() - iterk_start_time
+    if opts.verbose
+      println("precompute: Yss[" * string(k) * "/" * string(K) * "], time: " * string(iterk_time))
+    end
   end
 
   Js = Vector{Any}()
@@ -121,15 +133,13 @@ function precompute(params :: AdmmParams, inst :: VerificationInstance)
 
   # Populate the Js and its dependencies
   for k = 1:K
-    kstart_time = time()
+    iterk_start_time = time()
 
     a = (k == 1) ? K : k - 1
     b = (k == K) ? 1 : k + 1
-
     Yaparts = Yss[a]
     Ykparts = Yss[k]
     Ybparts = Yss[b]
-
     Jk = Vector{Any}()
 
     # The strategy is to decompose each Zk = aug(Zk[1,1]) + ... + aug(Zk[3,3]),
@@ -201,8 +211,11 @@ function precompute(params :: AdmmParams, inst :: VerificationInstance)
     _I_JktJk_inv = inv(Symmetric(I + Jk' * Jk))
     push!(I_JtJ_invs, _I_JktJk_inv)
 
-    ktotal_time = time() - kstart_time
-    println("precompute: Js k = " * string(k) * "/" * string(K) * ", time = " * string(ktotal_time))
+    iterk_time = time() - iterk_start_time
+
+    if opts.verbose
+      println("precompute: Js[" * string(k) * "/" * string(K) * "], time: " * string(iterk_time))
+    end
   end
 
   cache = AdmmCache(Js=Js, zaffs=zaffs, Jtzaffs=Jtzaffs, I_JtJ_invs=I_JtJ_invs)
@@ -230,10 +243,9 @@ end
 function projectNsd(vk :: Vector{Float64})
   dim = Int(round(sqrt(length(vk)))) # :)
   @assert length(vk) == dim * dim
-  tmp = reshape(vk, (dim, dim))
+  tmp = Symmetric(reshape(vk, (dim, dim)))
   eig = eigen(tmp)
-  # tmp = Symmetric(eig.vectors * Diagonal(min.(eig.values, 0)) * eig.vectors')
-  tmp = Symmetric(eig.vectors * Diagonal(min.(real.(eig.values), 0)) * eig.vectors')
+  tmp = Symmetric(eig.vectors * Diagonal(min.(eig.values, 0)) * eig.vectors')
   return tmp[:]
 end
 
@@ -275,75 +287,25 @@ function stepX(params :: AdmmParams, cache :: AdmmCache)
   return (new_γ, new_vs)
 end
 
-function stepXsolveBoth(params :: AdmmParams, cache :: AdmmCache)
-  model = Model(optimizer_with_attributes(
-    Mosek.Optimizer,
-    "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-9
-  ))
-  @variable(model, var_γ[1:length(params.γ)] >= 0)
-  var_Vs = Vector{Any}()
-  for k in 1:params.K
-    vkdim = Int(round(sqrt(length(params.vs[k]))))
-    var_Vk = @variable(model, [1:vkdim, 1:vkdim])
-    @SDconstraint(model, var_Vk <= 0)
-    push!(var_Vs, var_Vk)
-  end
-
-  vparts = Vector{Any}()
-  γparts = Vector{Any}()
-  for k in 1:params.K
-    push!(vparts, vec(var_Vs[k]) - zk(k, params.ωs[k], cache) + (params.λs[k] / params.ρ))
-    push!(γparts, params.ωs[k] - Hc(k, params.γdims) * var_γ + (params.μs[k] / params.ρ))
-  end
-
-  vsum = sum(vparts[k]' * vparts[k] for k in 1:params.K)
-  γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
-
-  @objective(model, Min, vsum + γsum)
-  optimize!(model)
-  new_γ = value.(var_γ)
-  new_vs = [vec(value.(var_Vs[k])) for k in 1:params.K]
-  return (new_γ, new_vs)
-end
-
-function stepXsolveγOnly(params :: AdmmParams, cache :: AdmmCache)
-  model = Model(optimizer_with_attributes(
-    Mosek.Optimizer,
-    "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-9
-  ))
-  @variable(model, var_γ[1:length(params.γ)] >= 0)
-
-  γparts = [params.ωs[k] - Hc(k, params.γdims) * var_γ + (params.μs[k] / params.ρ) for k in 1:params.K]
-  γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
-  @objective(model, Min, γsum)
-  optimize!(model)
-
-  new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
-  new_γ = value.(var_γ)
-  return (new_γ, real.(new_vs))
-end
-
+#
 function stepXNewton(params :: AdmmParams, cache :: AdmmCache)
   # Pretend that the objective function is
   #    f(γ) = (1/2) ∑ || Hk γ - ωk - μk/ρ ||^2
   #   ∇f(γ) = ∑ Hk' (Hk γ - ωk - μk/ρ) = D γ - ∑Hk'(ωk + μk/ρ)
   #  ∇2f(γ) = ∑ Hk' Hk = D = 3 I
 
-  γt = params.γ
+  γt = stepγ(params, cache)
   α = 0.5 # step size
-  T = 10
+  T = 6
   for t = 1:T
     oldγt = γt
     ∇f = 3*γt - sum(Hc(k, params.γdims)' * (params.ωs[k] + (params.μs[k] / params.ρ)) for k in 1:params.K)
     γt = γt - (α / 3) * ∇f
     γt = projectΓ(γt)
-    println("\tnorm diff = " * string(norm(oldγt - γt)))
+    # println("\tnorm diff = " * string(norm(oldγt - γt)))
   end
   new_γ = γt
   new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
-
 
   #=
   model = Model(optimizer_with_attributes(
@@ -357,10 +319,9 @@ function stepXNewton(params :: AdmmParams, cache :: AdmmCache)
   γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
   @objective(model, Min, γsum)
   optimize!(model)
+  mosek_γ = value.(var_γ)
+  println("\tmosek_γ diff = " * string(norm(new_γ - mosek_γ)))
   =#
-
-  mosekγ = value.(var_γ)
-  println("\tmosek_γ diff = " * string(norm(new_γ - mosekγ)))
 
   return (new_γ, new_vs)
 end
@@ -380,44 +341,46 @@ end
 
 #
 # Check that each Qk <= 0
-function isγSat(params :: AdmmParams, cache :: AdmmCache)
+function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   for k in 1:params.K
     ωk = Hc(k, params.γdims) * params.γ
     # zk = cache.Js[k] * ωk + cache.zaffs[k] # old method
     _zk = zk(k, ωk, cache)
     dim = Int(round(sqrt(length(_zk))))
-    tmp = reshape(_zk, (dim, dim))
+    tmp = Symmetric(reshape(_zk, (dim, dim)))
     eig = eigen(tmp)
 
-    if maximum(real.(eig.values)) > 1e-3
+    if maximum(eig.values) > opts.nsd_tol
       return false
     end
   end
   return true
 end
 
-
 #
-function stopcond(t, params, inst)
-  return True
+function shouldStop(t, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
+  if t > opts.begin_check_at_iter && mod(t, opts.check_every_k_iters) == 0
+    if isγSat(params, cache, opts)
+      if opts.verbose
+        println("Sat!")
+      end
+      return true
+    end
+  end
+  return false
 end
 
-
 #
-function admm(params :: AdmmParams, cache :: AdmmCache)
-
+function admm(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   iter_params = deepcopy(params)
-
-  T = 50
+  iters_run = 0
+  T = opts.max_iters
   total_time = 0
   for t = 1:T
     step_start_time = time()
 
     xstart_time = time()
     new_γ, new_vs = stepX(iter_params, cache)
-    # new_γ, new_vs = stepXsolveBoth(iter_params, cache)
-    # new_γ, new_vs = stepXsolveγOnly(iter_params, cache)
-    # new_γ, new_vs = stepXsolveγOnly(iter_params, cache)
     # new_γ, new_vs = stepXNewton(iter_params, cache)
     iter_params.γ = new_γ
     iter_params.vs = new_vs
@@ -437,34 +400,43 @@ function admm(params :: AdmmParams, cache :: AdmmCache)
     #
     step_total_time = time() - step_start_time
     total_time = total_time + step_total_time
+    all_times = (xtotal_time, ytotal_time, ztotal_time, step_total_time, total_time)
+    if opts.verbose
+      println("step[" * string(t) * "/" * string(T) * "]" * " time: " * string(round.(all_times, digits=1)))
+    end
 
-    times = (xtotal_time, ytotal_time, ztotal_time, step_total_time, total_time)
+    iters_run = t
 
-    println("t[" * string(t) * "/" * string(T) * "]"
-            * " time: " * string(round.(times, digits=1)))
-
-    #=
-    println("t[" * string(t) * "/" * string(T) * "]"
-            * " time: " * string(round.(times, digits=1))
-            * ", feasible: " * string(isγSat(iter_params, cache)))
-    =#
-    # push!(param_hist, deepcopy(iter_params))
-
-    if t > 5 && mod(t, 3) == 0
-      if isγSat(iter_params, cache)
-        break
-      end
+    if shouldStop(t, iter_params, cache, opts)
+      break
     end
   end
 
-  return iter_params
+  return iter_params, isγSat(iter_params, cache, opts), iters_run, total_time
 end
 
+#
+function run(inst :: VerificationInstance, opts :: AdmmOptions)
+  start_time = time()
+  start_params = initParams(inst, opts)
 
-function run()
+  precompute_start_time = time()
+  cache = precompute(start_params, inst, opts)
+  precompute_time = time() - precompute_start_time
+
+  new_params, issat, iters_run, admm_iters_time = admm(start_params, cache, opts)
+  total_time = time() - start_time
+  output = SolutionOutput(
+            model = new_params,
+            summary = "precompute time: " * string(precompute_time) * ", iters run: " * string(iters_run),
+            status = issat ? "OPTIMAL" : "UNKNOWN",
+            total_time = total_time,
+            solve_time = admm_iters_time)
+  return output
 end
 
-export stepω
+export AdmmOptions
+export run
 
 end # End module
 
