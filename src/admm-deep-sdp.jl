@@ -29,8 +29,10 @@ end
   zaffs :: Vector{Vector{Float64}}
   Jtzaffs :: Vector{Vector{Float64}}
   I_JtJ_invs :: Vector{Matrix{Float64}}
+  Hcinds :: Vector{Tuple{Tuple{Int, Int}, Tuple{Int, Int}, Tuple{Int, Int}}} # γa, γk, γb (start,end)
 end
 
+# Initialize this structure to customize options
 @with_kw struct AdmmOptions
   max_iters :: Int = 40
   begin_check_at_iter :: Int = 5
@@ -76,7 +78,6 @@ function initParams(inst :: VerificationInstance, opts :: AdmmOptions)
   # μk are the dual vars for ωk = Hk * γ
   μs = [zeros(length(ωs[k])) for k in 1:K]
 
-  #
   ρ = opts.ρ
 
   params = AdmmParams(γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs, ρ=ρ, γdims=γdims, zdims=zdims)
@@ -212,14 +213,37 @@ function precompute(params :: AdmmParams, inst :: VerificationInstance, opts :: 
     push!(I_JtJ_invs, _I_JktJk_inv)
 
     iterk_time = time() - iterk_start_time
-
     if opts.verbose
       println("precompute: Js[" * string(k) * "/" * string(K) * "], time: " * string(iterk_time))
     end
   end
 
-  cache = AdmmCache(Js=Js, zaffs=zaffs, Jtzaffs=Jtzaffs, I_JtJ_invs=I_JtJ_invs)
+  # Calculate the Hcinds
+  Hcinds = Vector{Any}()
+  for k = 1:K
+    a = (k == 1) ? K : k - 1
+    b = (k == K) ? 1 : k + 1
+    alow = sum(γdims[1:a-1]) + 1
+    ahigh = sum(γdims[1:a])
+    klow = sum(γdims[1:k-1]) + 1
+    khigh = sum(γdims[1:k])
+    blow = sum(γdims[1:b-1]) + 1
+    bhigh = sum(γdims[1:b])
+    kinds = ((alow, ahigh), (klow, khigh), (blow, bhigh))
+    push!(Hcinds, kinds)
+  end
+
+  cache = AdmmCache(Js=Js, zaffs=zaffs, Jtzaffs=Jtzaffs, I_JtJ_invs=I_JtJ_invs, Hcinds=Hcinds)
   return cache
+end
+
+# Fast Hc access
+function cachedHcSelect(k, γ, cache :: AdmmCache)
+  (alow, ahigh), (klow, khigh), (blow, bhigh) = cache.Hcinds[k]
+  γa = γ[alow:ahigh]
+  γk = γ[klow:khigh]
+  γb = γ[blow:bhigh]
+  return [γa; γk; γb]
 end
 
 # Calculate the vectorized Zk
@@ -259,7 +283,7 @@ end
 # The ωk update
 function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
   tmp = cache.Js[k]' * params.vs[k]
-  tmp = tmp + Hc(k, params.γdims) * params.γ
+  tmp = tmp + cachedHcSelect(k, params.γ, cache)
   tmp = tmp + (cache.Js[k]' * params.λs[k] - params.μs[k]) / params.ρ
   tmp = tmp - cache.Jtzaffs[k]
   tmp = cache.I_JtJ_invs[k] * tmp
@@ -275,19 +299,19 @@ end
 
 # The μk update
 function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
-  tmp = params.ωs[k] - Hc(k, params.γdims) * params.γ
+  tmp = params.ωs[k] - cachedHcSelect(k, params.γ, cache)
   tmp = params.μs[k] + params.ρ * tmp
   return tmp
 end
 
-#
+# The X = {γ, v1, ..., vK} variable updates
 function stepX(params :: AdmmParams, cache :: AdmmCache)
   new_γ = stepγ(params, cache)
   new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
   return (new_γ, new_vs)
 end
 
-#
+# The X = {γ, v1, ..., vK} variable updates, but with some Newton's method
 function stepXNewton(params :: AdmmParams, cache :: AdmmCache)
   # Pretend that the objective function is
   #    f(γ) = (1/2) ∑ || Hk γ - ωk - μk/ρ ||^2
@@ -296,55 +320,35 @@ function stepXNewton(params :: AdmmParams, cache :: AdmmCache)
 
   γt = stepγ(params, cache)
   α = 0.5 # step size
-  T = 6
+  T = 3
   for t = 1:T
     oldγt = γt
     ∇f = 3*γt - sum(Hc(k, params.γdims)' * (params.ωs[k] + (params.μs[k] / params.ρ)) for k in 1:params.K)
     γt = γt - (α / 3) * ∇f
     γt = projectΓ(γt)
-    # println("\tnorm diff = " * string(norm(oldγt - γt)))
   end
   new_γ = γt
   new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
-
-  #=
-  model = Model(optimizer_with_attributes(
-    Mosek.Optimizer,
-    "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-9
-  ))
-  @variable(model, var_γ[1:length(params.γ)] >= 0)
-
-  γparts = [params.ωs[k] - Hc(k, params.γdims) * var_γ + (params.μs[k] / params.ρ) for k in 1:params.K]
-  γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
-  @objective(model, Min, γsum)
-  optimize!(model)
-  mosek_γ = value.(var_γ)
-  println("\tmosek_γ diff = " * string(norm(new_γ - mosek_γ)))
-  =#
-
   return (new_γ, new_vs)
 end
 
-#
+# The Y = {ω1, ..., ωK} variable updates
 function stepY(params :: AdmmParams, cache :: AdmmCache)
   new_ωs = Vector([stepωk(k, params, cache) for k in 1:params.K])
   return new_ωs
 end
 
-#
+# The Z = {λ1, ..., λK, μ1, ..., μK} variable updates
 function stepZ(params :: AdmmParams, cache :: AdmmCache)
   new_λs = Vector([stepλk(k, params, cache) for k in 1:params.K])
   new_μs = Vector([stepμk(k, params, cache) for k in 1:params.K])
   return (new_λs, new_μs)
 end
 
-#
 # Check that each Qk <= 0
 function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   for k in 1:params.K
-    ωk = Hc(k, params.γdims) * params.γ
-    # zk = cache.Js[k] * ωk + cache.zaffs[k] # old method
+    ωk = cachedHcSelect(k, params.γ, cache)
     _zk = zk(k, ωk, cache)
     dim = Int(round(sqrt(length(_zk))))
     tmp = Symmetric(reshape(_zk, (dim, dim)))
@@ -357,7 +361,7 @@ function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   return true
 end
 
-#
+# Should we be stopping?
 function shouldStop(t, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   if t > opts.begin_check_at_iter && mod(t, opts.check_every_k_iters) == 0
     if isγSat(params, cache, opts)
@@ -397,7 +401,7 @@ function admm(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
     iter_params.μs = new_μs
     ztotal_time = time() - zstart_time
 
-    #
+    # Coalesce all the time statistics
     step_total_time = time() - step_start_time
     total_time = total_time + step_total_time
     all_times = (xtotal_time, ytotal_time, ztotal_time, step_total_time, total_time)
@@ -415,7 +419,7 @@ function admm(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
   return iter_params, isγSat(iter_params, cache, opts), iters_run, total_time
 end
 
-#
+# Call this
 function run(inst :: VerificationInstance, opts :: AdmmOptions)
   start_time = time()
   start_params = initParams(inst, opts)

@@ -15,10 +15,10 @@ Random.seed!(1234)
 
 # xdims = [2; 20; 30; 20; 20; 30; 15; 2]
 # xdims = [9; 8; 7; 6; 5; 6; 7; 8; 9]
-xdims = [10; 14; 12; 8]
+# xdims = [10; 14; 12; 8]
 # xdims = [2; 3; 4; 5; 6; 5; 4; 3; 2]
 
-# xdims = [2; 40; 40; 40; 40; 40; 2]
+xdims = [2; 40; 40; 40; 40; 40; 40; 40; 40; 2]
 
 # xdims = [8; 9; 10; 11; 10; 9; 8]
 
@@ -36,20 +36,24 @@ soln = DeepSdp.run(inst)
 println("DeepSdp solve time: " * string(soln.solve_time) * ", " * soln.status)
 =#
 
+#=
 println("Beginning SplitDeepSdpA stuff")
 solna = SplitDeepSdpA.run(inst)
 println("SplitDeepSdpA solve time: " * string(solna.solve_time) * ", " * solna.status)
+=#
 
 println("")
 
+#=
 println("Beginning SplitDeepSdpB stuff")
 solnb = SplitDeepSdpB.run(inst)
 println("SplitDeepSdpB solve time: " * string(solnb.solve_time) * ", " * solnb.status)
+=#
 
 println("")
 
 println("Beginning Admm stuff")
-opts = AdmmDeepSdp.AdmmOptions(ρ=1.0, verbose=false, max_iters=50)
+opts = AdmmDeepSdp.AdmmOptions(ρ=1.0, verbose=true, max_iters=50)
 solnadmm = AdmmDeepSdp.run(inst, opts)
 println("Admm solve time: " * string(solnadmm.solve_time) * ", " * solnadmm.status)
 println("Admm summary: " * string(solnadmm.summary))
