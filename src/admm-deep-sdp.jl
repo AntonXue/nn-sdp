@@ -29,7 +29,7 @@ end
   zaffs :: Vector{Vector{Float64}}
   Jtzaffs :: Vector{Vector{Float64}}
   I_JtJ_invs :: Vector{Matrix{Float64}}
-  Hcinds :: Vector{Tuple{Tuple{Int, Int}, Tuple{Int, Int}, Tuple{Int, Int}}} # γa, γk, γb (start,end)
+  Hcinds :: Vector{Tuple{Tuple{Int, Int}, Tuple{Int, Int}, Tuple{Int, Int}}} # γa, γk, γb (start, end)
 end
 
 # Initialize this structure to customize options
@@ -378,9 +378,7 @@ function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmOptions)
     _zk = zk(k, ωk, cache)
     dim = Int(round(sqrt(length(_zk))))
     tmp = Symmetric(reshape(_zk, (dim, dim)))
-    eig = eigen(tmp)
-
-    if maximum(eig.values) > opts.nsd_tol
+    if eigmax(tmp) > opts.nsd_tol
       return false
     end
   end

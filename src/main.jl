@@ -19,6 +19,17 @@ xdims = [10; 14; 12; 8]
 # xdims = [2; 3; 4; 5; 6; 5; 4; 3; 2]
 
 # xdims = [2; 40; 40; 40; 40; 40; 40; 40; 40; 2]
+# xdims = [2; 40; 40; 40; 40; 2]
+#=
+xdims = [2;
+        40; 40; 40; 40; 40;
+        40; 40; 40; 40; 40;
+        40; 40; 40; 40; 40;
+        40; 40; 40; 40; 40;
+        40; 40; 40; 40; 40;
+        40; 40; 40; 40; 40;
+        2]
+=#
 
 # xdims = [8; 9; 10; 11; 10; 9; 8]
 
@@ -53,7 +64,7 @@ println("SplitDeepSdpB solve time: " * string(solnb.solve_time) * ", " * solnb.s
 println("")
 
 println("Beginning Admm stuff")
-opts = AdmmDeepSdp.AdmmOptions(ρ=1.0, verbose=true, max_iters=50)
+opts = AdmmDeepSdp.AdmmOptions(ρ=1.0, nsd_tol=1e-4, verbose=true, max_iters=50)
 solnadmm = AdmmDeepSdp.run(inst, opts)
 println("Admm solve time: " * string(solnadmm.solve_time) * ", " * solnadmm.status)
 println("Admm summary: " * string(solnadmm.summary))
