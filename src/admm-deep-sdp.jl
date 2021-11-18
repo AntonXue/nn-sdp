@@ -216,7 +216,7 @@ end
 
 # Project onto the non-negative orthant
 function projectΓ(γ :: Vector{Float64})
-  return max.(abs.(γ), 0)
+  return max.(γ, 0)
 end
 
 # The γ update
@@ -275,7 +275,7 @@ function stepX(params :: AdmmParams, cache :: AdmmCache)
   return (new_γ, new_vs)
 end
 
-function stepXsolver(params :: AdmmParams, cache :: AdmmCache)
+function stepXsolveBoth(params :: AdmmParams, cache :: AdmmCache)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
@@ -307,7 +307,7 @@ function stepXsolver(params :: AdmmParams, cache :: AdmmCache)
   return (new_γ, new_vs)
 end
 
-function stepXsolveγonly(params :: AdmmParams, cache :: AdmmCache)
+function stepXsolveγOnly(params :: AdmmParams, cache :: AdmmCache)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
@@ -323,6 +323,46 @@ function stepXsolveγonly(params :: AdmmParams, cache :: AdmmCache)
   new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
   new_γ = value.(var_γ)
   return (new_γ, real.(new_vs))
+end
+
+function stepXNewton(params :: AdmmParams, cache :: AdmmCache)
+  # Pretend that the objective function is
+  #    f(γ) = (1/2) ∑ || Hk γ - ωk - μk/ρ ||^2
+  #   ∇f(γ) = ∑ Hk' (Hk γ - ωk - μk/ρ) = D γ - ∑Hk'(ωk + μk/ρ)
+  #  ∇2f(γ) = ∑ Hk' Hk = D = 3 I
+
+  γt = params.γ
+  α = 0.5 # step size
+  T = 10
+  for t = 1:T
+    oldγt = γt
+    ∇f = 3*γt - sum(Hc(k, params.γdims)' * (params.ωs[k] + (params.μs[k] / params.ρ)) for k in 1:params.K)
+    γt = γt - (α / 3) * ∇f
+    γt = projectΓ(γt)
+    println("\tnorm diff = " * string(norm(oldγt - γt)))
+  end
+  new_γ = γt
+  new_vs = Vector([stepvk(k, params, cache) for k in 1:params.K])
+
+
+  #=
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_DFEAS" => 1e-9
+  ))
+  @variable(model, var_γ[1:length(params.γ)] >= 0)
+
+  γparts = [params.ωs[k] - Hc(k, params.γdims) * var_γ + (params.μs[k] / params.ρ) for k in 1:params.K]
+  γsum = sum(γparts[k]' * γparts[k] for k in 1:params.K)
+  @objective(model, Min, γsum)
+  optimize!(model)
+  =#
+
+  mosekγ = value.(var_γ)
+  println("\tmosek_γ diff = " * string(norm(new_γ - mosekγ)))
+
+  return (new_γ, new_vs)
 end
 
 #
@@ -368,17 +408,17 @@ function admm(params :: AdmmParams, cache :: AdmmCache)
 
   iter_params = deepcopy(params)
 
-  param_hist = Vector{Any}()
-  push!(param_hist, deepcopy(iter_params))
-
   T = 50
+  total_time = 0
   for t = 1:T
     step_start_time = time()
 
     xstart_time = time()
-    # new_γ, new_vs = stepX(iter_params, cache)
-    # new_γ, new_vs = stepXsolver(iter_params, cache)
-    new_γ, new_vs = stepXsolveγonly(iter_params, cache)
+    new_γ, new_vs = stepX(iter_params, cache)
+    # new_γ, new_vs = stepXsolveBoth(iter_params, cache)
+    # new_γ, new_vs = stepXsolveγOnly(iter_params, cache)
+    # new_γ, new_vs = stepXsolveγOnly(iter_params, cache)
+    # new_γ, new_vs = stepXNewton(iter_params, cache)
     iter_params.γ = new_γ
     iter_params.vs = new_vs
     xtotal_time = time() - xstart_time
@@ -396,16 +436,28 @@ function admm(params :: AdmmParams, cache :: AdmmCache)
 
     #
     step_total_time = time() - step_start_time
-    println("ADMM step t = " * string(t) * "/" * string(T)
-              * ", time = " * string(round.(step_total_time, digits=2))
-              * ", indiv x,y,z time = " * string(round.((xtotal_time, ytotal_time, ztotal_time), digits=2))
-              * ", feasible: " * string(isγSat(iter_params, cache)))
-    
-    push!(param_hist, deepcopy(iter_params))
+    total_time = total_time + step_total_time
+
+    times = (xtotal_time, ytotal_time, ztotal_time, step_total_time, total_time)
+
+    println("t[" * string(t) * "/" * string(T) * "]"
+            * " time: " * string(round.(times, digits=1)))
+
+    #=
+    println("t[" * string(t) * "/" * string(T) * "]"
+            * " time: " * string(round.(times, digits=1))
+            * ", feasible: " * string(isγSat(iter_params, cache)))
+    =#
+    # push!(param_hist, deepcopy(iter_params))
+
+    if t > 5 && mod(t, 3) == 0
+      if isγSat(iter_params, cache)
+        break
+      end
+    end
   end
 
-  # return iter_params
-  return param_hist
+  return iter_params
 end
 
 
