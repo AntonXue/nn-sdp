@@ -9,13 +9,17 @@ using MosekTools
 using Mosek
 
 # Set up the jump model
-function setup(inst :: VerificationInstance)
+function setup(inst :: VerificationInstance, opts :: VerificationOptions)
   @assert inst.net isa FeedForwardNetwork
   ffnet = inst.net
   input = inst.input
   safety = inst.safety
   xdims = ffnet.xdims
+  zdims = ffnet.zdims
   K = ffnet.K
+  stride = opts.stride
+  p = K - stride
+  @assert p >= 1
 
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
@@ -28,45 +32,47 @@ function setup(inst :: VerificationInstance)
     P = BoxP(input.xbot, input.xtop, γ)
   elseif input isa PolytopeConstraint
     @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0)
-    # for i in 1:xdims[1]; @constraint(model, Γ[i,i] == 0) end
     P = PolytopeP(input.H, input.h, Γ)
   else
     error("DeepSdp:setup: unsupported input " * string(input))
   end
 
+  # The input and safety matrices
+  Yin = Yinput(P, ffnet, stride=stride)
+  Ysafe = Ysafety(safety.S, ffnet, stride=stride)
+
+  # The rest of the Ys
   Ys = Vector{Any}()
   if ffnet.nettype isa ReluNetwork
-    # Setup the variables
-    for k = 1:K-1
-      xdk1 = xdims[k+1]
-      Λ = @variable(model, [1:xdk1, 1:xdk1])
-      ν = @variable(model, [1:xdk1])
-      η = @variable(model, [1:xdk1])
+    for k in 1:p
+      qxdim = sum(xdims[k+1:k+stride])
+      Λ = @variable(model, [1:qxdim, 1:qxdim])
+      η = @variable(model, [1:qxdim])
+      ν = @variable(model, [1:qxdim])
 
-      @constraint(model, Λ[1:xdk1, 1:xdk1] .>= 0)
-      @constraint(model, η[1:xdk1] .>= 0)
-      @constraint(model, ν[1:xdk1] .>= 0)
+      @constraint(model, Λ[1:qxdim, 1:qxdim] .>= 0)
+      @constraint(model, η[1:qxdim] .>= 0)
+      @constraint(model, ν[1:qxdim] .>= 0)
 
-      Qk = Qrelu(Λ, η, ν)
-      _Yk = Yk(k, Qk, ffnet)
-      push!(Ys, _Yk)
+      Qk = Qrelu(qxdim, Λ, η, ν)
+      Yk = Y(k, Qk, ffnet, stride=stride)
+      push!(Ys, Yk)
     end
-    # The final YK
-    _YK = YK(P, safety.S, ffnet)
-    push!(Ys, _YK)
   else
     error("DeepSdp:setup: unsupported network " * string(ffnet))
   end
 
-  @assert length(Ys) == ffnet.K
+  @assert length(Ys) == p
 
   # Now setup big Z
-  zdims = [xdims[1:K]; 1]
-  sumzds = sum(zdims)
-  Z = zeros(sumzds, sumzds)
-  for k = 1:K
-    Eck = Ec(k, zdims)
-    Z = Z + Eck' * Ys[k] * Eck
+  Ec1 = Ec(1, zdims, stride=stride)
+  Ecp = Ec(p, zdims, stride=stride)
+  Z = Ec1' * Yin * Ec1 + Ecp' * Ysafe * Ecp
+  for k = 1:p
+    Eck = Ec(k, zdims, stride=stride)
+    Yk = Ys[k]
+    println("Looping k[" * string(k) * "/" * string(p) * "], size(Yk): " * string(size(Yk)))
+    Z += Eck' * Yk * Eck
   end
 
   @SDconstraint(model, Z <= 0)
@@ -80,9 +86,9 @@ function solve!(model)
 end
 
 # The interface to call
-function run(inst :: VerificationInstance)
+function run(inst :: VerificationInstance, opts :: VerificationOptions)
   start_time = time()
-  model = setup(inst)
+  model = setup(inst, opts)
   summary = solve!(model)
   total_time = time() - start_time
 

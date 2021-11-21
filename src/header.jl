@@ -18,15 +18,16 @@ abstract type NeuralNetwork end
 
   # The state vector dimension at start of each layer
   xdims :: Vector{Int}
+  zdims :: Vector{Int} = [xdims[1:end-1]; 1]
 
   # Each M[K] == [Wk bk]
-  M :: Vector{Matrix{Float64}}
-  K :: Int = length(M)
+  Ms :: Vector{Matrix{Float64}}
+  K :: Int = length(Ms)
 
   # Assert a non-trivial structural integrity of the network
   @assert length(xdims) > 2
   @assert length(xdims) == K + 1
-  @assert [size(Mk) for Mk in M] == [(xdims[k+1], xdims[k] + 1) for k in 1:K]
+  @assert all([size(Ms[k]) == (xdims[k+1], xdims[k]+1) for k in 1:K])
 end
 
 # Generic input constraint supertype
@@ -58,6 +59,13 @@ end
   safety :: SafetyConstraint
 end
 
+# How big of a stride to make clique
+@with_kw struct VerificationOptions
+  stride :: Int
+  verbose :: Bool = false
+  @assert stride >= 1
+end
+
 # The solution that is to be output by an algorithm
 @with_kw struct SolutionOutput{M, S}
   model :: M
@@ -71,7 +79,7 @@ export NetworkType, ReluNetwork, TanhNetwork
 export NeuralNetwork, FeedForwardNetwork
 export InputConstraint, BoxConstraint, PolytopeConstraint
 export SafetyConstraint
-export VerificationInstance
+export VerificationInstance, VerificationOptions
 export SolutionOutput
 
 end # End module
