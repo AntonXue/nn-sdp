@@ -10,6 +10,8 @@ using Mosek
 
 # Set up the jump model
 function setup(inst :: VerificationInstance, opts :: VerificationOptions)
+  setup_start_time = time()
+
   @assert inst.net isa FeedForwardNetwork
   ffnet = inst.net
   input = inst.input
@@ -31,7 +33,7 @@ function setup(inst :: VerificationInstance, opts :: VerificationOptions)
     @variable(model, γ[1:xdims[1]] >= 0)
     P = BoxP(input.xbot, input.xtop, γ)
   elseif input isa PolytopeConstraint
-    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0)
+    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0, Symmetric)
     P = PolytopeP(input.H, input.h, Γ)
   else
     error("DeepSdp:setup: unsupported input " * string(input))
@@ -46,7 +48,7 @@ function setup(inst :: VerificationInstance, opts :: VerificationOptions)
   if ffnet.nettype isa ReluNetwork
     for k in 1:p
       qxdim = sum(xdims[k+1:k+stride])
-      Λ = @variable(model, [1:qxdim, 1:qxdim])
+      Λ = @variable(model, [1:qxdim, 1:qxdim], Symmetric)
       η = @variable(model, [1:qxdim])
       ν = @variable(model, [1:qxdim])
 
@@ -76,12 +78,18 @@ function setup(inst :: VerificationInstance, opts :: VerificationOptions)
   end
 
   @SDconstraint(model, Z <= 0)
+
+  println("setup: returning with time: " * string(time() - setup_start_time))
+
   return model
 end
 
 # Run the optimization scheme and query the solution summary
-function solve!(model)
+function solve!(model, opts :: VerificationOptions)
+  solve_start_time = time()
+  println("calling optimize")
   optimize!(model)
+  println("optimize call done: " * string(time() - solve_start_time))
   return solution_summary(model)
 end
 
@@ -89,7 +97,7 @@ end
 function run(inst :: VerificationInstance, opts :: VerificationOptions)
   start_time = time()
   model = setup(inst, opts)
-  summary = solve!(model)
+  summary = solve!(model, opts)
   total_time = time() - start_time
 
   output = SolutionOutput(

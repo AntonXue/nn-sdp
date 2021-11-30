@@ -22,12 +22,12 @@ function fileReadFloat64(file :: String)
 end
 
 # Generate a random network given the desired dimensions at each layer
-function randomReluNetwork(xdims :: Vector{Int64})
+function randomReluNetwork(xdims :: Vector{Int64}; σ :: Float64 = 0.1)
   @assert length(xdims) > 1
   Ms = Vector{Any}()
   for k = 1:length(xdims) - 1
     # Width is xdims[k]+1 because Mk = [Wk bk]
-    Mk = randn(xdims[k+1], xdims[k]+1)
+    Mk = randn(xdims[k+1], xdims[k]+1) * σ
     push!(Ms, Mk)
   end
   return FeedForwardNetwork(nettype=ReluNetwork(), xdims=xdims, Ms=Ms)
@@ -86,7 +86,7 @@ function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork)
 end
 
 # Plot some data to a file
-function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, imgfile="~/Desktop/hello.png")
+function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile :: String = "~/Desktop/hello.png")
   # Make sure we can actually plot these in 2D
   @assert ffnet.xdims[end] == 2
 

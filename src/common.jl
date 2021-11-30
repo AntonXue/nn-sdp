@@ -3,6 +3,7 @@ module Common
 
 using ..Header
 using LinearAlgebra
+using JuMP
 
 # The ith basis vector
 function e(i :: Int, n :: Int)
@@ -131,26 +132,45 @@ function Ysafety(S, ffnet :: FeedForwardNetwork; stride :: Int = 1)
   return Ecsafety' * T * Ecsafety
 end
 
+function Tλ(dim :: Int64, Λ)
+  T_start_time = time()
+  println("calling T")
+
+  @assert size(Λ) == (dim, dim)
+
+  Δ = vcat([e(i, dim)' - e(j, dim)' for i in 1:(dim-1) for j in (i+1):dim]...)
+  U = diagm(vec([Λ[i,j] for i in 1:(dim-1) for j in (i+1):dim]))
+
+  println("Δ size: " * string(size(Δ)))
+  println("U size: " * string(size(U)))
+
+  T = Δ' * U * Δ
+
+  println("returning from T, time: " * string(time() - T_start_time))
+  return T
+end
 
 # Define the global QC for the ReLU function
 function Qrelu(qxdim :: Int64, Λ, η, ν; α :: Float64 = 0.0, β :: Float64 = 1.0)
+  qrelu_start_time = time()
   @assert qxdim == length(ν) == length(η)
   @assert size(Λ) == (qxdim, qxdim)
-  T = zeros(qxdim, qxdim)
-  for i = 1:qxdim
-    for j = 1:qxdim
-      δij = e(i, qxdim) - e(j, qxdim)
-      T += Λ[i,j] * δij * δij'
-    end
-  end
 
-  _Q11 = -2 * α * β * (Diagonal(Λ) + T)
-  _Q12 = (α + β) * (Diagonal(Λ) + T)
+  T = Tλ(qxdim, Λ)
+
+  println("qrelu: finished setting up T: " * string(time() - qrelu_start_time))
+
+  V = diagm(diag(Λ)) + T
+
+  _Q11 = -2 * α * β * V
+  _Q12 = (α + β) * V
   _Q13 = -(β * ν + α * η)
-  _Q22 = -2 * (Diagonal(Λ) + T)
+  _Q22 = -2 * V
   _Q23 = ν + η
   _Q33 = 0
+
   Q = [_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33]
+  println("qrelu: returning, " * string(time() - qrelu_start_time))
   return Q
 end
 
@@ -180,7 +200,8 @@ end
 # Slowly using up the English alphabet
 export e, E, Ec, Eck
 export Y, Yinput, Ysafety
-export Qrelu, BoxP, PolytopeP
+export Tλ, Qsides, Qrelu
+export BoxP, PolytopeP
 
 end # End module
 
