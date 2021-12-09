@@ -21,18 +21,6 @@ function fileReadFloat64(file :: String)
   return data
 end
 
-# Generate a random network given the desired dimensions at each layer
-function randomReluNetwork(xdims :: Vector{Int64}; σ :: Float64 = 0.1)
-  @assert length(xdims) > 1
-  Ms = Vector{Any}()
-  for k = 1:length(xdims) - 1
-    # Width is xdims[k]+1 because Mk = [Wk bk]
-    Mk = randn(xdims[k+1], xdims[k]+1) * σ
-    push!(Ms, Mk)
-  end
-  return FeedForwardNetwork(nettype=ReluNetwork(), xdims=xdims, Ms=Ms)
-end
-
 # -ones <= x <= ones
 function inputUnitBox(xdims :: Vector{Int64})
   @assert length(xdims) > 1
@@ -45,13 +33,28 @@ end
 function safetyNormBound(C, xdims :: Vector{Int64})
   # @assert C > 0
   @assert length(xdims) > 1
-  _S11 = I(xdims[end])
-  _S12 = zeros(xdims[end], 1)
-  _S22 = -C
-  S = [_S11 _S12; _S12' _S22]
+  _S11 = zeros(xdims[1], xdims[1])
+  _S12 = zeros(xdims[1], xdims[end])
+  _S13 = zeros(xdims[1], 1)
+  _S22 = I(xdims[end])
+  _S23 = zeros(xdims[end], 1)
+  _S33 = -C
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return SafetyConstraint(S=S)
 end
 
+
+# Generate a random network given the desired dimensions at each layer
+function randomNetwork(xdims :: Vector{Int64}; nettype :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
+  @assert length(xdims) > 1
+  Ms = Vector{Any}()
+  for k = 1:length(xdims) - 1
+    # Width is xdims[k]+1 because Mk = [Wk bk]
+    Mk = randn(xdims[k+1], xdims[k]+1) * σ
+    push!(Ms, Mk)
+  end
+  return FeedForwardNetwork(nettype=nettype, xdims=xdims, Ms=Ms)
+end
 
 # Run a feedforward net on an initial input and give the output
 function runNetwork(x1, ffnet :: FeedForwardNetwork)
@@ -65,15 +68,15 @@ function runNetwork(x1, ffnet :: FeedForwardNetwork)
     end
   end
 
-  xt = x1
+  xk = x1
   # Run through each layer
   for Mk in ffnet.Ms[1:end-1]
-    xt = Mk * [xt; 1]
-    xt = ϕ(xt)
+    xk = Mk * [xk; 1]
+    xk = ϕ(xk)
   end
   # Then the final layer does not have an activation
-  xt = ffnet.Ms[end] * [xt; 1]
-  return xt
+  xk = ffnet.Ms[end] * [xk; 1]
+  return xk
 end
 
 # Generate trajectories from a unit box
@@ -86,7 +89,7 @@ function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork)
 end
 
 # Plot some data to a file
-function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile :: String = "~/Desktop/hello.png")
+function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, imgfile="~/Desktop/hello.png")
   # Make sure we can actually plot these in 2D
   @assert ffnet.xdims[end] == 2
 
@@ -98,11 +101,12 @@ function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile :
   savefig(p, imgfile)
 end
 
+
 #
 export fileWriteFloat64, fileReadFloat64
-export randomReluNetwork
 export inputUnitBox, safetyNormBound
-export runNetwork, randomTrajectories, plotRandomTrajectories
+export randomNetwork
+export runNetwork, randomTrajectories, runAndPlotRandomTrajectories
 
 end # End Module
 

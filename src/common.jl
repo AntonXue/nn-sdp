@@ -6,9 +6,9 @@ using LinearAlgebra
 using JuMP
 
 # The ith basis vector
-function e(i :: Int, n :: Int)
-  @assert 1 <= i <= n
-  e = zeros(n)
+function e(i :: Int, dim :: Int)
+  @assert 1 <= i <= dim
+  e = zeros(dim)
   e[i] = 1
   return e
 end
@@ -24,153 +24,142 @@ function E(i :: Int, dims :: Vector{Int})
   return E
 end
 
-# The clique index of stride s that selects {x[k], ..., x[k+s], x[aff]}
-function Ec(k :: Int, zdims :: Vector{Int}; stride :: Int = 1)
-  @assert 1 <= k && 1 <= stride
-  @assert 1 <= k + stride + 1 <= length(zdims)
+# The block index matrix that is [E(k, dims), ..., E(k+b, dims)]
+function E(k :: Int, b :: Int, dims :: Vector{Int})
+  @assert k >= 1 && b >= 0
+  @assert 1 <= k + b <= length(dims)
+  Eks = [E(k+j, dims) for j in 0:b]
+  return vcat(Eks...)
+end
+
+# The clique Ck = {x[k], ..., x[k+b], x[K], x[aff]}
+# For these cliques we enforce b >= 1
+# Each clique has minimum size
+function Ec(k :: Int, b :: Int, zdims :: Vector{Int})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= length(zdims) - 2 # So to exclude K and affine
   @assert zdims[end] == 1 # Affine component
-  Ecks = [E(j, zdims) for j in k:k+stride]
-  return [vcat(Ecks...); E(length(zdims), zdims)]
+  Ekb = E(k, b, zdims)
+  EK = E(length(zdims)-1, zdims)
+  Ea = E(length(zdims), zdims)
+  return [Ekb; EK; Ea]
 end
 
-# Selects specific elements within the clique {x[k], ..., x[k+s], x[aff]}
-function Eck(k :: Int, i :: Int, zdims :: Vector{Int}; stride :: Int = 1)
-  @assert 1 <= k && 1 <= stride
-  @assert 1 <= k + stride + 1 <= length(zdims)
-  @assert 1 <= i <= stride + 2
-  @assert zdims[end] == 1
-  return E(i, [zdims[k:k+stride]; 1])
+# Selectors within the clique Ck
+function F(k :: Int, b :: Int, i :: Int, zdims :: Vector{Int})
+  @assert k >= 1 && b >= 1 && i >= 1
+  @assert 1 <= k + b <= length(zdims) - 2 # Exclude K and affine
+  @assert zdims[end] == 1 # Affine component
+  Ckdims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
+  return E(i, Ckdims)
 end
 
-# Make the matrices into block diagonal form
-function blockdiag(Xs :: Vector{Matrix{T}}) where {T <: Any}
-  lenXs = length(Xs)
-  @assert lenXs > 0
-  Xhs = [size(X)[1] for X in Xs]
-  Xws = [size(X)[2] for X in Xs]
-  height = sum(Xhs)
-  Bs = zeros(height, 0)
-  for k in 1:lenXs
-    Bstart = sum(Xhs[1:k-1]) + 1
-    Bend = sum(Xhs[1:k-1]) + Xhs[k]
-    Bk = zeros(height, Xws[k])
-    Bk[Bstart:Bend, 1:end] = Xs[k]
-    Bs = [Bs Bk]
+# the K selector within the clique Ck
+function FK(k :: Int, b :: Int, zdims :: Vector{Int})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= length(zdims) - 2 # Exclude K and affine
+  @assert zdims[end] == 1 # Affine component
+  Ckdims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
+  return E(b+2, Ckdims)
+end
+
+# The affine selector within the clique Ck
+function Faff(k :: Int, b ::Int, zdims :: Vector{Int})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= length(zdims) - 2 # Exclude K and affine
+  @assert zdims[end] == 1 # Affine component
+  Ckdims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
+  return E(b+3, Ckdims)
+end
+
+# Make the A matrix
+function makeA(ffnet :: FeedForwardNetwork)
+  edims = ffnet.zdims[1:end-1]
+  fdims = edims[2:end]
+  A = sum(E(j, fdims)' * ffnet.Ms[j][1:end, 1:end-1] * E(j, edims) for j in 1:ffnet.K-1)
+  return A
+end
+
+# The b stacked vector
+function makeb(ffnet :: FeedForwardNetwork)
+  b = vcat([ffnet.Ms[j][1:end, end] for j in 1:ffnet.K-1]...)
+  return b
+end
+
+# Make the B matrix
+function makeB(ffnet :: FeedForwardNetwork)
+  edims = ffnet.zdims[1:end-1]
+  fdims = edims[2:end]
+  B = sum(E(j, fdims)' * E(j+1, edims) for j in 1:ffnet.K-1)
+  return B
+end
+
+# Make the Ack matrix, for 1 <= k + b <= K, to include all the transitions
+function makeAck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= ffnet.K
+  edims = ffnet.zdims[k:k+b]
+  fdims = edims[2:end]
+  Ack = sum(E(j, fdims)' * ffnet.Ms[k+j-1][1:end, 1:end-1] * E(j, edims) for j in 1:b)
+  return Ack
+end
+
+# Make the bck stacked vector
+function makebck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= ffnet.K
+  bck = vcat([ffnet.Ms[k+j-1][1:end, end] for j in 1:b]...)
+  return bck
+end
+
+# Make the Bck matrix
+function makeBck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= ffnet.K
+  edims = ffnet.zdims[k:k+b]
+  fdims = edims[2:end]
+  Bck = sum(E(j, fdims)' * E(j+1, edims) for j in 1:b)
+  return Bck
+end
+
+# A banded T matrix
+function makeBandedT(Tdim :: Int, Λ, band :: Int)
+  @assert size(Λ) == (Tdim, Tdim)
+  T = diagm(diag(Λ))
+  if band >= 1
+    ijs = [(i, j) for i in 1:(Tdim-1) for j in (i+1):Tdim if abs(i-j) <= band]
+    δts = [e(i, Tdim)' - e(j, Tdim)' for (i, j) in ijs]
+    Δ = vcat(δts...)
+    V = diagm(vec([Λ[i,j] for (i, j) in ijs]))
+    T = T + Δ' * V * Δ
   end
-  return Bs
-end
-
-# Make the A, B blocks that will get multiplied by the Q
-function Qsides(k :: Int, ffnet :: FeedForwardNetwork; stride :: Int = 1)
-  @assert 1 <= k && 1 <= stride
-  @assert 1 <= k + stride + 1 <= length(ffnet.zdims)
-
-  height = sum(ffnet.xdims[(k+1):(k+stride)])
-
-  _A1 = blockdiag([ffnet.Ms[j][1:end, 1:end-1] for j in k:(k+stride-1)])
-  _A2 = zeros(height, ffnet.xdims[k+stride])
-  A = [_A1 _A2]
-
-  b = vcat([ffnet.Ms[j][1:end, end] for j in k:(k+stride-1)]...)
-
-  _B1 = zeros(height, ffnet.xdims[k])
-  _B2 = blockdiag([Matrix(I(ffnet.xdims[j])) for j in (k+1):(k+stride)])
-  B = [_B1 _B2]
-  return (A, b, B)
-end
-
-# The kth Y given a stride
-function Y(k :: Int, Q, ffnet :: FeedForwardNetwork; stride :: Int = 1)
-  @assert 1 <= k && 1 <= stride
-  @assert 1 <= k + stride + 1 <= length(ffnet.zdims)
-
-  qxdim = sum(ffnet.zdims[j] for j in (k+1):(k+stride))
-  qdim = 2 * qxdim + 1
-  @assert size(Q) == (qdim, qdim)
-
-  (A, b, B) = Qsides(k, ffnet, stride=stride)
-
-  _S11 = A
-  _S12 = b
-  _S21 = B
-  _S22 = zeros(size(b))
-  _S31 = zeros(1, sum(ffnet.xdims[k:k+stride]))
-  _S32 = 1
-  S = [_S11 _S12; _S21 _S22; _S31 _S32]
-  return S' * Q * S
-end
-
-# The Y for the input constraint
-function Yinput(P, ffnet :: FeedForwardNetwork; stride :: Int = 1)
-  @assert size(P) == (ffnet.xdims[1] + 1, ffnet.xdims[1] + 1)
-  _Ecinput1 = Eck(1, 1, ffnet.zdims, stride=stride)
-  _Ecinput2 = Eck(1, 1 + stride + 1, ffnet.zdims, stride=stride)
-  Ecinput = [_Ecinput1; _Ecinput2]
-  return Ecinput' * P * Ecinput
-end
-
-# The Y for the safety constraint
-function Ysafety(S, ffnet :: FeedForwardNetwork; stride :: Int = 1)
-  @assert size(S) == (ffnet.xdims[end] + 1, ffnet.xdims[end] + 1)
-
-  _S11 = S[1:end-1, 1:end-1]
-  _S12 = S[1:end-1, end]
-  _S22 = S[end, end]
-
-  WK = ffnet.Ms[end][1:end, 1:end-1]
-  bK = ffnet.Ms[end][1:end, end]
-
-  _T11 = WK' * _S11 * WK
-  _T12 = WK' * _S11 * bK + WK' * _S12
-  _T22 = bK' * _S11 * bK + 2 * (bK' * _S12) + _S22
-  T = [_T11 _T12; _T12' _T22]
-
-  p = ffnet.K - stride
-  _Ecsafety1 = Eck(p, 1 + stride, ffnet.zdims, stride=stride)
-  _Ecsafety2 = Eck(p, 1 + stride + 1, ffnet.zdims, stride=stride)
-  Ecsafety = [_Ecsafety1; _Ecsafety2]
-  return Ecsafety' * T * Ecsafety
-end
-
-function Tλ(dim :: Int64, Λ)
-  T_start_time = time()
-  println("calling T")
-
-  @assert size(Λ) == (dim, dim)
-
-  Δ = vcat([e(i, dim)' - e(j, dim)' for i in 1:(dim-1) for j in (i+1):dim]...)
-  U = diagm(vec([Λ[i,j] for i in 1:(dim-1) for j in (i+1):dim]))
-
-  println("Δ size: " * string(size(Δ)))
-  println("U size: " * string(size(U)))
-
-  T = Δ' * U * Δ
-
-  println("returning from T, time: " * string(time() - T_start_time))
   return T
 end
 
-# Define the global QC for the ReLU function
-function Qrelu(qxdim :: Int64, Λ, η, ν; α :: Float64 = 0.0, β :: Float64 = 1.0)
-  qrelu_start_time = time()
-  @assert qxdim == length(ν) == length(η)
-  @assert size(Λ) == (qxdim, qxdim)
+# A function for making T; smaller instances Tk can be made using this
+function makeT(Tdim :: Int, Λ, pattern :: TPattern)
+  if pattern isa BandedPattern
+    @assert size(Λ) == (Tdim, Tdim)
+    return makeBandedT(Tdim, Λ, pattern.tband)
+  else
+    error("unsupported pattern: " * string(pattern))
+  end
+end
 
-  T = Tλ(qxdim, Λ)
+# The Q matirx
+function makeQrelu(Tdim :: Int, Λ, η, ν, pattern :: TPattern; a :: Float64 = 0.0, b :: Float64 = 1.0)
+  @assert size(Λ) == (Tdim, Tdim)
+  @assert length(η) == length(ν) == Tdim
 
-  println("qrelu: finished setting up T: " * string(time() - qrelu_start_time))
+  T = makeT(Tdim, Λ, pattern)
 
-  V = diagm(diag(Λ)) + T
-
-  _Q11 = -2 * α * β * V
-  _Q12 = (α + β) * V
-  _Q13 = -(β * ν + α * η)
-  _Q22 = -2 * V
+  _Q11 = -2 * a * b * T
+  _Q12 = (a + b) * T
+  _Q13 = -(b * ν + a + η)
+  _Q22 = -2 * T
   _Q23 = ν + η
   _Q33 = 0
-
-  Q = [_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33]
-  println("qrelu: returning, " * string(time() - qrelu_start_time))
+  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
   return Q
 end
 
@@ -195,13 +184,74 @@ function PolytopeP(H, h, Γ)
   return P
 end
 
-# Some variants that are parameterized with a single γ vector
+#
+function makeXk(k :: Int, b :: Int, Λ, η, ν, ffnet :: FeedForwardNetwork, pattern :: TPattern; seclow :: Float64 = 0.0, sechigh :: Float64 = 1.0)
+  @assert ffnet.nettype isa ReluNetwork || ffnet.nettype isa TanhNetwork
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= ffnet.K
+
+  Tdim = sum(ffnet.zdims[k+1:k+b])
+  @assert size(Λ) == (Tdim, Tdim)
+  @assert length(η) == length(ν) == Tdim
+
+  T = makeT(Tdim, Λ, pattern)
+
+  _Q11 = -2 * seclow * sechigh * T
+  _Q12 = (seclow + sechigh) * T
+  _Q13 = -(sechigh * ν + seclow * η)
+  _Q22 = -2 * T
+  _Q23 = ν + η
+  _Q33 = 0
+  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
+
+  Ack = makeAck(k, b, ffnet)
+  bck = makebck(k, b, ffnet)
+  Bck = makeBck(k, b, ffnet)
+
+  _R11 = Ack
+  _R12 = bck
+  _R21 = Bck
+  _R22 = zeros(size(bck))
+  _R31 = zeros(1, sum(ffnet.zdims[k:k+b]))
+  _R32 = 1
+  R = [_R11 _R12; _R21 _R22; _R31 _R32]
+  return R' * Q * R
+end
+
+#
+#=
+function makeXinit(b :: Int, γ, ffnet :: FeedForwardNetwork, input :: InputConstraint)
+  return P
+end
+=#
+
+# 
+function makeXsafe(S, ffnet :: FeedForwardNetwork)
+  WK = ffnet.Ms[ffnet.K][1:end, 1:end-1]
+  bK = ffnet.Ms[ffnet.K][1:end, end]
+
+  d1 = ffnet.zdims[1]
+  (dK1, dK) = size(WK)
+
+  _R11 = I(d1)
+  _R12 = zeros(d1, dK)
+  _R13 = zeros(d1)
+  _R21 = zeros(dK1, d1)
+  _R22 = WK
+  _R23 = bK
+  _R31 = zeros(1, d1)
+  _R32 = zeros(1, dK)
+  _R33 = 1
+  R = [_R11 _R12 _R13; _R21 _R22 _R23; _R31 _R32 _R33]
+  return R' * S * R
+end
+
 
 # Slowly using up the English alphabet
-export e, E, Ec, Eck
-export Y, Yinput, Ysafety
-export Tλ, Qsides, Qrelu
+export e, E, Ec, F, FK, Faff
+export makeA, makeb, makeB, makeAck, makebck, makeBck
 export BoxP, PolytopeP
+export makeXk, makeXinit, makeXsafe
 
 end # End module
 

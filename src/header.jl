@@ -18,15 +18,16 @@ abstract type NeuralNetwork end
 
   # The state vector dimension at start of each layer
   xdims :: Vector{Int}
+  @assert length(xdims) > 2
+
   zdims :: Vector{Int} = [xdims[1:end-1]; 1]
 
   # Each M[K] == [Wk bk]
   Ms :: Vector{Matrix{Float64}}
   K :: Int = length(Ms)
+  @assert length(xdims) == K + 1
 
   # Assert a non-trivial structural integrity of the network
-  @assert length(xdims) > 2
-  @assert length(xdims) == K + 1
   @assert all([size(Ms[k]) == (xdims[k+1], xdims[k]+1) for k in 1:K])
 end
 
@@ -52,18 +53,25 @@ end
   S :: Matrix{Float64}
 end
 
-# A verifiction instance
-@with_kw struct VerificationInstance
-  net :: NeuralNetwork
-  input :: InputConstraint
-  safety :: SafetyConstraint
+# Patterns that the T matirx may have
+abstract type TPattern end
+@with_kw struct BandedPattern <: TPattern
+  tband :: Int
+  @assert tband >= 0
 end
 
-# How big of a stride to make clique
-@with_kw struct VerificationOptions
-  stride :: Int
+# A verifiction instance
+@with_kw struct VerificationInstance
+  net :: FeedForwardNetwork
+  input :: InputConstraint
+  safety :: SafetyConstraint
+
+  # Some customizations
+  β :: Int = 1
+  @assert 1 <= β <= net.K - 2
+
+  pattern :: TPattern = BandedPattern(tband=1)
   verbose :: Bool = false
-  @assert stride >= 1
 end
 
 # The solution that is to be output by an algorithm
@@ -72,6 +80,7 @@ end
   summary :: S
   status :: String
   total_time :: Float64
+  setup_time :: Float64
   solve_time :: Float64
 end
 
@@ -79,7 +88,8 @@ export NetworkType, ReluNetwork, TanhNetwork
 export NeuralNetwork, FeedForwardNetwork
 export InputConstraint, BoxConstraint, PolytopeConstraint
 export SafetyConstraint
-export VerificationInstance, VerificationOptions
+export TPattern, BandedPattern
+export VerificationInstance
 export SolutionOutput
 
 end # End module

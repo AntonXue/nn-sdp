@@ -3,11 +3,74 @@ module DeepSdp
 
 using ..Header
 using ..Common
+using Parameters
 using LinearAlgebra
 using JuMP
 using MosekTools
 using Mosek
 
+# Construction method
+abstract type SetupMethod end
+struct SimpleSetup <: SetupMethod end
+
+@with_kw struct DeepSdpOptions
+  setupMethod :: SetupMethod
+  verbose :: Bool = false
+end
+
+function setup_Simple(model, inst :: VerificationInstance, opts :: DeepSdpOptions)
+  setup_start_time = time()
+
+  ffnet = inst.net
+  input = inst.input
+  safety = inst.safety
+
+  xdims = ffnet.xdims
+  zdims = ffnet.zdims
+
+  if input isa BoxConstraint
+    @variable(model, γ[1:xdims[1]] >= 0)
+    P = BoxP(input.xbot, input.xtop, γ)
+  elseif input isa PolytopeConstraint
+    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0, Symmetric)
+    P = PolytopeP(input.H, input.h, Γ)
+  else
+    error("DeepSdp:setup: unsupported input " * string(input))
+  end
+
+  E1 = E(1, zdims)
+  EK = E(ffnet.K, zdims)
+  Ea = E(ffnet.K+1, zdims)
+
+  Xinit = P
+  Einit = [E1; Ea]
+
+  Xsafe = makeXsafe(safety.S, ffnet)
+  Esafe = [E1; EK; Ea]
+
+  Z = Einit' * Xinit * Einit + Esafe' * Xsafe * Esafe
+
+  for k = 1:(ffnet.K - inst.β)
+    Tdim = sum(ffnet.zdims[(k+1) : (k+inst.β)])
+    Λ = @variable(model, [1:Tdim, 1:Tdim], Symmetric)
+    η = @variable(model, [1:Tdim])
+    ν = @variable(model, [1:Tdim])
+
+    @constraint(model, Λ[1:Tdim, 1:Tdim] .>= 0)
+    @constraint(model, η[1:Tdim] .>= 0)
+    @constraint(model, ν[1:Tdim] .>= 0)
+
+    Xk = makeXk(k, inst.β, Λ, η, ν, ffnet, inst.pattern)
+    Ekba = [E(k, inst.β, zdims); Ea]
+    Z = Z + Ekba' * Xk * Ekba
+  end
+
+  @SDconstraint(model, Z <= 0)
+  setup_time = time() - setup_start_time
+  return model, setup_time
+end
+
+#=
 # Set up the jump model
 function setup(inst :: VerificationInstance, opts :: VerificationOptions)
   setup_start_time = time()
@@ -83,20 +146,39 @@ function setup(inst :: VerificationInstance, opts :: VerificationOptions)
 
   return model
 end
+=#
+
+function setup(inst :: VerificationInstance, opts :: DeepSdpOptions)
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_DFEAS" => 1e-6))
+  
+  if opts.setupMethod isa SimpleSetup
+    model, setup_time = setup_Simple(model, inst, opts)
+  else
+    error("unsupported setup method: " * string(opts.setupMethod))
+  end
+
+  println("setup time: " * string(setup_time))
+
+  return model, setup_time
+end
 
 # Run the optimization scheme and query the solution summary
-function solve!(model, opts :: VerificationOptions)
+function solve!(model, opts :: DeepSdpOptions)
   solve_start_time = time()
   println("calling optimize")
   optimize!(model)
-  println("optimize call done: " * string(time() - solve_start_time))
+  solve_time = time() - solve_start_time
+  println("optimize call done: " * string(solve_time))
   return solution_summary(model)
 end
 
 # The interface to call
-function run(inst :: VerificationInstance, opts :: VerificationOptions)
+function run(inst :: VerificationInstance, opts :: DeepSdpOptions)
   start_time = time()
-  model = setup(inst, opts)
+  model, setup_time = setup(inst, opts)
   summary = solve!(model, opts)
   total_time = time() - start_time
 
@@ -105,11 +187,15 @@ function run(inst :: VerificationInstance, opts :: VerificationOptions)
             summary = summary,
             status = string(summary.termination_status),
             total_time = total_time,
+            setup_time = setup_time,
             solve_time = summary.solve_time)
   return output
 end
 
 # For debugging purposes we export more than what is needed
+
+export SetupMethod, SimpleSetup
+export DeepSdpOptions
 export setup, solve!, run
 
 end # End module
