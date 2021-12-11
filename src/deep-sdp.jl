@@ -9,194 +9,184 @@ using JuMP
 using MosekTools
 using Mosek
 
-# Construction method
-abstract type SetupMethod end
-struct SimpleSetup <: SetupMethod end
-
+# Configuration options
 @with_kw struct DeepSdpOptions
-  setupMethod :: SetupMethod
   verbose :: Bool = false
 end
 
-function setup_Simple(model, inst :: VerificationInstance, opts :: DeepSdpOptions)
-  setup_start_time = time()
-
-  ffnet = inst.net
-  input = inst.input
-  safety = inst.safety
-
-  xdims = ffnet.xdims
-  zdims = ffnet.zdims
-
+# Computes the MinP matrix. Treat this function as though it modifies the model
+function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   if input isa BoxConstraint
-    @variable(model, γ[1:xdims[1]] >= 0)
-    P = BoxP(input.xbot, input.xtop, γ)
+    @variable(model, γ[1:ffnet.xdims[1]] >= 0)
   elseif input isa PolytopeConstraint
-    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0, Symmetric)
-    P = PolytopeP(input.H, input.h, Γ)
+    @variable(model, γ[1:ffnet.xdims[1]^2] >= 0)
   else
-    error("DeepSdp:setup: unsupported input " * string(input))
+    error("unsupported input constraints: " * string(input))
   end
 
-  E1 = E(1, zdims)
-  EK = E(ffnet.K, zdims)
-  Ea = E(ffnet.K+1, zdims)
-
-  Xinit = P
+  E1 = E(1, ffnet.zdims)
+  Ea = E(ffnet.K+1, ffnet.zdims)
   Einit = [E1; Ea]
+  Xinit = makeXinit(γ, input, ffnet)
+  MinP = Einit' * Xinit * Einit
+  return MinP, γ
+end
 
-  Xsafe = makeXsafe(safety.S, ffnet)
+# Computes the MmidQ matrix. Treat this function as though it modifies the model
+function makeMmidQ!(model, pattern :: TPattern, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
+  Tdim = sum(ffnet.zdims[2:end-1])
+  Λ = @variable(model, [1:Tdim, 1:Tdim], Symmetric)
+  η = @variable(model, [1:Tdim])
+  ν = @variable(model, [1:Tdim])
+
+  @constraint(model, Λ[1:Tdim, 1:Tdim] .>= 0)
+  @constraint(model, η[1:Tdim] .>= 0)
+  @constraint(model, ν[1:Tdim] .>= 0)
+
+  b = ffnet.K - 1
+  MmidQ = makeXk(1, b, Λ, η, ν, ffnet, pattern)
+  return MmidQ, Λ, η, ν
+end
+
+# Computes the MoutS matrix. Treat this function as though it modifies the model
+function makeMoutS!(model, S, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
+  E1 = E(1, ffnet.zdims)
+  EK = E(ffnet.K, ffnet.zdims)
+  Ea = E(ffnet.K+1, ffnet.zdims)
   Esafe = [E1; EK; Ea]
-
-  Z = Einit' * Xinit * Einit + Esafe' * Xsafe * Esafe
-
-  for k = 1:(ffnet.K - inst.β)
-    Tdim = sum(ffnet.zdims[(k+1) : (k+inst.β)])
-    Λ = @variable(model, [1:Tdim, 1:Tdim], Symmetric)
-    η = @variable(model, [1:Tdim])
-    ν = @variable(model, [1:Tdim])
-
-    @constraint(model, Λ[1:Tdim, 1:Tdim] .>= 0)
-    @constraint(model, η[1:Tdim] .>= 0)
-    @constraint(model, ν[1:Tdim] .>= 0)
-
-    Xk = makeXk(k, inst.β, Λ, η, ν, ffnet, inst.pattern)
-    Ekba = [E(k, inst.β, zdims); Ea]
-    Z = Z + Ekba' * Xk * Ekba
-  end
-
-  @SDconstraint(model, Z <= 0)
-  setup_time = time() - setup_start_time
-  return model, setup_time
+  Xsafe = makeXsafe(S, ffnet)
+  MoutS = Esafe' * Xsafe * Esafe
+  return MoutS
 end
 
-#=
-# Set up the jump model
-function setup(inst :: VerificationInstance, opts :: VerificationOptions)
+# Solve the safety verification problem instance
+function solveSafety(inst :: SafetyInstance, opts :: DeepSdpOptions)
+  total_start_time = time()
   setup_start_time = time()
-
-  @assert inst.net isa FeedForwardNetwork
-  ffnet = inst.net
-  input = inst.input
-  safety = inst.safety
-  xdims = ffnet.xdims
-  zdims = ffnet.zdims
-  K = ffnet.K
-  stride = opts.stride
-  p = K - stride
-  @assert p >= 1
-
-  model = Model(optimizer_with_attributes(
-    Mosek.Optimizer,
-    "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-6
-    ))
-
-  if input isa BoxConstraint
-    @variable(model, γ[1:xdims[1]] >= 0)
-    P = BoxP(input.xbot, input.xtop, γ)
-  elseif input isa PolytopeConstraint
-    @variable(model, Γ[1:xdims[1], 1:xdims[1]] >= 0, Symmetric)
-    P = PolytopeP(input.H, input.h, Γ)
-  else
-    error("DeepSdp:setup: unsupported input " * string(input))
-  end
-
-  # The input and safety matrices
-  Yin = Yinput(P, ffnet, stride=stride)
-  Ysafe = Ysafety(safety.S, ffnet, stride=stride)
-
-  # The rest of the Ys
-  Ys = Vector{Any}()
-  if ffnet.nettype isa ReluNetwork
-    for k in 1:p
-      qxdim = sum(xdims[k+1:k+stride])
-      Λ = @variable(model, [1:qxdim, 1:qxdim], Symmetric)
-      η = @variable(model, [1:qxdim])
-      ν = @variable(model, [1:qxdim])
-
-      @constraint(model, Λ[1:qxdim, 1:qxdim] .>= 0)
-      @constraint(model, η[1:qxdim] .>= 0)
-      @constraint(model, ν[1:qxdim] .>= 0)
-
-      Qk = Qrelu(qxdim, Λ, η, ν)
-      Yk = Y(k, Qk, ffnet, stride=stride)
-      push!(Ys, Yk)
-    end
-  else
-    error("DeepSdp:setup: unsupported network " * string(ffnet))
-  end
-
-  @assert length(Ys) == p
-
-  # Now setup big Z
-  Ec1 = Ec(1, zdims, stride=stride)
-  Ecp = Ec(p, zdims, stride=stride)
-  Z = Ec1' * Yin * Ec1 + Ecp' * Ysafe * Ecp
-  for k = 1:p
-    Eck = Ec(k, zdims, stride=stride)
-    Yk = Ys[k]
-    println("Looping k[" * string(k) * "/" * string(p) * "], size(Yk): " * string(size(Yk)))
-    Z += Eck' * Yk * Eck
-  end
-
-  @SDconstraint(model, Z <= 0)
-
-  println("setup: returning with time: " * string(time() - setup_start_time))
-
-  return model
-end
-=#
-
-function setup(inst :: VerificationInstance, opts :: DeepSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
     "INTPNT_CO_TOL_DFEAS" => 1e-6))
-  
-  if opts.setupMethod isa SimpleSetup
-    model, setup_time = setup_Simple(model, inst, opts)
-  else
-    error("unsupported setup method: " * string(opts.setupMethod))
-  end
 
-  println("setup time: " * string(setup_time))
+  # Make the different parts
+  MinP, γ = makeMinP!(model, inst.input, inst.ffnet, opts)
+  MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, inst.ffnet, opts)
+  MoutS = makeMoutS!(model, inst.safety.S, inst.ffnet, opts)
+  Z = MinP + MmidQ + MoutS
+  @SDconstraint(model, Z <= 0)
 
-  return model, setup_time
-end
+  # The time it took to set up the problem
+  setup_time = round(time() - setup_start_time, digits=2)
+  if opts.verbose; println("setup time: " * string(setup_time)) end
 
-# Run the optimization scheme and query the solution summary
-function solve!(model, opts :: DeepSdpOptions)
-  solve_start_time = time()
-  println("calling optimize")
+  # Now solve the problem
   optimize!(model)
-  solve_time = time() - solve_start_time
-  println("optimize call done: " * string(solve_time))
-  return solution_summary(model)
-end
+  summary = solution_summary(model)
+  if opts.verbose; println("solve time: " * string(summary.solve_time)) end
 
-# The interface to call
-function run(inst :: VerificationInstance, opts :: DeepSdpOptions)
-  start_time = time()
-  model, setup_time = setup(inst, opts)
-  summary = solve!(model, opts)
-  total_time = time() - start_time
+  # Prepare the output and return
+  soln_dict = Dict(:γ => value.(γ), :Λ => value.(Λ), :η => value.(η), :ν => value.(ν))
+  total_time = round(time() - total_start_time, digits=2)
 
   output = SolutionOutput(
-            model = model,
+            solution = soln_dict,
             summary = summary,
             status = string(summary.termination_status),
             total_time = total_time,
             setup_time = setup_time,
-            solve_time = summary.solve_time)
+            solve_time = round(summary.solve_time, digits=2))
   return output
+end
+
+# Solve for the hyperplane offsets that bound the network output f(x)
+function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
+  total_start_time = time()
+
+  ds = Vector{Float64}()
+  summaries = Vector{Any}()
+  statuses = Vector{String}()
+  soln_dicts = Vector{Any}()
+  setup_times = Vector{Float64}()
+  solve_times = Vector{Float64}()
+
+  num_hplanes = length(inst.hplanes.normals)
+
+  for (i, c) in enumerate(inst.hplanes.normals)
+    iter_setup_start_time = time()
+
+    model = Model(optimizer_with_attributes(
+      Mosek.Optimizer,
+      "QUIET" => true,
+      "INTPNT_CO_TOL_DFEAS" => 1e-6))
+
+    # Make the different parts
+    MinP, γ = makeMinP!(model, inst.input, inst.ffnet, opts)
+    MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, inst.ffnet, opts)
+
+    @variable(model, d)
+
+    hplaneS = makeHyperplaneS(c, d, inst.ffnet)
+    MoutS = makeMoutS!(model, hplaneS, inst.ffnet, opts)
+    Z = MinP + MmidQ + MoutS
+    @SDconstraint(model, Z <= 0)
+    @objective(model, Min, d)
+
+    # Calculate setup times
+    iter_setup_time = time() - iter_setup_start_time
+    push!(setup_times, iter_setup_time)
+
+    # Now solve the problem
+    optimize!(model)
+    summary = solution_summary(model)
+    push!(summaries, summary)
+    push!(statuses, string(summary.termination_status))
+
+    iter_solve_time = round.(summary.solve_time, digits=2)
+    push!(solve_times, iter_solve_time)
+    if opts.verbose; println("iter[" * string(i) * "/" * string(num_hplanes) * "] solve time: " * string(iter_solve_time)) end
+
+    dopt = value(d)
+    push!(ds, dopt)
+
+    soln_dicti = Dict(:γ => value.(γ), :Λ => value.(Λ), :η => value.(η), :ν => value.(ν))
+    push!(soln_dicts, soln_dicti)
+  end
+
+  # Prepare and return the output
+  cds = [(c,d) for (c,d) in zip(inst.hplanes.normals, ds)]
+  soln_dict = Dict(:cds => cds, :iter_soln_dicts => soln_dicts)
+
+  total_setup_time = round(sum(setup_times), digits=2)
+  total_solve_time = round(sum(solve_times), digits=2)
+  total_time = round(time() - total_start_time, digits=2)
+
+  output = SolutionOutput(
+            solution = soln_dict,
+            summary = summaries,
+            status = statuses,
+            total_time = total_time,
+            setup_time = total_setup_time,
+            solve_time = total_solve_time)
+  return output
+
+end
+
+# The interface to call
+function run(inst :: QueryInstance, opts :: DeepSdpOptions)
+  if inst isa SafetyInstance
+    return solveSafety(inst, opts)
+  elseif inst isa ReachabilityInstance
+    return solveReachability(inst, opts)
+  else
+    error("unrecognized query instance: " * string(inst))
+  end
 end
 
 # For debugging purposes we export more than what is needed
 
-export SetupMethod, SimpleSetup
+# export SetupMethod, BigSetup
 export DeepSdpOptions
-export setup, solve!, run
+export run
 
 end # End module
 

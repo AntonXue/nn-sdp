@@ -141,6 +141,9 @@ function makeT(Tdim :: Int, Λ, pattern :: TPattern)
   if pattern isa BandedPattern
     @assert size(Λ) == (Tdim, Tdim)
     return makeBandedT(Tdim, Λ, pattern.tband)
+  elseif pattern isa FullyDensePattern
+    @assert size(Λ) == (Tdim, Tdim)
+    return makeBandedT(Tdim, Λ, Tdim)
   else
     error("unsupported pattern: " * string(pattern))
   end
@@ -155,7 +158,7 @@ function makeQrelu(Tdim :: Int, Λ, η, ν, pattern :: TPattern; a :: Float64 = 
 
   _Q11 = -2 * a * b * T
   _Q12 = (a + b) * T
-  _Q13 = -(b * ν + a + η)
+  _Q13 = -(b * ν + a * η)
   _Q22 = -2 * T
   _Q23 = ν + η
   _Q33 = 0
@@ -164,7 +167,7 @@ function makeQrelu(Tdim :: Int, Λ, η, ν, pattern :: TPattern; a :: Float64 = 
 end
 
 # P function for a box
-function BoxP(xbot, xtop, γ)
+function makeBoxP(xbot, xtop, γ)
   @assert length(xbot) == length(xtop) == length(γ)
   Γ = Diagonal(γ)
   _P11 = -2 * Γ
@@ -175,13 +178,28 @@ function BoxP(xbot, xtop, γ)
 end
 
 # P function for a polytope
-function PolytopeP(H, h, Γ)
+function makePolytopeP(H, h, Γ)
   @assert true
   _P11 = H' * Γ * H
   _P12 = -H' * Γ * h
   _P22 = h' * Γ * h
   P = [_P11 _P12; _P12' _P22]
   return P
+end
+
+# Bounding hyperplane such that c' * f(x) <= d, for variable d
+function makeHyperplaneS(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
+  d1 = ffnet.xdims[1]
+  dK1 = ffnet.xdims[end]
+  @assert length(c) == dK1
+  _S11 = zeros(d1, d1)
+  _S12 = zeros(d1, dK1)
+  _S13 = zeros(d1)
+  _S22 = zeros(dK1, dK1)
+  _S23 = c
+  _S33 = -d
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return S
 end
 
 #
@@ -218,14 +236,22 @@ function makeXk(k :: Int, b :: Int, Λ, η, ν, ffnet :: FeedForwardNetwork, pat
   return R' * Q * R
 end
 
-#
-#=
-function makeXinit(b :: Int, γ, ffnet :: FeedForwardNetwork, input :: InputConstraint)
-  return P
+# γ is a vector
+function makeXinit(γ, input :: InputConstraint, ffnet :: FeedForwardNetwork)
+  d1 = ffnet.xdims[1]
+  if input isa BoxConstraint
+    @assert length(γ) == d1
+    return makeBoxP(input.xbot, input.xtop, γ)
+  elseif input isa PolytopeConstraint
+    @assert length(γ) == d1^2
+    Γ = reshape(γ, (d1, d1))
+    return makePolytopeP(input.H, input.h, Γ)
+  else
+    error("unsupported input constraints: " * string(input))
+  end
 end
-=#
 
-# 
+# Make a safety constraint wrt a fixed S matrix
 function makeXsafe(S, ffnet :: FeedForwardNetwork)
   WK = ffnet.Ms[ffnet.K][1:end, 1:end-1]
   bK = ffnet.Ms[ffnet.K][1:end, end]
@@ -246,12 +272,81 @@ function makeXsafe(S, ffnet :: FeedForwardNetwork)
   return R' * S * R
 end
 
+# Count overlaps
+function makeΩ(b :: Int, zdims :: Vector{Int})
+  @assert 1 <= length(zdims) - b - 2
+  @assert zdims[end] == 1
+  p = length(zdims) - b - 2
+  Ω = zeros(sum(zdims), sum(zdims))
+  for k in 1:p
+    Eck = Ec(k, b, zdims)
+    height = size(Eck)[1]
+    Ω = Ω + Eck' * (fill(1, (height, height))) * Eck
+  end
+  return Ω
+end
+
+# The ℧ matrix that is the "inverse" scaling of Ω
+function makeΩinv(b :: Int, zdims :: Vector{Int})
+  @assert 1 <= length(zdims) - b - 2
+  @assert zdims[end] == 1
+
+  Ω = makeΩ(b, zdims)
+  Ωinv = 1 ./ Ω
+  Ωinv[isinf.(Ωinv)] .= 0
+  return Ωinv
+end
+
+# Calculate upper-lower bounds of each layer
+function propagateBox(xbot :: Vector{Float64}, xtop :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+  function ϕ(x)
+    if ffnet.nettype isa ReluNetwork; return max.(x, 0)
+    elseif ffnet.nettype isa TanhNetwork; return tanh.(x)
+    else; error("unsupported network: " * string(ffnet))
+    end
+  end
+
+  @assert length(xbot) == length(xtop) == ffnet.xdims[1]
+
+  # The initial limits and conditions
+  xlims = Vector{Any}()
+  push!(xlims, (xbot, xtop))
+  xkbot, xktop = xbot, xtop
+
+  # Run through each layer
+  for (k, Mk) in enumerate(ffnet.Ms)
+    # Generate the vertices of the hypercube for each iteration
+    xkverts = vec(collect(Iterators.product(zip(xkbot, xktop)...)))
+    xkverts = [[i for i in v] for v in xkverts]
+
+    # Propagate each vertex of the hypercube
+    if k == ffnet.K
+      ykverts = [Mk * [xkv; 1] for xkv in xkverts]
+    else
+      ykverts = [ϕ(Mk * [xkv; 1]) for xkv in xkverts]
+    end
+    
+    ykverts = hcat(ykverts...)
+
+    # Gather min/max
+    xkbot, xktop = minimum(ykverts, dims=2), maximum(ykverts, dims=2)
+
+    # Push
+    push!(xlims, (xkbot, xktop))
+  end
+
+  return xlims
+end
 
 # Slowly using up the English alphabet
 export e, E, Ec, F, FK, Faff
 export makeA, makeb, makeB, makeAck, makebck, makeBck
-export BoxP, PolytopeP
+export makeQrelu
+export makeBoxP, makePolytopeP
+export makeHyperplaneS
 export makeXk, makeXinit, makeXsafe
+export makeΩ, makeΩinv
+export propagateBox
 
 end # End module
 

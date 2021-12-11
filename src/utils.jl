@@ -59,12 +59,9 @@ end
 # Run a feedforward net on an initial input and give the output
 function runNetwork(x1, ffnet :: FeedForwardNetwork)
   function ϕ(x)
-    if ffnet.nettype isa ReluNetwork
-      return max.(x, 0)
-    elseif ffnet.nettype isa TanhNetwork
-      return tanh.(x)
-    else
-      error("unsupported network: " * string(ffnet))
+    if ffnet.nettype isa ReluNetwork; return max.(x, 0)
+    elseif ffnet.nettype isa TanhNetwork; return tanh.(x)
+    else; error("unsupported network: " * string(ffnet))
     end
   end
 
@@ -82,7 +79,7 @@ end
 # Generate trajectories from a unit box
 function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork)
   Random.seed!(1234)
-  x1s = 2 * (rand(ffnet.xdims[1], N) .- 0.5) # Unit box
+  x1s = 2 * rand(ffnet.xdims[1], N) .- 1 # Unit box
   # x1s = x1s ./ norm(x1s) # Unit vectors
   xfs = [runNetwork(x1s[:,k], ffnet) for k in 1:N]
   return xfs
