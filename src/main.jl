@@ -15,16 +15,20 @@ Random.seed!(1234)
 
 # Tihs combination makes a difference for 2-stride and all-stride
 # xdims = [2; 3; 4; 5; 4; 3; 2]
-xdims = [2; 3; 4; 5; 6; 7; 6; 5; 4; 3; 2]
+# xdims = [2; 3; 4; 5; 6; 7; 6; 5; 4; 3; 2]
+xdims = [2; 10; 10; 10; 10; 2]
 # xdims = [2; 40; 40; 40; 40; 40; 40; 2]
 # xdims = [2; 20; 20; 20; 20; 20; 2]
 
 ffnet = randomNetwork(xdims, σ=0.8)
 
 # Plot some trajectories
-runAndPlotRandomTrajectories(10000, ffnet)
 
-input = inputUnitBox(xdims)
+xcenter = ones(ffnet.xdims[1])
+ε = 0.01
+input = BoxConstraint(xbot=(xcenter .- ε), xtop=(xcenter .+ ε))
+runAndPlotRandomTrajectories(10000, ffnet, xbot=input.xbot, xtop=input.xtop)
+
 norm2 = 0.5
 safety = safetyNormBound(norm2, xdims)
 safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
@@ -33,11 +37,13 @@ normals = [[0;1], [1;1], [1;0], [1;-1], [0;-1], [-1;-1], [-1;0], [-1;1]]
 hplanes = HyperplanesConstraint(normals=normals)
 reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, hplanes=hplanes)
 
-deepopts = DeepSdpOptions(verbose=true)
+slope_opts = DeepSdpOptions(makeSlopes=true, verbose=true)
+noslope_opts = DeepSdpOptions(makeSlopes=false, verbose=true)
 
 
+sloped_reach_soln = DeepSdp.run(reach_inst, slope_opts)
 
-# reach_soln = DeepSdp.run(reach_inst, deepopts)
+nosloped_reach_soln = DeepSdp.run(reach_inst, noslope_opts)
 
 #=
 inst1 = VerificationInstance(net=ffnet, input=input, safety=safety, β=1, pattern=BandedPattern(tband=10))

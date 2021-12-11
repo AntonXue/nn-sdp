@@ -125,7 +125,7 @@ end
 # A banded T matrix
 function makeBandedT(Tdim :: Int, Λ, band :: Int)
   @assert size(Λ) == (Tdim, Tdim)
-  T = diagm(diag(Λ))
+  T = diagm(zeros(Tdim))
   if band >= 1
     ijs = [(i, j) for i in 1:(Tdim-1) for j in (i+1):Tdim if abs(i-j) <= band]
     δts = [e(i, Tdim)' - e(j, Tdim)' for (i, j) in ijs]
@@ -147,23 +147,6 @@ function makeT(Tdim :: Int, Λ, pattern :: TPattern)
   else
     error("unsupported pattern: " * string(pattern))
   end
-end
-
-# The Q matirx
-function makeQrelu(Tdim :: Int, Λ, η, ν, pattern :: TPattern; a :: Float64 = 0.0, b :: Float64 = 1.0)
-  @assert size(Λ) == (Tdim, Tdim)
-  @assert length(η) == length(ν) == Tdim
-
-  T = makeT(Tdim, Λ, pattern)
-
-  _Q11 = -2 * a * b * T
-  _Q12 = (a + b) * T
-  _Q13 = -(b * ν + a * η)
-  _Q22 = -2 * T
-  _Q23 = ν + η
-  _Q33 = 0
-  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
-  return Q
 end
 
 # P function for a box
@@ -202,9 +185,29 @@ function makeHyperplaneS(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
   return S
 end
 
+# The Q matirx
+function makeQrelu(Tdim :: Int, Λ, η, ν, pattern :: TPattern; sbots = zeros(Tdim), stops = ones(Tdim))
+  @assert size(Λ) == (Tdim, Tdim)
+  @assert length(η) == length(ν) == Tdim
+
+  T = makeT(Tdim, Λ, pattern)
+
+  sbot0, stop0 = 0, 1
+
+  λ = diag(Λ)
+  _Q11 = -2 * diagm(sbots .* stops .* λ) - 2 * (sbot0 * stop0 * T)
+  _Q12 = diagm((sbots + stops) .* λ) + (sbot0 + stop0) * T
+  _Q13 = -(stop0 .* ν) - (sbot0 .* η)
+  _Q22 = -2 * T
+  _Q23 = ν + η
+  _Q33 = 0
+  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
+  return Q
+end
+
 #
-function makeXk(k :: Int, b :: Int, Λ, η, ν, ffnet :: FeedForwardNetwork, pattern :: TPattern; seclow :: Float64 = 0.0, sechigh :: Float64 = 1.0)
-  @assert ffnet.nettype isa ReluNetwork || ffnet.nettype isa TanhNetwork
+function makeXk(k :: Int, b :: Int, Λ, η, ν, ffnet :: FeedForwardNetwork, pattern :: TPattern; sbots = zeros(length(η)), stops = ones(length(η)))
+  @assert ffnet.nettype isa ReluNetwork
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
 
@@ -212,15 +215,11 @@ function makeXk(k :: Int, b :: Int, Λ, η, ν, ffnet :: FeedForwardNetwork, pat
   @assert size(Λ) == (Tdim, Tdim)
   @assert length(η) == length(ν) == Tdim
 
-  T = makeT(Tdim, Λ, pattern)
-
-  _Q11 = -2 * seclow * sechigh * T
-  _Q12 = (seclow + sechigh) * T
-  _Q13 = -(sechigh * ν + seclow * η)
-  _Q22 = -2 * T
-  _Q23 = ν + η
-  _Q33 = 0
-  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
+  if ffnet.nettype isa ReluNetwork
+    Q = makeQrelu(Tdim, Λ, η, ν, pattern, sbots=sbots, stops=stops)
+  else
+    error("unsupported network type: " * string(ffnet.nettype))
+  end
 
   Ack = makeAck(k, b, ffnet)
   bck = makebck(k, b, ffnet)
@@ -297,7 +296,7 @@ function makeΩinv(b :: Int, zdims :: Vector{Int})
   return Ωinv
 end
 
-# Calculate upper-lower bounds of each layer
+# Calculate the slope upper / lower bounds of each layer
 function propagateBox(xbot :: Vector{Float64}, xtop :: Vector{Float64}, ffnet :: FeedForwardNetwork)
   function ϕ(x)
     if ffnet.nettype isa ReluNetwork; return max.(x, 0)
@@ -308,7 +307,11 @@ function propagateBox(xbot :: Vector{Float64}, xtop :: Vector{Float64}, ffnet ::
 
   @assert length(xbot) == length(xtop) == ffnet.xdims[1]
 
-  # The initial limits and conditions
+
+  # The inputs to the activation functions; should be K-1 of them
+  slims = Vector{Any}()
+
+  # The state limits right after each activation function
   xlims = Vector{Any}()
   push!(xlims, (xbot, xtop))
   xkbot, xktop = xbot, xtop
@@ -319,23 +322,32 @@ function propagateBox(xbot :: Vector{Float64}, xtop :: Vector{Float64}, ffnet ::
     xkverts = vec(collect(Iterators.product(zip(xkbot, xktop)...)))
     xkverts = [[i for i in v] for v in xkverts]
 
-    # Propagate each vertex of the hypercube
-    if k == ffnet.K
-      ykverts = [Mk * [xkv; 1] for xkv in xkverts]
-    else
-      ykverts = [ϕ(Mk * [xkv; 1]) for xkv in xkverts]
-    end
-    
-    ykverts = hcat(ykverts...)
+    ykverts = hcat([Mk * [xkv; 1] for xkv in xkverts]...)
+    ykbot, yktop = minimum(ykverts, dims=2), maximum(ykverts, dims=2)
 
-    # Gather min/max
-    xkbot, xktop = minimum(ykverts, dims=2), maximum(ykverts, dims=2)
+    if ffnet.nettype isa ReluNetwork
+      skbot = [if ykb >= 0 && ykt >= 0; 1 else 0 end for (ykb, ykt) in zip(ykbot, yktop)]
+      sktop = [if ykb <= 0 && ykt <= 0; 0 else 1 end for (ykb, ykt) in zip(ykbot, yktop)]
+    else
+      error("unsupported network: " * string(ffnet))
+    end
+
+    if k == ffnet.K
+      zkverts = ykverts
+    else
+      zkverts = hcat([ϕ(yk) for yk in eachcol(ykverts)]...)
+
+      # Only push if we are in an intermediate layer
+      push!(slims, (skbot, sktop))
+    end
+
+    xkbot, xktop = minimum(zkverts, dims=2), maximum(zkverts, dims=2)
 
     # Push
     push!(xlims, (xkbot, xktop))
   end
 
-  return xlims
+  return xlims, slims
 end
 
 # Slowly using up the English alphabet

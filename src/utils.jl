@@ -43,7 +43,6 @@ function safetyNormBound(C, xdims :: Vector{Int64})
   return SafetyConstraint(S=S)
 end
 
-
 # Generate a random network given the desired dimensions at each layer
 function randomNetwork(xdims :: Vector{Int64}; nettype :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
   @assert length(xdims) > 1
@@ -77,20 +76,31 @@ function runNetwork(x1, ffnet :: FeedForwardNetwork)
 end
 
 # Generate trajectories from a unit box
-function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork)
+function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; xbot = -ones(ffnet.xdims[1]), xtop=ones(ffnet.xdims[1]))
   Random.seed!(1234)
-  x1s = 2 * rand(ffnet.xdims[1], N) .- 1 # Unit box
+  xgaps = xtop - xbot
+  box01points = rand(ffnet.xdims[1], N)
+  x1s = [xbot + (p .* xgaps) for p in eachcol(box01points)]
+
+  #=
+  x1max = maximum(hcat(x1s...), dims=2)
+  x1min = minimum(hcat(x1s...), dims=2)
+  println("max: " * string(x1max))
+  println("min: " * string(x1min))
+  =#
+
+  # x1s = 2 * rand(ffnet.xdims[1], N) .- 1 # Unit box
   # x1s = x1s ./ norm(x1s) # Unit vectors
-  xfs = [runNetwork(x1s[:,k], ffnet) for k in 1:N]
+  xfs = [runNetwork(x1, ffnet) for x1 in x1s]
   return xfs
 end
 
 # Plot some data to a file
-function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, imgfile="~/Desktop/hello.png")
+function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile="~/Desktop/hello.png", xbot=-ones(ffnet.xdims[1]), xtop=ones(ffnet.xdims[1]))
   # Make sure we can actually plot these in 2D
   @assert ffnet.xdims[end] == 2
 
-  xfs = randomTrajectories(N, ffnet)
+  xfs = randomTrajectories(N, ffnet, xbot=xbot, xtop=xtop)
   d1s = [xf[1] for xf in xfs]
   d2s = [xf[2] for xf in xfs]
   

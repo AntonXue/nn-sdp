@@ -11,6 +11,7 @@ using Mosek
 
 # Configuration options
 @with_kw struct DeepSdpOptions
+  makeSlopes :: Bool = true
   verbose :: Bool = false
 end
 
@@ -33,8 +34,9 @@ function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork,
 end
 
 # Computes the MmidQ matrix. Treat this function as though it modifies the model
-function makeMmidQ!(model, pattern :: TPattern, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
+function makeMmidQ!(model, pattern :: TPattern, sbots, stops, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   Tdim = sum(ffnet.zdims[2:end-1])
+  
   Λ = @variable(model, [1:Tdim, 1:Tdim], Symmetric)
   η = @variable(model, [1:Tdim])
   ν = @variable(model, [1:Tdim])
@@ -44,7 +46,7 @@ function makeMmidQ!(model, pattern :: TPattern, ffnet :: FeedForwardNetwork, opt
   @constraint(model, ν[1:Tdim] .>= 0)
 
   b = ffnet.K - 1
-  MmidQ = makeXk(1, b, Λ, η, ν, ffnet, pattern)
+  MmidQ = makeXk(1, b, Λ, η, ν, ffnet, pattern, sbots=sbots, stops=stops)
   return MmidQ, Λ, η, ν
 end
 
@@ -68,9 +70,19 @@ function solveSafety(inst :: SafetyInstance, opts :: DeepSdpOptions)
     "QUIET" => true,
     "INTPNT_CO_TOL_DFEAS" => 1e-6))
 
+  if opts.makeSlopes && inst.safety isa BoxConstraint
+    println("making safety!")
+    _, slims = propagateBox(inst.safety.xbot, inst.safety.xtop, ffnet)
+    sbots, stops = vcat([slk[1] for slk in slims]...), vcat([slk[2] for slk in slims]...)
+    sbots, stops = sbots[:], stops[:]
+  else
+    Tdim = sum(ffnet.zdims[2:end-1])
+    sbots, stops = zeros(Tdim), ones(Tdim)
+  end
+
   # Make the different parts
   MinP, γ = makeMinP!(model, inst.input, inst.ffnet, opts)
-  MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, inst.ffnet, opts)
+  MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, sbots, stops, inst.ffnet, opts)
   MoutS = makeMoutS!(model, inst.safety.S, inst.ffnet, opts)
   Z = MinP + MmidQ + MoutS
   @SDconstraint(model, Z <= 0)
@@ -102,6 +114,17 @@ end
 function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
   total_start_time = time()
 
+  # Solve some safety propagations
+  if opts.makeSlopes && inst.input isa BoxConstraint
+    println("making safety!")
+    _, slims = propagateBox(inst.input.xbot, inst.input.xtop, inst.ffnet)
+    sbots, stops = vcat([slk[1] for slk in slims]...), vcat([slk[2] for slk in slims]...)
+    sbots, stops = sbots[:], stops[:]
+  else
+    Tdim = sum(inst.ffnet.zdims[2:end-1])
+    sbots, stops = zeros(Tdim), ones(Tdim)
+  end
+
   ds = Vector{Float64}()
   summaries = Vector{Any}()
   statuses = Vector{String}()
@@ -121,7 +144,7 @@ function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
 
     # Make the different parts
     MinP, γ = makeMinP!(model, inst.input, inst.ffnet, opts)
-    MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, inst.ffnet, opts)
+    MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, sbots, stops, inst.ffnet, opts)
 
     @variable(model, d)
 
