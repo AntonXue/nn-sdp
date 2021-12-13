@@ -153,7 +153,7 @@ function makeShyperplane(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
   _S13 = zeros(d1)
   _S22 = zeros(dK1, dK1)
   _S23 = c
-  _S33 = -d
+  _S33 = -2 * d
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return S
 end
