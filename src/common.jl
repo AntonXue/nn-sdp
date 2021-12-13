@@ -122,46 +122,19 @@ function makeBck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
   return Bck
 end
 
-# A banded T matrix
-function makeBandedT(Tdim :: Int, Λ, band :: Int)
-  @assert size(Λ) == (Tdim, Tdim)
-  T = diagm(zeros(Tdim))
-  if band >= 1
-    ijs = [(i, j) for i in 1:(Tdim-1) for j in (i+1):Tdim if abs(i-j) <= band]
-    δts = [e(i, Tdim)' - e(j, Tdim)' for (i, j) in ijs]
-    Δ = vcat(δts...)
-    V = diagm(vec([Λ[i,j] for (i, j) in ijs]))
-    T = T + Δ' * V * Δ
-  end
-  return T
-end
-
-# A function for making T; smaller instances Tk can be made using this
-function makeT(Tdim :: Int, Λ, pattern :: TPattern)
-  if pattern isa BandedPattern
-    @assert size(Λ) == (Tdim, Tdim)
-    return makeBandedT(Tdim, Λ, pattern.tband)
-  elseif pattern isa FullyDensePattern
-    @assert size(Λ) == (Tdim, Tdim)
-    return makeBandedT(Tdim, Λ, Tdim)
-  else
-    error("unsupported pattern: " * string(pattern))
-  end
-end
-
 # P function for a box
-function makeBoxP(xbot, xtop, γ)
-  @assert length(xbot) == length(xtop) == length(γ)
+function makePbox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, γ)
+  @assert length(x1min) == length(x1max) == length(γ)
   Γ = Diagonal(γ)
   _P11 = -2 * Γ
-  _P12 = Γ * (xbot + xtop)
-  _P22 = -2 * xbot' * Γ * xtop
+  _P12 = Γ * (x1min + x1max)
+  _P22 = -2 * x1min' * Γ * x1max
   P = [_P11 _P12; _P12' _P22]
   return P
 end
 
 # P function for a polytope
-function makePolytopeP(H, h, Γ)
+function makePpolytope(H , h, Γ)
   @assert true
   _P11 = H' * Γ * H
   _P12 = -H' * Γ * h
@@ -171,7 +144,7 @@ function makePolytopeP(H, h, Γ)
 end
 
 # Bounding hyperplane such that c' * f(x) <= d, for variable d
-function makeHyperplaneS(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
+function makeShyperplane(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
   d1 = ffnet.xdims[1]
   dK1 = ffnet.xdims[end]
   @assert length(c) == dK1
@@ -185,51 +158,92 @@ function makeHyperplaneS(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
   return S
 end
 
-# The Q matirx
-function makeQrelu(Tdim :: Int, Λ, η, ν, pattern :: TPattern; sbots = zeros(Tdim), stops = ones(Tdim))
-  @assert size(Λ) == (Tdim, Tdim)
-  @assert length(η) == length(ν) == Tdim
+# Make a T matrix of a particular size given matrix of variables τ
+function makeT(dim :: Int, τ)
+  @assert dim >= 1
+  @assert size(τ) == (dim, dim)
+  ijs = [(i, j) for i in 1:(dim-1) for j in (i+1):dim]
+  δts = [e(i, dim)' - e(j, dim)' for (i, j) in ijs]
+  Δ = vcat(δts...)
+  V = diagm(vec([τ[i,j] for (i, j) in ijs]))
+  T = Δ' * V * Δ
+  return T
+end
 
-  T = makeT(Tdim, Λ, pattern)
+# Make Q with help of xlims where we are known to have bounded activation
+function makeQbounded(qxdim :: Int, d, xlims :: Tuple{Vector{Float64}, Vector{Float64}})
+  xmin, xmax = xlims
+  @assert all(xmin .<= xmax)
+  @assert -Inf < minimum(xmin) && maximum(xmax) < Inf
+  @assert length(d) == length(xmin) == length(xmax) == qxdim
 
-  sbot0, stop0 = 0, 1
+  D = diagm(d)
+  _Q11 = zeros(qxdim, qxdim)
+  _Q12 = zeros(qxdim, qxdim)
+  _Q13 = zeros(qxdim)
+  _Q22 = -2 * D
+  _Q23 = D * (xmin + xmax)
+  _Q33 = -2 * xmin' * D * xmax
+  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
+  return Q
+end
 
-  λ = diag(Λ)
-  _Q11 = -2 * diagm(sbots .* stops .* λ) - 2 * (sbot0 * stop0 * T)
-  _Q12 = diagm((sbots + stops) .* λ) + (sbot0 + stop0) * T
-  _Q13 = -(stop0 .* ν) - (sbot0 .* η)
+# Make the Q relu, optionally enabling localized slope limits
+function makeQrelu(qxdim :: Int, λ, τ, η, ν; slims = (zeros(qxdim), ones(qxdim)))
+  @assert length(λ) == length(η) == length(ν) == qxdim
+  @assert size(τ) == (qxdim, qxdim)
+
+  ε = 1e-6
+  smin, smax = slims
+  @assert -ε <= minimum(smin) && maximum(smin) <= 1 + ε
+  @assert -ε <= minimum(smax) && maximum(smax) <= 1 + ε
+
+  T = makeT(qxdim, τ)
+  s0, s1 = 0, 1
+  _Q11 = -2 * diagm(smin .* smax .* λ) - 2 * (s0 * s1 * T)
+  _Q12 = diagm((smin + smax) .* λ) + (s0 + s1) * T
+  _Q13 = -(smin .* η) - (smax .* ν)
   _Q22 = -2 * T
-  _Q23 = ν + η
+  _Q23 = η + ν
   _Q33 = 0
   Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
   return Q
 end
 
-#
-function makeXk(k :: Int, b :: Int, Λ, η, ν, ffnet :: FeedForwardNetwork, pattern :: TPattern; sbots = zeros(length(η)), stops = ones(length(η)))
-  @assert ffnet.nettype isa ReluNetwork
+# Make an Xk, optionally enabling x bounds and slope limits
+function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; xlims = nothing, slims = nothing)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
+  qxdim = sum(ffnet.zdims[k+1:k+b])
 
-  Tdim = sum(ffnet.zdims[k+1:k+b])
-  @assert size(Λ) == (Tdim, Tdim)
-  @assert length(η) == length(ν) == Tdim
+  # For the relu network
+  if ffnet.type isa ReluNetwork
+    λ, τ, η, ν, d = vars
+    @assert length(λ) == length(η) == length(ν) == length(d) == qxdim
+    @assert size(τ) == (qxdim, qxdim)
 
-  if ffnet.nettype isa ReluNetwork
-    Q = makeQrelu(Tdim, Λ, η, ν, pattern, sbots=sbots, stops=stops)
+    # If slope limits are non-trivial, use them
+    if slims isa Nothing
+      Q = makeQrelu(qxdim, λ, τ, η, ν)
+    else
+      Q = makeQrelu(qxdim, λ, τ, η, ν, slims=slims)
+    end
+
+    # If x limits exist and are not infinite, use them
+    if !(xlims isa Nothing) && (-Inf < minimum(xlims[1]) && maximum(xlims[2]) < Inf)
+      Q = Q + makeQbounded(qxdim, d, xlims)
+    end
+
+  # Other kinds
   else
-    error("unsupported network type: " * string(ffnet.nettype))
+    error("unsupported network: " * string(ffnet.type))
   end
 
-  Ack = makeAck(k, b, ffnet)
-  bck = makebck(k, b, ffnet)
-  Bck = makeBck(k, b, ffnet)
-
-  _R11 = Ack
-  _R12 = bck
-  _R21 = Bck
-  _R22 = zeros(size(bck))
-  _R31 = zeros(1, sum(ffnet.zdims[k:k+b]))
+  _R11 = makeAck(k, b, ffnet)
+  _R12 = makebck(k, b, ffnet)
+  _R21 = makeBck(k, b, ffnet)
+  _R22 = zeros(size(_R12))
+  _R31 = zeros(1, size(_R21)[2])
   _R32 = 1
   R = [_R11 _R12; _R21 _R22; _R31 _R32]
   return R' * Q * R
@@ -238,13 +252,13 @@ end
 # γ is a vector
 function makeXinit(γ, input :: InputConstraint, ffnet :: FeedForwardNetwork)
   d1 = ffnet.xdims[1]
-  if input isa BoxConstraint
+  if input isa BoxInput
     @assert length(γ) == d1
-    return makeBoxP(input.xbot, input.xtop, γ)
-  elseif input isa PolytopeConstraint
+    return makePbox(input.x1min, input.x1max, γ)
+  elseif input isa PolytopeInput
     @assert length(γ) == d1^2
     Γ = reshape(γ, (d1, d1))
-    return makePolytopeP(input.H, input.h, Γ)
+    return makePpolytope(input.H, input.h, Γ)
   else
     error("unsupported input constraints: " * string(input))
   end
@@ -296,66 +310,48 @@ function makeΩinv(b :: Int, zdims :: Vector{Int})
   return Ωinv
 end
 
-# Calculate the slope upper / lower bounds of each layer
-function propagateBox(xbot :: Vector{Float64}, xtop :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+# Propagate a box through the network
+function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet :: FeedForwardNetwork)
   function ϕ(x)
-    if ffnet.nettype isa ReluNetwork; return max.(x, 0)
-    elseif ffnet.nettype isa TanhNetwork; return tanh.(x)
+    if ffnet.type isa ReluNetwork; return max.(x, 0)
+    elseif ffnet.type isa TanhNetwork; return tanh.(x)
     else; error("unsupported network: " * string(ffnet))
     end
   end
 
-  @assert length(xbot) == length(xtop) == ffnet.xdims[1]
-
+  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The inputs to the activation functions; should be K-1 of them
-  slims = Vector{Any}()
+  ylimss = Vector{Any}()
 
-  # The state limits right after each activation function
-  xlims = Vector{Any}()
-  push!(xlims, (xbot, xtop))
-  xkbot, xktop = xbot, xtop
+  # The state limits right after each activation
+  xlimss = Vector{Any}()
+  push!(xlimss, (x1min, x1max))
+  xkmin, xkmax = x1min, x1max
 
-  # Run through each layer
   for (k, Mk) in enumerate(ffnet.Ms)
-    # Generate the vertices of the hypercube for each iteration
-    xkverts = vec(collect(Iterators.product(zip(xkbot, xktop)...)))
-    xkverts = [[i for i in v] for v in xkverts]
-
-    ykverts = hcat([Mk * [xkv; 1] for xkv in xkverts]...)
-    ykbot, yktop = minimum(ykverts, dims=2), maximum(ykverts, dims=2)
-
-    if ffnet.nettype isa ReluNetwork
-      skbot = [if ykb >= 0 && ykt >= 0; 1 else 0 end for (ykb, ykt) in zip(ykbot, yktop)]
-      sktop = [if ykb <= 0 && ykt <= 0; 0 else 1 end for (ykb, ykt) in zip(ykbot, yktop)]
-    else
-      error("unsupported network: " * string(ffnet))
-    end
+    Wk, bk = Mk[1:end, 1:end-1], Mk[1:end, end]
+    ykmin = (max.(Wk, 0) * xkmin) + (min.(Wk, 0) * xkmax) + bk
+    ykmax = (max.(Wk, 0) * xkmax) + (min.(Wk, 0) * xkmin) + bk
 
     if k == ffnet.K
-      zkverts = ykverts
+      xkmin, xkmax = ykmin, ykmax
     else
-      zkverts = hcat([ϕ(yk) for yk in eachcol(ykverts)]...)
-
-      # Only push if we are in an intermediate layer
-      push!(slims, (skbot, sktop))
+      push!(ylimss, (ykmin, ykmax))
+      xkmin, xkmax = ϕ(ykmin), ϕ(ykmax)
     end
-
-    xkbot, xktop = minimum(zkverts, dims=2), maximum(zkverts, dims=2)
-
-    # Push
-    push!(xlims, (xkbot, xktop))
+    push!(xlimss, (xkmin, xkmax))
   end
-
-  return xlims, slims
+  return xlimss, ylimss
 end
+
 
 # Slowly using up the English alphabet
 export e, E, Ec, F, FK, Faff
 export makeA, makeb, makeB, makeAck, makebck, makeBck
-export makeQrelu
-export makeBoxP, makePolytopeP
-export makeHyperplaneS
+export makeQbounded, makeQrelu
+export makePbox, makePpolytope
+export makeShyperplane
 export makeXk, makeXinit, makeXsafe
 export makeΩ, makeΩinv
 export propagateBox

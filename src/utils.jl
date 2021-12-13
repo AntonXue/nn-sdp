@@ -24,9 +24,9 @@ end
 # -ones <= x <= ones
 function inputUnitBox(xdims :: Vector{Int64})
   @assert length(xdims) > 1
-  xbot = -ones(xdims[1])
-  xtop = ones(xdims[1])
-  return BoxConstraint(xbot=xbot, xtop=xtop)
+  x1min = -ones(xdims[1])
+  x1max = ones(xdims[1])
+  return BoxInput(x1min=x1min, x1max=x1max)
 end
 
 # ||f(x)||^2 <= C
@@ -44,7 +44,7 @@ function safetyNormBound(C, xdims :: Vector{Int64})
 end
 
 # Generate a random network given the desired dimensions at each layer
-function randomNetwork(xdims :: Vector{Int64}; nettype :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
+function randomNetwork(xdims :: Vector{Int64}; type :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
   @assert length(xdims) > 1
   Ms = Vector{Any}()
   for k = 1:length(xdims) - 1
@@ -52,14 +52,14 @@ function randomNetwork(xdims :: Vector{Int64}; nettype :: NetworkType = ReluNetw
     Mk = randn(xdims[k+1], xdims[k]+1) * σ
     push!(Ms, Mk)
   end
-  return FeedForwardNetwork(nettype=nettype, xdims=xdims, Ms=Ms)
+  return FeedForwardNetwork(type=type, xdims=xdims, Ms=Ms)
 end
 
 # Run a feedforward net on an initial input and give the output
 function runNetwork(x1, ffnet :: FeedForwardNetwork)
   function ϕ(x)
-    if ffnet.nettype isa ReluNetwork; return max.(x, 0)
-    elseif ffnet.nettype isa TanhNetwork; return tanh.(x)
+    if ffnet.type isa ReluNetwork; return max.(x, 0)
+    elseif ffnet.type isa TanhNetwork; return tanh.(x)
     else; error("unsupported network: " * string(ffnet))
     end
   end
@@ -76,31 +76,21 @@ function runNetwork(x1, ffnet :: FeedForwardNetwork)
 end
 
 # Generate trajectories from a unit box
-function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; xbot = -ones(ffnet.xdims[1]), xtop=ones(ffnet.xdims[1]))
+function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; x1min = -ones(ffnet.xdims[1]), x1max=ones(ffnet.xdims[1]))
   Random.seed!(1234)
-  xgaps = xtop - xbot
+  xgaps = x1max - x1min
   box01points = rand(ffnet.xdims[1], N)
-  x1s = [xbot + (p .* xgaps) for p in eachcol(box01points)]
-
-  #=
-  x1max = maximum(hcat(x1s...), dims=2)
-  x1min = minimum(hcat(x1s...), dims=2)
-  println("max: " * string(x1max))
-  println("min: " * string(x1min))
-  =#
-
-  # x1s = 2 * rand(ffnet.xdims[1], N) .- 1 # Unit box
-  # x1s = x1s ./ norm(x1s) # Unit vectors
+  x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
   xfs = [runNetwork(x1, ffnet) for x1 in x1s]
   return xfs
 end
 
 # Plot some data to a file
-function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile="~/Desktop/hello.png", xbot=-ones(ffnet.xdims[1]), xtop=ones(ffnet.xdims[1]))
+function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile="~/Desktop/hello.png", x1min=-ones(ffnet.xdims[1]), x1max=ones(ffnet.xdims[1]))
   # Make sure we can actually plot these in 2D
   @assert ffnet.xdims[end] == 2
 
-  xfs = randomTrajectories(N, ffnet, xbot=xbot, xtop=xtop)
+  xfs = randomTrajectories(N, ffnet, x1min=x1min, x1max=x1max)
   d1s = [xf[1] for xf in xfs]
   d2s = [xf[2] for xf in xfs]
   

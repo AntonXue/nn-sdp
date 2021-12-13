@@ -17,6 +17,7 @@ Random.seed!(1234)
 # xdims = [2; 3; 4; 5; 4; 3; 2]
 # xdims = [2; 3; 4; 5; 6; 7; 6; 5; 4; 3; 2]
 xdims = [2; 10; 10; 10; 10; 2]
+# xdims = [2; 20; 20; 20; 20; 2]
 # xdims = [2; 40; 40; 40; 40; 40; 40; 2]
 # xdims = [2; 20; 20; 20; 20; 20; 2]
 
@@ -26,24 +27,34 @@ ffnet = randomNetwork(xdims, σ=0.8)
 
 xcenter = ones(ffnet.xdims[1])
 ε = 0.01
-input = BoxConstraint(xbot=(xcenter .- ε), xtop=(xcenter .+ ε))
-runAndPlotRandomTrajectories(10000, ffnet, xbot=input.xbot, xtop=input.xtop)
+input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
+# input = BoxInput(x1min=-ones(xdims[1]), x1max=ones(xdims[1]))
+runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
-norm2 = 0.5
+norm2 = 50^2
 safety = safetyNormBound(norm2, xdims)
 safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
 normals = [[0;1], [1;1], [1;0], [1;-1], [0;-1], [-1;-1], [-1;0], [-1;1]]
-hplanes = HyperplanesConstraint(normals=normals)
-reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, hplanes=hplanes)
+reach_set = HyperplaneSet(normals=normals)
+reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=reach_set)
 
-slope_opts = DeepSdpOptions(makeSlopes=true, verbose=true)
-noslope_opts = DeepSdpOptions(makeSlopes=false, verbose=true)
+#
+
+plain_opts = DeepSdpOptions(use_xlims=false, use_slims=false, verbose=true)
+xlims_only_opts = DeepSdpOptions(use_xlims=true, use_slims=false, verbose=true)
+slims_only_opts = DeepSdpOptions(use_xlims=false, use_slims=true, verbose=true)
+all_opts = DeepSdpOptions(use_xlims=true, use_slims=true, verbose=true)
 
 
-sloped_reach_soln = DeepSdp.run(reach_inst, slope_opts)
+# safety_soln = DeepSdp.run(safety_inst, all_opts)
+
+reach_soln = DeepSdp.run(reach_inst, all_opts)
+
+#=
 
 nosloped_reach_soln = DeepSdp.run(reach_inst, noslope_opts)
+=#
 
 #=
 inst1 = VerificationInstance(net=ffnet, input=input, safety=safety, β=1, pattern=BandedPattern(tband=10))

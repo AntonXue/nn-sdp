@@ -11,15 +11,54 @@ using Mosek
 
 # Configuration options
 @with_kw struct DeepSdpOptions
-  makeSlopes :: Bool = true
+  use_xlims :: Bool = true
+  use_slims :: Bool = true
   verbose :: Bool = false
+end
+
+# Calculate the xlims and slims, if applicable
+function makeLimits(input :: InputConstraint, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
+  if input isa BoxInput
+    xlimss, ylimss = propagateBox(input.x1min, input.x1max, ffnet)
+
+    # Set up xlims
+    xmin = vcat([xl[1] for xl in xlimss[2:end-1]]...)
+    xmax = vcat([xl[2] for xl in xlimss[2:end-1]]...)
+    xlims = (xmin, xmax)
+
+    # Set up ymin and ymax first
+    ymin = vcat([yl[1] for yl in ylimss]...)
+    ymax = vcat([yl[2] for yl in ylimss]...)
+
+    # Determine the Ipos and Ineg set in order to calculate slims
+    ε = 1e-6
+    Ipos = findall(z -> z > ε, ymin)
+    Ineg = findall(z -> z < -ε, ymax)
+
+    smin = zeros(length(ymin))
+    smin[Ipos] .= 1.0
+
+    smax = zeros(length(ymax))
+    smax[Ineg] .= 0.0
+
+    slims = (smin, smax)
+
+    # Fiddle with options
+    xlims = opts.use_xlims ? xlims : nothing
+    slims = opts.use_slims ? slims : nothing
+
+    return xlims, slims
+  else
+    @warn ("makeLimits: unsupported input " * string(input) * ", returning (nothing, nothing)")
+    return nothing, nothing
+  end
 end
 
 # Computes the MinP matrix. Treat this function as though it modifies the model
 function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
-  if input isa BoxConstraint
+  if input isa BoxInput
     @variable(model, γ[1:ffnet.xdims[1]] >= 0)
-  elseif input isa PolytopeConstraint
+  elseif input isa PolytopeInput
     @variable(model, γ[1:ffnet.xdims[1]^2] >= 0)
   else
     error("unsupported input constraints: " * string(input))
@@ -33,23 +72,6 @@ function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork,
   return MinP, γ
 end
 
-# Computes the MmidQ matrix. Treat this function as though it modifies the model
-function makeMmidQ!(model, pattern :: TPattern, sbots, stops, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
-  Tdim = sum(ffnet.zdims[2:end-1])
-  
-  Λ = @variable(model, [1:Tdim, 1:Tdim], Symmetric)
-  η = @variable(model, [1:Tdim])
-  ν = @variable(model, [1:Tdim])
-
-  @constraint(model, Λ[1:Tdim, 1:Tdim] .>= 0)
-  @constraint(model, η[1:Tdim] .>= 0)
-  @constraint(model, ν[1:Tdim] .>= 0)
-
-  b = ffnet.K - 1
-  MmidQ = makeXk(1, b, Λ, η, ν, ffnet, pattern, sbots=sbots, stops=stops)
-  return MmidQ, Λ, η, ν
-end
-
 # Computes the MoutS matrix. Treat this function as though it modifies the model
 function makeMoutS!(model, S, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   E1 = E(1, ffnet.zdims)
@@ -61,6 +83,26 @@ function makeMoutS!(model, S, ffnet :: FeedForwardNetwork, opts :: DeepSdpOption
   return MoutS
 end
 
+# Make the MmidQ matrix. Treat this function as though it modifies the model
+function makeMmidQ!(model, xlims, slims, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
+  qxdim = sum(ffnet.zdims[2:end-1])
+
+  if ffnet.type isa ReluNetwork
+    @variable(model, λ[1:qxdim] >= 0)
+    @variable(model, τ[1:qxdim, 1:qxdim] >= 0, Symmetric)
+    @variable(model, η[1:qxdim] >= 0)
+    @variable(model, ν[1:qxdim] >= 0)
+    @variable(model, d[1:qxdim] >= 0)
+
+    b = ffnet.K - 1
+    Qvars = (λ, τ, η, ν, d)
+    MmidQ = makeXk(1, b, Qvars, ffnet, xlims=xlims, slims=slims)
+    return MmidQ, Qvars
+  else
+    error("unsupported network: " * string(ffnet))
+  end
+end
+
 # Solve the safety verification problem instance
 function solveSafety(inst :: SafetyInstance, opts :: DeepSdpOptions)
   total_start_time = time()
@@ -69,21 +111,16 @@ function solveSafety(inst :: SafetyInstance, opts :: DeepSdpOptions)
     Mosek.Optimizer,
     "QUIET" => true,
     "INTPNT_CO_TOL_DFEAS" => 1e-6))
-
-  if opts.makeSlopes && inst.safety isa BoxConstraint
-    println("making safety!")
-    _, slims = propagateBox(inst.safety.xbot, inst.safety.xtop, ffnet)
-    sbots, stops = vcat([slk[1] for slk in slims]...), vcat([slk[2] for slk in slims]...)
-    sbots, stops = sbots[:], stops[:]
-  else
-    Tdim = sum(ffnet.zdims[2:end-1])
-    sbots, stops = zeros(Tdim), ones(Tdim)
-  end
-
-  # Make the different parts
+  
+  # Make MinP and MoutS first because they're simpler
   MinP, γ = makeMinP!(model, inst.input, inst.ffnet, opts)
-  MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, sbots, stops, inst.ffnet, opts)
   MoutS = makeMoutS!(model, inst.safety.S, inst.ffnet, opts)
+  
+  # Construct limits and then MmidQ
+  xlims, slims = makeLimits(inst.input, inst.ffnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, xlims, slims, inst.ffnet, opts)
+
+  # Now the LMI
   Z = MinP + MmidQ + MoutS
   @SDconstraint(model, Z <= 0)
 
@@ -97,7 +134,7 @@ function solveSafety(inst :: SafetyInstance, opts :: DeepSdpOptions)
   if opts.verbose; println("solve time: " * string(summary.solve_time)) end
 
   # Prepare the output and return
-  soln_dict = Dict(:γ => value.(γ), :Λ => value.(Λ), :η => value.(η), :ν => value.(ν))
+  soln_dict = Dict(:γ => value.(γ), :Qvars => [value.(qv) for qv in Qvars])
   total_time = round(time() - total_start_time, digits=2)
 
   output = SolutionOutput(
@@ -111,30 +148,22 @@ function solveSafety(inst :: SafetyInstance, opts :: DeepSdpOptions)
 end
 
 # Solve for the hyperplane offsets that bound the network output f(x)
-function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
+function solveHyperplaneReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
   total_start_time = time()
 
-  # Solve some safety propagations
-  if opts.makeSlopes && inst.input isa BoxConstraint
-    println("making safety!")
-    _, slims = propagateBox(inst.input.xbot, inst.input.xtop, inst.ffnet)
-    sbots, stops = vcat([slk[1] for slk in slims]...), vcat([slk[2] for slk in slims]...)
-    sbots, stops = sbots[:], stops[:]
-  else
-    Tdim = sum(inst.ffnet.zdims[2:end-1])
-    sbots, stops = zeros(Tdim), ones(Tdim)
-  end
+  # Make the limits first
+  xlims, slims = makeLimits(inst.input, inst.ffnet, opts)
 
-  ds = Vector{Float64}()
+  doffsets = Vector{Float64}()
   summaries = Vector{Any}()
   statuses = Vector{String}()
   soln_dicts = Vector{Any}()
   setup_times = Vector{Float64}()
   solve_times = Vector{Float64}()
 
-  num_hplanes = length(inst.hplanes.normals)
+  num_normals = length(inst.reach_set.normals)
 
-  for (i, c) in enumerate(inst.hplanes.normals)
+  for (i, normal) in enumerate(inst.reach_set.normals)
     iter_setup_start_time = time()
 
     model = Model(optimizer_with_attributes(
@@ -142,17 +171,21 @@ function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
       "QUIET" => true,
       "INTPNT_CO_TOL_DFEAS" => 1e-6))
 
-    # Make the different parts
+    # Make MinP first
     MinP, γ = makeMinP!(model, inst.input, inst.ffnet, opts)
-    MmidQ, Λ, η, ν = makeMmidQ!(model, inst.pattern, sbots, stops, inst.ffnet, opts)
 
-    @variable(model, d)
+    # Make MmidQ next
+    MmidQ, Qvars = makeMmidQ!(model, xlims, slims, inst.ffnet, opts)
 
-    hplaneS = makeHyperplaneS(c, d, inst.ffnet)
-    MoutS = makeMoutS!(model, hplaneS, inst.ffnet, opts)
+    # Now set up MoutS
+    @variable(model, doffset)
+    S = makeShyperplane(normal, doffset, inst.ffnet)
+    MoutS = makeMoutS!(model, S, inst.ffnet, opts)
+
+    # Now set up the LMi and objective
     Z = MinP + MmidQ + MoutS
     @SDconstraint(model, Z <= 0)
-    @objective(model, Min, d)
+    @objective(model, Min, doffset)
 
     # Calculate setup times
     iter_setup_time = time() - iter_setup_start_time
@@ -166,17 +199,17 @@ function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
 
     iter_solve_time = round.(summary.solve_time, digits=2)
     push!(solve_times, iter_solve_time)
-    if opts.verbose; println("iter[" * string(i) * "/" * string(num_hplanes) * "] solve time: " * string(iter_solve_time)) end
+    if opts.verbose; println("iter[" * string(i) * "/" * string(num_normals) * "] solve time: " * string(iter_solve_time)) end
 
-    dopt = value(d)
-    push!(ds, dopt)
+    # Store results
+    push!(doffsets, value(doffset))
 
-    soln_dicti = Dict(:γ => value.(γ), :Λ => value.(Λ), :η => value.(η), :ν => value.(ν))
-    push!(soln_dicts, soln_dicti)
+    soln_dict = Dict(:γ => value.(γ), :Qvars => [value.(qv) for qv in Qvars])
+    push!(soln_dicts, soln_dict)
   end
 
   # Prepare and return the output
-  cds = [(c,d) for (c,d) in zip(inst.hplanes.normals, ds)]
+  cds = [(c,d) for (c,d) in zip(inst.reach_set.normals, doffsets)]
   soln_dict = Dict(:cds => cds, :iter_soln_dicts => soln_dicts)
 
   total_setup_time = round(sum(setup_times), digits=2)
@@ -191,15 +224,14 @@ function solveReachability(inst :: ReachabilityInstance, opts :: DeepSdpOptions)
             setup_time = total_setup_time,
             solve_time = total_solve_time)
   return output
-
 end
 
 # The interface to call
 function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   if inst isa SafetyInstance
     return solveSafety(inst, opts)
-  elseif inst isa ReachabilityInstance
-    return solveReachability(inst, opts)
+  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
+    return solveHyperplaneReachability(inst, opts)
   else
     error("unrecognized query instance: " * string(inst))
   end
