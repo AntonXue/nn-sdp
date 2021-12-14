@@ -3,7 +3,7 @@ include("header.jl"); using .Header
 include("common.jl"); using .Common
 include("utils.jl"); using .Utils
 include("deep-sdp.jl"); using .DeepSdp
-# include("split-sdp.jl"); using .SplitSdp
+include("split-sdp.jl"); using .SplitSdp
 # include("tests.jl"); using .Tests
 
 using LinearAlgebra
@@ -46,8 +46,12 @@ xintv_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=false, ver
 sintv_opts = DeepSdpOptions(use_xintervals=false, use_localized_slopes=true, verbose=true)
 all_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=true, verbose=true)
 
+# safety_soln = DeepSdp.run(safety_inst, all_opts)
+# reach_soln = DeepSdp.run(reach_inst, all_opts)
 
-safety_soln = DeepSdp.run(safety_inst, all_opts)
 
-reach_soln = DeepSdp.run(reach_inst, all_opts)
+#
+split_opts = SplitSdpOptions(β=2, verbose=true)
+
+split_soln = SplitSdp.run(safety_inst, split_opts)
 

@@ -75,12 +75,6 @@ abstract type QueryInstance end
   ffnet :: FeedForwardNetwork
   input :: InputConstraint
   safety :: SafetyConstraint
-
-  # By default, no sparsity
-  β :: Int = ffnet.K - 2
-  @assert 1 <= β <= ffnet.K - 2
-
-  verbose :: Bool = false
 end
 
 # A hyerplane bounding instance
@@ -88,12 +82,6 @@ end
   ffnet :: FeedForwardNetwork
   input :: InputConstraint
   reach_set :: ReachableSet
-
-  # By default, no sparsity
-  β :: Int = ffnet.K - 2
-  @assert 1 <= β <= ffnet.K - 2
-
-  verbose :: Bool = false
 end
 
 # The solution that is to be output by an algorithm

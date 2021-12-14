@@ -167,11 +167,9 @@ function makeQbounded(qxdim :: Int, d, xlims :: Tuple{Vector{Float64}, Vector{Fl
 end
 
 # Make the Q relu, optionally enabling localized slope limits
-function makeQrelu(qxdim :: Int, λ, τ, η, ν; slims = (zeros(qxdim), ones(qxdim)))
+function makeQrelu(qxdim :: Int, λ, τ, η, ν; slims = (zeros(qxdim), ones(qxdim)), ε = 1e-6)
   @assert length(λ) == length(η) == length(ν) == qxdim
   @assert size(τ) == (qxdim, qxdim)
-
-  ε = 1e-6
   smin, smax = slims
   @assert -ε <= minimum(smin) && maximum(smin) <= 1 + ε
   @assert -ε <= minimum(smax) && maximum(smax) <= 1 + ε
@@ -332,14 +330,14 @@ function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet 
   end
 
   # The state limits right after each activation
-  xlims = Vector{Any}()
-  push!(xlims, (x1min, x1max))
+  xlimTups = Vector{Any}()
+  push!(xlimTups, (x1min, x1max))
 
   # The inputs to the activation functions; should be K-1 of them
-  ylims = Vector{Any}()
+  ylimTups = Vector{Any}()
 
   # All the slope bounds
-  slims = Vector{Any}()
+  slimTups = Vector{Any}()
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)
@@ -351,15 +349,15 @@ function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet 
       xkmin, xkmax = ykmin, ykmax
     else
       smin, smax = slopeBounds(ykmin, ykmax)
-      push!(ylims, (ykmin, ykmax))
-      push!(slims, (smin, smax))
+      push!(ylimTups, (ykmin, ykmax))
+      push!(slimTups, (smin, smax))
       xkmin, xkmax = ϕ(ykmin), ϕ(ykmax)
     end
-    push!(xlims, (xkmin, xkmax))
+    push!(xlimTups, (xkmin, xkmax))
   end
 
   # Each is a list of tuple of vectors, for flexibility; vcat as needed
-  return xlims, ylims, slims
+  return xlimTups, ylimTups, slimTups
 end
 
 # Slowly using up the English alphabet

@@ -16,18 +16,18 @@ using Mosek
   verbose :: Bool = false
 end
 
-# Interval propagations
+# Find pairs the limits of form (x[k+1], s[k])
 function findLimits(inst, opts :: DeepSdpOptions)
   if !hasproperty(inst, :input); return nothing, nothing end
 
   if inst.input isa BoxInput && (opts.use_xintervals || opts.use_localized_slopes)
-    xlimss, _, slimss = propagateBox(inst.input.x1min, inst.input.x1max, inst.ffnet)
-    xmin = vcat([xl[1] for xl in xlimss[2:end-1]]...) # Only care about the intermediates
-    xmax = vcat([xl[2] for xl in xlimss[2:end-1]]...)
+    xlimTups, _, slimTups = propagateBox(inst.input.x1min, inst.input.x1max, inst.ffnet)
+    xmin = vcat([xl[1] for xl in xlimTups[2:end-1]]...) # Only care about the intermediates
+    xmax = vcat([xl[2] for xl in xlimTups[2:end-1]]...)
     xlims = opts.use_xintervals ? (xmin, xmax) : nothing
 
-    smin = vcat([sl[1] for sl in slimss]...)
-    smax = vcat([sl[2] for sl in slimss]...)
+    smin = vcat([sl[1] for sl in slimTups]...)
+    smax = vcat([sl[2] for sl in slimTups]...)
     slims = opts.use_localized_slopes ? (smin, smax) : nothing
     return xlims, slims
   else
