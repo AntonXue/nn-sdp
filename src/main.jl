@@ -47,11 +47,14 @@ sintv_opts = DeepSdpOptions(use_xintervals=false, use_localized_slopes=true, ver
 all_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=true, verbose=true)
 
 # safety_soln = DeepSdp.run(safety_inst, all_opts)
-# reach_soln = DeepSdp.run(reach_inst, all_opts)
-
 
 #
-split_opts = SplitSdpOptions(β=2, verbose=true)
+split_opts1 = SplitSdpOptions(β=1, verbose=true)
+split_opts2 = SplitSdpOptions(β=2, verbose=true)
+split_opts3 = SplitSdpOptions(β=3, verbose=true)
 
-split_soln = SplitSdp.run(safety_inst, split_opts)
+split_soln1 = SplitSdp.run(reach_inst, split_opts1)
+split_soln2 = SplitSdp.run(reach_inst, split_opts2)
+split_soln3 = SplitSdp.run(reach_inst, split_opts3)
 
+reach_soln = DeepSdp.run(reach_inst, all_opts)

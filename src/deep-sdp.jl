@@ -140,7 +140,7 @@ function solveHyperplaneReachability(inst :: ReachabilityInstance, opts :: DeepS
   setup_times = Vector{Float64}()
   solve_times = Vector{Float64}()
 
-  num_normals = length(inst.reach_set.normals)
+  numNormals = length(inst.reach_set.normals)
   for (i, normal) in enumerate(inst.reach_set.normals)
     iter_setup_start_time = time()
     model = Model(optimizer_with_attributes(
@@ -157,7 +157,7 @@ function solveHyperplaneReachability(inst :: ReachabilityInstance, opts :: DeepS
     S = makeShyperplane(normal, doffset, inst.ffnet)
     MoutS = makeMoutS!(model, S, inst.ffnet, opts)
 
-    # Now set up the LMi and objective
+    # Now set up the LMI and objective
     Z = MinP + MmidQ + MoutS
     @SDconstraint(model, Z <= 0)
     @objective(model, Min, doffset)
@@ -170,7 +170,7 @@ function solveHyperplaneReachability(inst :: ReachabilityInstance, opts :: DeepS
     summary = solution_summary(model)
 
     iter_solve_time = round.(summary.solve_time, digits=2)
-    if opts.verbose; println("reach iter[" * string(i) * "/" * string(num_normals) * "] solve time: " * string(iter_solve_time)) end
+    if opts.verbose; println("reach iter[" * string(i) * "/" * string(numNormals) * "] solve time: " * string(iter_solve_time)) end
 
     # Store results
     push!(doffsets, value(doffset))

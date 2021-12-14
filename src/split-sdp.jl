@@ -17,7 +17,7 @@ using Mosek
   verbose :: Bool = false
 end
 
-#
+# Calculate the interval propagation
 function findLimitTuples(inst, opts :: SplitSdpOptions)
   if !hasproperty(inst, :input); return nothing, nothing end
 
@@ -98,7 +98,7 @@ function makeSplitXk!(model, k :: Int, xcklims, scklims, ffnet :: FeedForwardNet
   end
 end
 
-#
+# Solve the safety problem
 function solveSafety(inst :: SafetyInstance, opts :: SplitSdpOptions)
   total_start_time = time()
   setup_start_time = time()
@@ -169,7 +169,109 @@ end
 
 #
 function solveHyperplaneReachability(inst :: ReachabilityInstance, opts :: SplitSdpOptions)
+  total_start_time = time()
 
+  # Interval propagation
+  xlimTups, slimTups = findLimitTuples(inst, opts)
+
+  # Set up useful matrices
+  E1 = E(1, inst.ffnet.zdims)
+  EK = E(inst.ffnet.K, inst.ffnet.zdims)
+  Ea = E(inst.ffnet.K+1, inst.ffnet.zdims)
+  Einit = [E1; Ea]
+  Esafe = [E1; EK; Ea]
+  Ωinv = makeΩinv(opts.β, inst.ffnet.zdims)
+
+  #
+  doffsets = Vector{Float64}()
+  summaries = Vector{Any}()
+  statuses = Vector{String}()
+  value_dicts = Vector{Any}()
+  setup_times = Vector{Float64}()
+  solve_times = Vector{Float64}()
+
+  numNormals = length(inst.reach_set.normals)
+  for (i, normal) in enumerate(inst.reach_set.normals)
+    iter_setup_start_time = time()
+    model = Model(optimizer_with_attributes(
+      Mosek.Optimizer,
+      "QUIET" => true,
+      "INTPNT_CO_TOL_DFEAS" => 1e-6))
+
+    # Make Xinit
+    Xinit, γ = makeSplitXinit!(model, inst.input, inst.ffnet, opts)
+    Z = (Einit' * Xinit * Einit)
+
+    # Make the Xks
+    allQvars = Vector{Any}()
+    numXks = inst.ffnet.K - opts.β
+    for k in 1:numXks
+      if opts.verbose; println("making X[" * string(k) * "/" * string(numXks) * "]") end
+      Ekβ = E(k, opts.β, inst.ffnet.zdims)
+      EXk = [Ekβ; Ea]
+      xcklims, scklims = selectLimits(k, opts.β, xlimTups, slimTups)
+      Xk, Qkvars = makeSplitXk!(model, k, xcklims, scklims, inst.ffnet, opts)
+      Z = Z + (EXk' * Xk * EXk)
+      push!(allQvars, Qkvars)
+    end
+
+    # Now set up Xsafe
+    @variable(model, doffset)
+    S = makeShyperplane(normal, doffset, inst.ffnet)
+    Xsafe = makeSplitXsafe!(model, S, inst.ffnet, opts)
+
+    # Fully complete Z
+    Z = Z + (Esafe' * Xsafe * Esafe)
+
+    # Select and assert that each Zk is NSD
+    scaledZ = Z .* Ωinv
+    numCliques = inst.ffnet.K - opts.β - 1
+    for k = 1:numCliques
+      Eck = Ec(k, opts.β, inst.ffnet.zdims)
+      Zk = Eck * scaledZ * Eck'
+      @SDconstraint(model, Zk <= 0)
+    end
+
+    # Objective
+    @objective(model, Min, doffset)
+
+    # Calculate the setup times
+    iter_setup_time = time() - iter_setup_start_time
+
+    # Now solve the problem
+    optimize!(model)
+    summary = solution_summary(model)
+
+    iter_solve_time = round.(summary.solve_time, digits=2)
+    if opts.verbose; println("reach iter[" * string(i) * "/" * string(numNormals) * "] solve time: " * string(iter_solve_time)) end
+
+    # Store results
+    push!(doffsets, value(doffset))
+    push!(summaries, summary)
+    push!(statuses, string(summary.termination_status))
+    push!(setup_times, iter_setup_time)
+    push!(solve_times, iter_solve_time)
+
+    allQvalues = [[value.(qkv) for qkv in Qkvars] for Qkvars in allQvars]
+    value_dict = Dict(:γ => value.(γ), :allQvalues => allQvalues)
+    push!(value_dicts, value_dict)
+  end
+
+  # Prepare and return the output
+  cds = [(c,d) for (c,d) in zip(inst.reach_set.normals, doffsets)]
+  value_dict = Dict(:cds => cds, :iter_value_dicts => value_dicts)
+
+  total_setup_time = round(sum(setup_times), digits=2)
+  total_solve_time = round(sum(solve_times), digits=2)
+  total_time = round(time() - total_start_time, digits=2)
+
+  return SolutionOutput(
+    values = value_dict,
+    summary = summaries,
+    status = statuses,
+    total_time = total_time,
+    setup_time = total_setup_time,
+    solve_time = total_solve_time)
 end
 
 ##
