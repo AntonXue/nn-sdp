@@ -18,7 +18,7 @@ abstract type NeuralNetwork end
 
   # The state vector dimension at start of each layer
   xdims :: Vector{Int}
-  @assert length(xdims) > 2
+  @assert length(xdims) >= 3
 
   zdims :: Vector{Int} = [xdims[1:end-1]; 1]
 
@@ -98,7 +98,7 @@ end
 
 # The solution that is to be output by an algorithm
 @with_kw struct SolutionOutput{A, B, C}
-  solution :: A
+  values :: A
   summary :: B
   status :: C
   total_time :: Float64

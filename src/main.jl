@@ -41,40 +41,13 @@ reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=reach_set)
 
 #
 
-plain_opts = DeepSdpOptions(use_xlims=false, use_slims=false, verbose=true)
-xlims_only_opts = DeepSdpOptions(use_xlims=true, use_slims=false, verbose=true)
-slims_only_opts = DeepSdpOptions(use_xlims=false, use_slims=true, verbose=true)
-all_opts = DeepSdpOptions(use_xlims=true, use_slims=true, verbose=true)
+plain_opts = DeepSdpOptions(use_xintervals=false, use_localized_slopes=false, verbose=true)
+xintv_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=false, verbose=true)
+sintv_opts = DeepSdpOptions(use_xintervals=false, use_localized_slopes=true, verbose=true)
+all_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=true, verbose=true)
 
 
-# safety_soln = DeepSdp.run(safety_inst, all_opts)
+safety_soln = DeepSdp.run(safety_inst, all_opts)
 
 reach_soln = DeepSdp.run(reach_inst, all_opts)
-
-#=
-
-nosloped_reach_soln = DeepSdp.run(reach_inst, noslope_opts)
-=#
-
-#=
-inst1 = VerificationInstance(net=ffnet, input=input, safety=safety, β=1, pattern=BandedPattern(tband=10))
-inst2 = VerificationInstance(net=ffnet, input=input, safety=safety, β=2, pattern=BandedPattern(tband=10))
-inst3 = VerificationInstance(net=ffnet, input=input, safety=safety, β=3, pattern=BandedPattern(tband=10))
-inst4 = VerificationInstance(net=ffnet, input=input, safety=safety, β=4, pattern=BandedPattern(tband=10))
-inst5 = VerificationInstance(net=ffnet, input=input, safety=safety, β=5, pattern=BandedPattern(tband=10))
-=#
-
-# big_deepopts = DeepSdpOptions(setupMethod=BigSetup(), verbose=true)
-# sumx_deepopts = DeepSdpOptions(setupMethod=SumXSetup(), verbose=true)
-# solndeep = DeepSdp.run(inst, deepopts)
-# println(solndeep)
-
-# sumx_splitopts = SplitSdpOptions(setupMethod=SumXThenSplitSetup(), verbose=true)
-# solnsplit = SplitSdp.run(inst, splitopts)
-# println(solnsplit)
-
-
-
-# Tests.testXSumWhole(inst)
-
 

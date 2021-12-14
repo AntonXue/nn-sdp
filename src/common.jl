@@ -72,28 +72,6 @@ function Faff(k :: Int, b ::Int, zdims :: Vector{Int})
   return E(b+3, Ckdims)
 end
 
-# Make the A matrix
-function makeA(ffnet :: FeedForwardNetwork)
-  edims = ffnet.zdims[1:end-1]
-  fdims = edims[2:end]
-  A = sum(E(j, fdims)' * ffnet.Ms[j][1:end, 1:end-1] * E(j, edims) for j in 1:ffnet.K-1)
-  return A
-end
-
-# The b stacked vector
-function makeb(ffnet :: FeedForwardNetwork)
-  b = vcat([ffnet.Ms[j][1:end, end] for j in 1:ffnet.K-1]...)
-  return b
-end
-
-# Make the B matrix
-function makeB(ffnet :: FeedForwardNetwork)
-  edims = ffnet.zdims[1:end-1]
-  fdims = edims[2:end]
-  B = sum(E(j, fdims)' * E(j+1, edims) for j in 1:ffnet.K-1)
-  return B
-end
-
 # Make the Ack matrix, for 1 <= k + b <= K, to include all the transitions
 function makeAck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
   @assert k >= 1 && b >= 1
@@ -134,8 +112,8 @@ function makePbox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, γ)
 end
 
 # P function for a polytope
-function makePpolytope(H , h, Γ)
-  @assert true
+function makePpolytope(H :: Matrix{Float64}, h :: Vector{Float64}, Γ)
+  @assert size(H)[1] == length(h)
   _P11 = H' * Γ * H
   _P12 = -H' * Γ * h
   _P22 = h' * Γ * h
@@ -303,7 +281,6 @@ end
 function makeΩinv(b :: Int, zdims :: Vector{Int})
   @assert 1 <= length(zdims) - b - 2
   @assert zdims[end] == 1
-
   Ω = makeΩ(b, zdims)
   Ωinv = 1 ./ Ω
   Ωinv[isinf.(Ωinv)] .= 0
@@ -311,7 +288,10 @@ function makeΩinv(b :: Int, zdims :: Vector{Int})
 end
 
 # Propagate a box through the network
-function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet :: FeedForwardNetwork; ε = 1e-6)
+  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
+
+  # The activation function
   function ϕ(x)
     if ffnet.type isa ReluNetwork; return max.(x, 0)
     elseif ffnet.type isa TanhNetwork; return tanh.(x)
@@ -319,16 +299,49 @@ function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet 
     end
   end
 
-  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
+  # Calculate a min vector and a max vector of the slope bounds
+  function slopeBounds(ymin, ymax)
+    @assert length(ymin) == length(ymax)
+    if ffnet.type isa ReluNetwork
+      # Determine the Ipos and Ineg set in order to calculate slims
+      Ipos = findall(z -> z > ε, ymin)
+      Ineg = findall(z -> z < -ε, ymax)
+      smin = zeros(length(ymin))
+      smin[Ipos] .= 1.0
+      smax = zeros(length(ymax))
+      smax[Ineg] .= 0.0
+      return smin, smax
 
-  # The inputs to the activation functions; should be K-1 of them
-  ylimss = Vector{Any}()
+    elseif ffnet.type isa TanhNetwork
+      Iminmaxpos = [if a * b >= 0; 1 else 0 end for (a, b) in zip(ymin, ymax)]
+      smin = zeros(length(ymin))
+      smax = zeros(length(ymax))
+      for i in 1:length(ymin)
+        if ymin[i] * ymax[i] >= 0
+          smin[i] = tanh(ymax[i]) / ymax[i]
+          smax[i] = tanh(ymin[i]) / ymin[i]
+        else
+          smin[i] = min(tanh(ymin[i]) / ymin[i], tanh(ymax[i]) / ymax[i])
+          smax[i] = 1
+        end
+      end
+      return smin, smax
+    else
+      error("unsupported network: " * string(ffnet))
+    end
+  end
 
   # The state limits right after each activation
-  xlimss = Vector{Any}()
-  push!(xlimss, (x1min, x1max))
-  xkmin, xkmax = x1min, x1max
+  xlims = Vector{Any}()
+  push!(xlims, (x1min, x1max))
 
+  # The inputs to the activation functions; should be K-1 of them
+  ylims = Vector{Any}()
+
+  # All the slope bounds
+  slims = Vector{Any}()
+
+  xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)
     Wk, bk = Mk[1:end, 1:end-1], Mk[1:end, end]
     ykmin = (max.(Wk, 0) * xkmin) + (min.(Wk, 0) * xkmax) + bk
@@ -337,14 +350,17 @@ function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet 
     if k == ffnet.K
       xkmin, xkmax = ykmin, ykmax
     else
-      push!(ylimss, (ykmin, ykmax))
+      smin, smax = slopeBounds(ykmin, ykmax)
+      push!(ylims, (ykmin, ykmax))
+      push!(slims, (smin, smax))
       xkmin, xkmax = ϕ(ykmin), ϕ(ykmax)
     end
-    push!(xlimss, (xkmin, xkmax))
+    push!(xlims, (xkmin, xkmax))
   end
-  return xlimss, ylimss
-end
 
+  # Each is a list of tuple of vectors, for flexibility; vcat as needed
+  return xlims, ylims, slims
+end
 
 # Slowly using up the English alphabet
 export e, E, Ec, F, FK, Faff
