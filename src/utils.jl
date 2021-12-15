@@ -8,6 +8,8 @@ using DelimitedFiles
 using Random
 using Plots
 
+pyplot()
+
 # Write some data (hopefully Float64-based) to a file
 function fileWriteFloat64(data, file :: String)
   open(file, "w") do io
@@ -98,12 +100,52 @@ function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; img
   savefig(p, imgfile)
 end
 
+# Plot bouding hyperplanes for 2D points
+function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{Tuple{Vector{Float64}, Float64}}; imgfile="~/Desktop/foo.png")
+  @assert all(z -> z == 2, length.(points))
+  @assert length(hplanes) >= 3
+  @assert all(hp -> length(hp[1]) == 2 && hp[2] isa Float64, hplanes)
+
+  xs = [p[1] for p in points]
+  ys = [p[2] for p in points]
+
+  augs = [hplanes; hplanes[1]; hplanes[2]]
+
+  verts = Vector{Any}()
+  for i in 1:(length(augs)-1)
+    n1, h1 = augs[i]
+    n2, h2 = augs[i+1]
+    x = [n1'; n2'] \ [h1; h2]
+    push!(verts, x)
+  end
+
+  vxs = [v[1] for v in verts]
+  vys = [v[2] for v in verts]
+
+  # Figure out how to plot
+
+  xmin, xmax = minimum([xs; vxs]), maximum([xs; vxs])
+  ymin, ymax = minimum([ys; vys]), maximum([ys; vys])
+
+  xgap = xmax - xmin
+  ygap = ymax - ymin
+
+  plotxlim = (xmin - 0.4 * xgap, xmax + 0.4 * xgap)
+  plotylim = (ymin - 0.4 * ygap, ymax + 0.4 * ygap)
+  # Begin plotting
+  plt = plot()
+  plt = plot!(vxs, vys, color=:red)
+  plt = scatter!(xs, ys, markersize=4, alpha=0.3, color=:blue, xlim=plotxlim, ylim=plotylim)
+  savefig(plt, imgfile)
+  return plt
+end
 
 #
 export fileWriteFloat64, fileReadFloat64
 export inputUnitBox, safetyNormBound
 export randomNetwork
 export runNetwork, randomTrajectories, runAndPlotRandomTrajectories
+export plotReachPolytope
 
 end # End Module
 

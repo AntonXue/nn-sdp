@@ -121,17 +121,17 @@ function makePpolytope(H :: Matrix{Float64}, h :: Vector{Float64}, Γ)
   return P
 end
 
-# Bounding hyperplane such that c' * f(x) <= d, for variable d
-function makeShyperplane(c :: Vector{Float64}, d, ffnet :: FeedForwardNetwork)
+# Bounding hyperplane such that normal' * f(x) <= h, for variable h
+function makeShyperplane(normal :: Vector{Float64}, h, ffnet :: FeedForwardNetwork)
   d1 = ffnet.xdims[1]
   dK1 = ffnet.xdims[end]
-  @assert length(c) == dK1
+  @assert length(normal) == dK1
   _S11 = zeros(d1, d1)
   _S12 = zeros(d1, dK1)
   _S13 = zeros(d1)
   _S22 = zeros(dK1, dK1)
-  _S23 = c
-  _S33 = -2 * d
+  _S23 = normal
+  _S33 = -2 * h
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return S
 end

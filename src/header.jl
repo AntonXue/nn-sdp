@@ -57,14 +57,10 @@ end
 # Reachability Constraints
 abstract type ReachableSet end
 
-# Given a hyperplane normals c1, ..., cm, find d1, ..., dm such that each ck' * x <= dk
+# Given a hyperplane normals such that each normalk' * x <= hk
 @with_kw struct HyperplaneSet <: ReachableSet
-  normals :: Vector{Vector{Float64}}
-  @assert length(normals) >= 0
-
-  # Sanity check, they must all be th same dimensions
-  _dims :: Vector{Int} = length.(normals)
-  @assert all(y -> y == _dims[1], _dims)
+  normal :: Vector{Float64}
+  @assert length(normal) >= 1
 end
 
 #
@@ -85,10 +81,11 @@ end
 end
 
 # The solution that is to be output by an algorithm
-@with_kw struct SolutionOutput{A, B, C}
-  values :: A
-  summary :: B
-  status :: C
+@with_kw struct SolutionOutput{A, B, C, D}
+  objective_value :: A
+  values :: B
+  summary :: C
+  termination_status :: D
   total_time :: Float64
   setup_time :: Float64
   solve_time :: Float64
