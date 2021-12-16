@@ -57,9 +57,21 @@ x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 rand_x_intvs, _, rand_slope_intvs = randomizedPropagation(input.x1min, input.x1max, ffnet, 100000)
 xfs = randomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
+deep_opts = DeepSdpOptions(x_intervals=nothing, slope_intervals=slope_intvs, verbose=true)
+
+only_x_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=nothing, verbose=true)
+only_slope_opts = DeepSdpOptions(x_intervals=nothing, slope_intervals=slope_intvs, verbose=true)
+none_opts = DeepSdpOptions(x_intervals=nothing, slope_intervals=nothing, verbose=true)
 deep_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+
+only_slope_soln = DeepSdp.run(reach_inst1, only_slope_opts)
+only_x_soln = DeepSdp.run(reach_inst1, only_x_opts)
+none_soln = DeepSdp.run(reach_inst1, none_opts)
+deep_soln = DeepSdp.run(reach_inst1, deep_opts)
+
+
+
 #=
-deep_reach_soln1 = DeepSdp.run(reach_inst1, deep_opts)
 deep_reach_soln2 = DeepSdp.run(reach_inst2, deep_opts)
 deep_reach_soln3 = DeepSdp.run(reach_inst3, deep_opts)
 deep_reach_soln4 = DeepSdp.run(reach_inst4, deep_opts)
@@ -69,8 +81,8 @@ deep_reach_soln7 = DeepSdp.run(reach_inst7, deep_opts)
 deep_reach_soln8 = DeepSdp.run(reach_inst8, deep_opts)
 =#
 
-split_opts = SplitSdpOptions(β=3, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
 #=
+split_opts = SplitSdpOptions(β=3, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
 split_reach_soln1 = SplitSdp.run(reach_inst1, split_opts)
 split_reach_soln2 = SplitSdp.run(reach_inst2, split_opts)
 split_reach_soln3 = SplitSdp.run(reach_inst3, split_opts)

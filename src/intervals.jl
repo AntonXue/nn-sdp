@@ -15,7 +15,7 @@ function slopeBounds(ymin :: Vector{Float64}, ymax :: Vector{Float64}, ffnet :: 
     Ineg = findall(z -> z < -ε, ymax)
     ϕa = zeros(length(ymin))
     ϕa[Ipos] .= 1.0
-    ϕb = zeros(length(ymax))
+    ϕb = ones(length(ymax))
     ϕb[Ineg] .= 0.0
     return ϕa, ϕb
 

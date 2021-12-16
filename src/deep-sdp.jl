@@ -12,8 +12,8 @@ using Mosek
 
 # Configuration options
 @with_kw struct DeepSdpOptions
-  x_intervals :: Vector{Tuple{Vector{Float64}, Vector{Float64}}} = nothing
-  slope_intervals :: Vector{Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  x_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  slope_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
   verbose :: Bool = false
 end
 
