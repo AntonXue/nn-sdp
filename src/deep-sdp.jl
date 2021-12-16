@@ -3,6 +3,7 @@ module DeepSdp
 
 using ..Header
 using ..Common
+using ..Intervals
 using Parameters
 using LinearAlgebra
 using JuMP
@@ -11,29 +12,9 @@ using Mosek
 
 # Configuration options
 @with_kw struct DeepSdpOptions
-  use_xintervals :: Bool = true
-  use_localized_slopes :: Bool = true
+  x_intervals :: Vector{Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  slope_intervals :: Vector{Tuple{Vector{Float64}, Vector{Float64}}} = nothing
   verbose :: Bool = false
-end
-
-# Find pairs the limits of form (x[k+1], s[k])
-function findLimits(inst, opts :: DeepSdpOptions)
-  if !hasproperty(inst, :input); return nothing, nothing end
-
-  if inst.input isa BoxInput && (opts.use_xintervals || opts.use_localized_slopes)
-    xlimTups, _, slimTups = propagateBox(inst.input.x1min, inst.input.x1max, inst.ffnet)
-    xmin = vcat([xl[1] for xl in xlimTups[2:end-1]]...) # Only care about the intermediates
-    xmax = vcat([xl[2] for xl in xlimTups[2:end-1]]...)
-    xlims = opts.use_xintervals ? (xmin, xmax) : nothing
-
-    smin = vcat([sl[1] for sl in slimTups]...)
-    smax = vcat([sl[2] for sl in slimTups]...)
-    slims = opts.use_localized_slopes ? (smin, smax) : nothing
-    return xlims, slims
-  else
-    # @warn "Propagation bounds available for BoxInput only"
-    return nothing, nothing
-  end
 end
 
 # Computes the MinP matrix. Treat this function as though it modifies the model
@@ -65,7 +46,7 @@ function makeMoutS!(model, S, ffnet :: FeedForwardNetwork, opts :: DeepSdpOption
 end
 
 # Make the MmidQ matrix. Treat this function as though it modifies the model
-function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions; xlims = nothing, slims = nothing)
+function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   qxdim = sum(ffnet.zdims[2:end-1])
   if ffnet.type isa ReluNetwork
     @variable(model, λ[1:qxdim] >= 0)
@@ -75,7 +56,9 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions; 
     @variable(model, d[1:qxdim] >= 0)
     β = ffnet.K - 1
     vars = (λ, τ, η, ν, d)
-    MmidQ = makeXk(1, β, vars, ffnet, xlims=xlims, slims=slims)
+    ϕout_intv = (opts.x_intervals isa Nothing) ? nothing : selectϕoutIntervals(1, β, opts.x_intervals)
+    slope_intv = (opts.slope_intervals isa Nothing) ? nothing : selectSlopeIntervals(1, β, opts.slope_intervals)
+    MmidQ = makeXk(1, β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
     return MmidQ, Dict(:λ => λ, :τ => τ, :η => η, :ν => ν, :d => d)
   else
     error("unsupported network: " * string(ffnet))
@@ -86,12 +69,9 @@ end
 function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
   setup_start_time = time()
 
-  # Interval propagation
-  xlims, slims = findLimits(inst, opts)
-
   # Make the components
   MinP, Pvars = makeMinP!(model, inst.input, inst.ffnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, inst.ffnet, opts, xlims=xlims, slims=slims)
+  MmidQ, Qvars = makeMmidQ!(model, inst.ffnet, opts)
   MoutS = makeMoutS!(model, inst.safety.S, inst.ffnet, opts)
 
   # Now the LMI
@@ -110,15 +90,13 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
   @assert inst.reach_set isa HyperplaneSet
   setup_start_time = time()
 
-  # Interval propagation
-  xlims, slims = findLimits(inst, opts)
-
   # Make MinP and MmidQ first
   MinP, Pvars = makeMinP!(model, inst.input, inst.ffnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, inst.ffnet, opts, xlims=xlims, slims=slims)
+  MmidQ, Qvars = makeMmidQ!(model, inst.ffnet, opts)
 
   # Now set up MoutS
   @variable(model, h)
+  Svars = Dict(:h => h)
   S = makeShyperplane(inst.reach_set.normal, h, inst.ffnet)
   MoutS = makeMoutS!(model, S, inst.ffnet, opts)
 
@@ -128,7 +106,7 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
   @objective(model, Min, h)
 
   # Calculate setup times and return
-  vars = merge(Dict(:h => h), Pvars, Qvars)
+  vars = merge(Pvars, Qvars, Svars)
   setup_time = round(time() - setup_start_time, digits=2)
   if opts.verbose; println("setup time: " * string(setup_time)) end
   return model, vars, setup_time
@@ -151,7 +129,7 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-6))
+    "INTPNT_CO_TOL_DFEAS" => 1e-9))
 
   # Delegate the appropriate call depending on our query instance
   if inst isa SafetyInstance

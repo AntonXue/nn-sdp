@@ -1,10 +1,11 @@
 #
 include("header.jl"); using .Header
 include("common.jl"); using .Common
+include("intervals.jl"); using .Intervals
 include("utils.jl"); using .Utils
 include("deep-sdp.jl"); using .DeepSdp
 include("split-sdp.jl"); using .SplitSdp
-# include("tests.jl"); using .Tests
+include("tests.jl"); using .Tests
 
 using LinearAlgebra
 using JuMP
@@ -24,10 +25,10 @@ ffnet = randomNetwork(xdims, σ=0.5)
 # Plot some trajectories
 
 xcenter = ones(ffnet.xdims[1])
-ε = 0.01
+ε = 0.1
 input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
 # input = BoxInput(x1min=-ones(xdims[1]), x1max=ones(xdims[1]))
-runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
+# runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
 norm2 = 50^2
 safety = safetyNormBound(norm2, xdims)
@@ -52,42 +53,125 @@ reach_inst7 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane7)
 reach_inst8 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane8)
 
 #
-plain_opts = DeepSdpOptions(use_xintervals=false, use_localized_slopes=false, verbose=true)
-xintv_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=false, verbose=true)
-sintv_opts = DeepSdpOptions(use_xintervals=false, use_localized_slopes=true, verbose=true)
-all_opts = DeepSdpOptions(use_xintervals=true, use_localized_slopes=true, verbose=true)
+x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
+rand_x_intvs, _, rand_slope_intvs = randomizedPropagation(input.x1min, input.x1max, ffnet, 100000)
+xfs = randomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
-deep_safety_soln = DeepSdp.run(safety_inst, all_opts)
-deep_reach_soln1 = DeepSdp.run(reach_inst1, all_opts)
+deep_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+#=
+deep_reach_soln1 = DeepSdp.run(reach_inst1, deep_opts)
+deep_reach_soln2 = DeepSdp.run(reach_inst2, deep_opts)
+deep_reach_soln3 = DeepSdp.run(reach_inst3, deep_opts)
+deep_reach_soln4 = DeepSdp.run(reach_inst4, deep_opts)
+deep_reach_soln5 = DeepSdp.run(reach_inst5, deep_opts)
+deep_reach_soln6 = DeepSdp.run(reach_inst6, deep_opts)
+deep_reach_soln7 = DeepSdp.run(reach_inst7, deep_opts)
+deep_reach_soln8 = DeepSdp.run(reach_inst8, deep_opts)
+=#
 
-#
-split_opts1 = SplitSdpOptions(β=1, verbose=true)
-split_opts2 = SplitSdpOptions(β=2, verbose=true)
-split_opts3 = SplitSdpOptions(β=3, verbose=true)
-
-split_safety_soln1 = SplitSdp.run(safety_inst, split_opts1)
-split_reach_soln3 = SplitSdp.run(reach_inst1, split_opts3)
-
+split_opts = SplitSdpOptions(β=3, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+#=
+split_reach_soln1 = SplitSdp.run(reach_inst1, split_opts)
+split_reach_soln2 = SplitSdp.run(reach_inst2, split_opts)
+split_reach_soln3 = SplitSdp.run(reach_inst3, split_opts)
+split_reach_soln4 = SplitSdp.run(reach_inst4, split_opts)
+split_reach_soln5 = SplitSdp.run(reach_inst5, split_opts)
+split_reach_soln6 = SplitSdp.run(reach_inst6, split_opts)
+split_reach_soln7 = SplitSdp.run(reach_inst7, split_opts)
+split_reach_soln8 = SplitSdp.run(reach_inst8, split_opts)
+=#
 
 
 
 #=
-reach_hplanes = [
-  ([0.0, 1.0], 3.66),
-  ([1.0, 1.0], -6.75),
-  ([1.0, 0.0], -10.41),
-  ([1.0, -1.0], -14.02),
-  ([0.0, -1.0], -3.40),
-  ([-1.0, -1.0], 7.26),
-  ([-1.0, 0.0], 10.67),
-  ([-1.0, 1.0], 14.16)]
+println("about to run randomized ones!")
+
+rand_deep_opts = DeepSdpOptions(x_intervals=rand_x_intvs, slope_intervals=rand_slope_intvs, verbose=true)
+rand_deep_reach_soln1 = DeepSdp.run(reach_inst1, rand_deep_opts)
+rand_deep_reach_soln2 = DeepSdp.run(reach_inst2, rand_deep_opts)
+rand_deep_reach_soln3 = DeepSdp.run(reach_inst3, rand_deep_opts)
+rand_deep_reach_soln4 = DeepSdp.run(reach_inst4, rand_deep_opts)
+rand_deep_reach_soln5 = DeepSdp.run(reach_inst5, rand_deep_opts)
+rand_deep_reach_soln6 = DeepSdp.run(reach_inst6, rand_deep_opts)
+rand_deep_reach_soln7 = DeepSdp.run(reach_inst7, rand_deep_opts)
+rand_deep_reach_soln8 = DeepSdp.run(reach_inst8, rand_deep_opts)
 =#
 
-# reach_hplanes = split_soln1.values[:hplanes]
+# println("Getting ready to plot!")
 
-# plt1 = plotReachPolytope(xfs, split_soln1.values[:hplanes], imgfile="~/Desktop/foo1.png")
-# plt2 = plotReachPolytope(xfs, split_soln2.values[:hplanes], imgfile="~/Desktop/foo2.png")
-# plt3 = plotReachPolytope(xfs, split_soln3.values[:hplanes], imgfile="~/Desktop/foo3.png")
+# Reach hyperplanes
+#=
+reach_hplanes = [
+  (reach_inst1.reach_set.normal, deep_reach_soln1.values[:h]),
+  (reach_inst2.reach_set.normal, deep_reach_soln2.values[:h]),
+  (reach_inst3.reach_set.normal, deep_reach_soln3.values[:h]),
+  (reach_inst4.reach_set.normal, deep_reach_soln4.values[:h]),
+  (reach_inst5.reach_set.normal, deep_reach_soln5.values[:h]),
+  (reach_inst6.reach_set.normal, deep_reach_soln6.values[:h]),
+  (reach_inst7.reach_set.normal, deep_reach_soln7.values[:h]),
+  (reach_inst8.reach_set.normal, deep_reach_soln8.values[:h])
+]
+=#
 
+#=
+split_reach_hplanes = [
+  (reach_inst1.reach_set.normal, split_reach_soln1.values[:h]),
+  (reach_inst2.reach_set.normal, split_reach_soln2.values[:h]),
+  (reach_inst3.reach_set.normal, split_reach_soln3.values[:h]),
+  (reach_inst4.reach_set.normal, split_reach_soln4.values[:h]),
+  (reach_inst5.reach_set.normal, split_reach_soln5.values[:h]),
+  (reach_inst6.reach_set.normal, split_reach_soln6.values[:h]),
+  (reach_inst7.reach_set.normal, split_reach_soln7.values[:h]),
+  (reach_inst8.reach_set.normal, split_reach_soln8.values[:h])
+]
+=#
+
+#=
+rand_reach_hplanes = [
+  (reach_inst1.reach_set.normal, rand_deep_reach_soln1.values[:h]),
+  (reach_inst2.reach_set.normal, rand_deep_reach_soln2.values[:h]),
+  (reach_inst3.reach_set.normal, rand_deep_reach_soln3.values[:h]),
+  (reach_inst4.reach_set.normal, rand_deep_reach_soln4.values[:h]),
+  (reach_inst5.reach_set.normal, rand_deep_reach_soln5.values[:h]),
+  (reach_inst6.reach_set.normal, rand_deep_reach_soln6.values[:h]),
+  (reach_inst7.reach_set.normal, rand_deep_reach_soln7.values[:h]),
+  (reach_inst8.reach_set.normal, rand_deep_reach_soln8.values[:h])
+]
+=#
+
+
+
+
+# plt1 = plotReachPolytope(xfs, reach_hplanes, imgfile="~/Desktop/deep-reach.png")
+# plt2 = plotReachPolytope(xfs, split_reach_hplanes, imgfile="~/Desktop/split-reach.png")
+
+
+#
+#=
+# split_opts = SplitSdpOptions(β=1, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+split_opts = SplitSdpOptions(β=1, x_intervals=rand_x_intvs, slope_intervals=rand_slope_intvs, verbose=true)
+
+split_reach_soln1 = SplitSdp.run(reach_inst1, split_opts)
+split_reach_soln2 = SplitSdp.run(reach_inst2, split_opts)
+split_reach_soln3 = SplitSdp.run(reach_inst3, split_opts)
+split_reach_soln4 = SplitSdp.run(reach_inst4, split_opts)
+split_reach_soln5 = SplitSdp.run(reach_inst5, split_opts)
+split_reach_soln6 = SplitSdp.run(reach_inst6, split_opts)
+split_reach_soln7 = SplitSdp.run(reach_inst7, split_opts)
+split_reach_soln8 = SplitSdp.run(reach_inst8, split_opts)
+
+split_reach_hplanes = [
+  (reach_inst1.reach_set.normal, split_reach_soln1.values[:h]),
+  (reach_inst2.reach_set.normal, split_reach_soln2.values[:h]),
+  (reach_inst3.reach_set.normal, split_reach_soln3.values[:h]),
+  (reach_inst4.reach_set.normal, split_reach_soln4.values[:h]),
+  (reach_inst5.reach_set.normal, split_reach_soln5.values[:h]),
+  (reach_inst6.reach_set.normal, split_reach_soln6.values[:h]),
+  (reach_inst7.reach_set.normal, split_reach_soln7.values[:h]),
+  (reach_inst8.reach_set.normal, split_reach_soln8.values[:h])
+]
+
+plt = plotReachPolytope(xfs, split_reach_hplanes, imgfile="~/Desktop/beta1-rand.png")
+=#
 
 

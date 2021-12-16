@@ -3,6 +3,7 @@ module SplitSdp
 
 using ..Header
 using ..Common
+using ..Intervals
 using Parameters
 using LinearAlgebra
 using JuMP
@@ -12,46 +13,9 @@ using Mosek
 # Options
 @with_kw struct SplitSdpOptions
   β :: Int = 1
-  use_xintervals :: Bool = true
-  use_localized_slopes :: Bool = true
+  x_intervals :: Vector{Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  slope_intervals :: Vector{Tuple{Vector{Float64}, Vector{Float64}}} = nothing
   verbose :: Bool = false
-end
-
-# Calculate the interval propagation
-function findLimitTuples(inst, opts :: SplitSdpOptions)
-  if !hasproperty(inst, :input); return nothing, nothing end
-
-  if inst.input isa BoxInput && (opts.use_xintervals || opts.use_localized_slopes)
-    xlimTups, _, slimTups = propagateBox(inst.input.x1min, inst.input.x1max, inst.ffnet)
-    xlimTups = opts.use_xintervals ? xlimTups : nothing
-    slimTups = opts.use_localized_slopes ? slimTups : nothing
-    return xlimTups, slimTups
-  else
-    return nothing, nothing
-  end
-end
-
-# Find the pair of limits for (x[k+1], s[k]), ..., (x[k+b], s[k+b-1])
-# This is because Ck has {x[k], x[k+1], ..., x[k+β]},
-# so the outputs are x[k+1] ... x[k+β] and the inputs are x[k] ... x[k+β-1]
-function selectLimits(k :: Int, β :: Int, xlimTups, slimTups)
-  if xlimTups isa Nothing
-    xlims = nothing
-  else
-    xmin = vcat([xl[1] for xl in xlimTups[k+1:k+β]]...)
-    xmax = vcat([xl[2] for xl in xlimTups[k+1:k+β]]...)
-    xlims = (xmin, xmax)
-  end
-
-  if slimTups isa Nothing
-    slims = nothing
-  else
-    smin = vcat([sl[1] for sl in slimTups[k:k+β-1]]...)
-    smax = vcat([sl[2] for sl in slimTups[k:k+β-1]]...)
-    slims = (smin, smax)
-  end
-
-  return xlims, slims
 end
 
 # Treat this as though it modifies the model
@@ -74,7 +38,7 @@ function makeSplitXsafe!(model, S, ffnet :: FeedForwardNetwork, opts :: SplitSdp
 end
 
 # Treat this as though it modifies the model
-function makeSplitXk!(model, k :: Int, xcklims, scklims, ffnet :: FeedForwardNetwork, opts :: SplitSdpOptions)
+function makeSplitXk!(model, k :: Int, ffnet :: FeedForwardNetwork, opts :: SplitSdpOptions)
   qxdim = sum(ffnet.zdims[k+1:k+opts.β])
   if ffnet.type isa ReluNetwork
     λ = @variable(model, [1:qxdim])
@@ -90,7 +54,10 @@ function makeSplitXk!(model, k :: Int, xcklims, scklims, ffnet :: FeedForwardNet
     @constraint(model, d[1:qxdim] .>= 0)
 
     vars = (λ, τ, η, ν, d)
-    Xk = makeXk(k, opts.β, vars, ffnet, xlims=xcklims, slims=scklims)
+    ϕout_intv = (opts.x_intervals isa Nothing) ? nothing : selectϕoutIntervals(k, opts.β, opts.x_intervals)
+    slope_intv = (opts.slope_intervals isa Nothing) ? nothing : selectSlopeIntervals(k, opts.β, opts.slope_intervals)
+    Xk = makeXk(k, opts.β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+
     symk(v :: String) = Symbol(v * string(k))
     return Xk, Dict(symk("λ") => λ, symk("τ") => τ, symk("η") => η, symk("ν") => ν, symk("d") => d)
   else
@@ -98,12 +65,9 @@ function makeSplitXk!(model, k :: Int, xcklims, scklims, ffnet :: FeedForwardNet
   end
 end
 
-#
+# Solve the safety problem by decomposing it into K-β-1 smaller LMIs
 function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
   setup_start_time = time()
-
-  # Interval propagation
-  xlimTups, slimTups = findLimitTuples(inst, opts)
 
   # Some helpful block index matrices
   E1 = E(1, inst.ffnet.zdims)
@@ -119,24 +83,23 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
 
   # Make each Zk and add them to Z
   Qvars = Dict()
-  numXks = inst.ffnet.K - opts.β
-  for k in 1:numXks
-    if opts.verbose; println("making X[" * string(k) * "/" * string(numXks) * "]") end
+  num_Xks = inst.ffnet.K - opts.β
+  for k in 1:num_Xks
+    if opts.verbose; println("making X[" * string(k) * "/" * string(num_Xks) * "]") end
     Ekβ = E(k, opts.β, inst.ffnet.zdims)
     EXk = [Ekβ; Ea]
-    xcklims, scklims = selectLimits(k, opts.β, xlimTups, slimTups)
-    Xk, Qkvars = makeSplitXk!(model, k, xcklims, scklims, inst.ffnet, opts)
+    Xk, Qkvars = makeSplitXk!(model, k, inst.ffnet, opts)
     Z = Z + (EXk' * Xk * EXk)
     merge!(Qvars, Qkvars)
   end
 
   # Select and assert that each Zk is NSD
   Ωinv = makeΩinv(opts.β, inst.ffnet.zdims)
-  scaledZ = Z .* Ωinv
-  numCliques = inst.ffnet.K - opts.β - 1
-  for k = 1:numCliques
+  Zscaled = Z .* Ωinv
+  num_cliques = inst.ffnet.K - opts.β - 1
+  for k = 1:num_cliques
     Eck = Ec(k, opts.β, inst.ffnet.zdims)
-    Zk = Eck * scaledZ * Eck'
+    Zk = Eck * Zscaled * Eck'
     @SDconstraint(model, Zk <= 0)
   end
 
@@ -147,12 +110,9 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
   return model, vars, setup_time
 end
 
-#
+# Solve the hyperplane reachability problem by decomposing it into K-β-1 smaller LMIs
 function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts :: SplitSdpOptions)
   setup_start_time = time()
-
-  # Interval propagation
-  xlimTups, slimTups = findLimitTuples(inst, opts)
 
   # Some helpful block index matrices
   E1 = E(1, inst.ffnet.zdims)
@@ -174,24 +134,23 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
 
   # Make each Zk and add them to Z
   Qvars = Dict()
-  numXks = inst.ffnet.K - opts.β
-  for k in 1:numXks
-    if opts.verbose; println("making X[" * string(k) * "/" * string(numXks) * "]") end
+  num_Xks = inst.ffnet.K - opts.β
+  for k in 1:num_Xks
+    if opts.verbose; println("making X[" * string(k) * "/" * string(num_Xks) * "]") end
     Ekβ = E(k, opts.β, inst.ffnet.zdims)
     EXk = [Ekβ; Ea]
-    xcklims, scklims = selectLimits(k, opts.β, xlimTups, slimTups)
-    Xk, Qkvars = makeSplitXk!(model, k, xcklims, scklims, inst.ffnet, opts)
+    Xk, Qkvars = makeSplitXk!(model, k, inst.ffnet, opts)
     Z = Z + (EXk' * Xk * EXk)
     merge!(Qvars, Qkvars)
   end
 
   # Select and assert that each Zk is NSD
   Ωinv = makeΩinv(opts.β, inst.ffnet.zdims)
-  scaledZ = Z .* Ωinv
-  numCliques = inst.ffnet.K - opts.β - 1
-  for k = 1:numCliques
+  Zscaled = Z .* Ωinv
+  num_cliques = inst.ffnet.K - opts.β - 1
+  for k = 1:num_cliques
     Eck = Ec(k, opts.β, inst.ffnet.zdims)
-    Zk = Eck * scaledZ * Eck'
+    Zk = Eck * Zscaled * Eck'
     @SDconstraint(model, Zk <= 0)
   end
 
@@ -223,7 +182,7 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-6))
+    "INTPNT_CO_TOL_DFEAS" => 1e-9))
 
   # Delegate the appropriate call depending on our query instance
   if inst isa SafetyInstance

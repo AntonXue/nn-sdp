@@ -148,37 +148,40 @@ function makeT(dim :: Int, τ)
   return T
 end
 
-# Make Q with help of xlims where we are known to have bounded activation
-function makeQbounded(qxdim :: Int, d, xlims :: Tuple{Vector{Float64}, Vector{Float64}})
-  xmin, xmax = xlims
-  @assert all(xmin .<= xmax)
-  @assert -Inf < minimum(xmin) && maximum(xmax) < Inf
-  @assert length(d) == length(xmin) == length(xmax) == qxdim
+# Make Q with help of the ϕ(x) bounds
+function makeQϕout(qxdim :: Int, d, ϕout_intv :: Tuple{Vector{Float64}, Vector{Float64}})
+  ϕmin, ϕmax = ϕout_intv
+  @assert all(ϕmin .<= ϕmax)
+  @assert -Inf < minimum(ϕmin) && maximum(ϕmax) < Inf
+  @assert length(d) == length(ϕmin) == length(ϕmax) == qxdim
 
   D = diagm(d)
   _Q11 = zeros(qxdim, qxdim)
   _Q12 = zeros(qxdim, qxdim)
   _Q13 = zeros(qxdim)
   _Q22 = -2 * D
-  _Q23 = D * (xmin + xmax)
-  _Q33 = -2 * xmin' * D * xmax
+  _Q23 = D * (ϕmin + ϕmax)
+  _Q33 = -2 * ϕmin' * D * ϕmax
   Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
   return Q
 end
 
 # Make the Q relu, optionally enabling localized slope limits
-function makeQrelu(qxdim :: Int, λ, τ, η, ν; slims = (zeros(qxdim), ones(qxdim)), ε = 1e-6)
+function makeQrelu(qxdim :: Int, λ, τ, η, ν, slope_intv :: Tuple{Vector{Float64}, Vector{Float64}})
   @assert length(λ) == length(η) == length(ν) == qxdim
   @assert size(τ) == (qxdim, qxdim)
-  smin, smax = slims
-  @assert -ε <= minimum(smin) && maximum(smin) <= 1 + ε
-  @assert -ε <= minimum(smax) && maximum(smax) <= 1 + ε
+
+  ε = 1e-6
+  ϕa, ϕb = slope_intv
+  @assert length(ϕa) == length(ϕb)
+  @assert -ε <= minimum(ϕa) && maximum(ϕa) <= 1 + ε
+  @assert -ε <= minimum(ϕb) && maximum(ϕb) <= 1 + ε
 
   T = makeT(qxdim, τ)
   s0, s1 = 0, 1
-  _Q11 = -2 * diagm(smin .* smax .* λ) - 2 * (s0 * s1 * T)
-  _Q12 = diagm((smin + smax) .* λ) + (s0 + s1) * T
-  _Q13 = -(smin .* η) - (smax .* ν)
+  _Q11 = -2 * diagm(ϕa .* ϕb .* λ) - 2 * (s0 * s1 * T)
+  _Q12 = diagm((ϕa + ϕb) .* λ) + (s0 + s1) * T
+  _Q13 = -(ϕa .* η) - (ϕb.* ν)
   _Q22 = -2 * T
   _Q23 = η + ν
   _Q33 = 0
@@ -187,7 +190,7 @@ function makeQrelu(qxdim :: Int, λ, τ, η, ν; slims = (zeros(qxdim), ones(qxd
 end
 
 # Make an Xk, optionally enabling x bounds and slope limits
-function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; xlims = nothing, slims = nothing)
+function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
   qxdim = sum(ffnet.zdims[k+1:k+b])
@@ -198,16 +201,12 @@ function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; xlims = n
     @assert length(λ) == length(η) == length(ν) == length(d) == qxdim
     @assert size(τ) == (qxdim, qxdim)
 
-    # If slope limits are non-trivial, use them
-    if slims isa Nothing
-      Q = makeQrelu(qxdim, λ, τ, η, ν)
-    else
-      Q = makeQrelu(qxdim, λ, τ, η, ν, slims=slims)
-    end
+    slope_intv = (slope_intv isa Nothing) ? (zeros(qxdim), ones(qxdim)) : slope_intv
+    Q = makeQrelu(qxdim, λ, τ, η, ν, slope_intv)
 
-    # If x limits exist and are not infinite, use them
-    if !(xlims isa Nothing) && (-Inf < minimum(xlims[1]) && maximum(xlims[2]) < Inf)
-      Q = Q + makeQbounded(qxdim, d, xlims)
+    # If the ϕ intervals exist and are not finite, use them
+    if !(ϕout_intv isa Nothing) && (-Inf < minimum(ϕout_intv[1]) && maximum(ϕout_intv[2]) < Inf)
+      Q = Q + makeQϕout(qxdim, d, ϕout_intv)
     end
 
   # Other kinds
@@ -285,90 +284,14 @@ function makeΩinv(b :: Int, zdims :: Vector{Int})
   return Ωinv
 end
 
-# Propagate a box through the network
-function propagateBox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet :: FeedForwardNetwork; ε = 1e-6)
-  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
-
-  # The activation function
-  function ϕ(x)
-    if ffnet.type isa ReluNetwork; return max.(x, 0)
-    elseif ffnet.type isa TanhNetwork; return tanh.(x)
-    else; error("unsupported network: " * string(ffnet))
-    end
-  end
-
-  # Calculate a min vector and a max vector of the slope bounds
-  function slopeBounds(ymin, ymax)
-    @assert length(ymin) == length(ymax)
-    if ffnet.type isa ReluNetwork
-      # Determine the Ipos and Ineg set in order to calculate slims
-      Ipos = findall(z -> z > ε, ymin)
-      Ineg = findall(z -> z < -ε, ymax)
-      smin = zeros(length(ymin))
-      smin[Ipos] .= 1.0
-      smax = zeros(length(ymax))
-      smax[Ineg] .= 0.0
-      return smin, smax
-
-    elseif ffnet.type isa TanhNetwork
-      Iminmaxpos = [if a * b >= 0; 1 else 0 end for (a, b) in zip(ymin, ymax)]
-      smin = zeros(length(ymin))
-      smax = zeros(length(ymax))
-      for i in 1:length(ymin)
-        if ymin[i] * ymax[i] >= 0
-          smin[i] = tanh(ymax[i]) / ymax[i]
-          smax[i] = tanh(ymin[i]) / ymin[i]
-        else
-          smin[i] = min(tanh(ymin[i]) / ymin[i], tanh(ymax[i]) / ymax[i])
-          smax[i] = 1
-        end
-      end
-      return smin, smax
-    else
-      error("unsupported network: " * string(ffnet))
-    end
-  end
-
-  # The state limits right after each activation
-  xlimTups = Vector{Any}()
-  push!(xlimTups, (x1min, x1max))
-
-  # The inputs to the activation functions; should be K-1 of them
-  ylimTups = Vector{Any}()
-
-  # All the slope bounds
-  slimTups = Vector{Any}()
-
-  xkmin, xkmax = x1min, x1max
-  for (k, Mk) in enumerate(ffnet.Ms)
-    Wk, bk = Mk[1:end, 1:end-1], Mk[1:end, end]
-    ykmin = (max.(Wk, 0) * xkmin) + (min.(Wk, 0) * xkmax) + bk
-    ykmax = (max.(Wk, 0) * xkmax) + (min.(Wk, 0) * xkmin) + bk
-
-    if k == ffnet.K
-      xkmin, xkmax = ykmin, ykmax
-    else
-      smin, smax = slopeBounds(ykmin, ykmax)
-      push!(ylimTups, (ykmin, ykmax))
-      push!(slimTups, (smin, smax))
-      xkmin, xkmax = ϕ(ykmin), ϕ(ykmax)
-    end
-    push!(xlimTups, (xkmin, xkmax))
-  end
-
-  # Each is a list of tuple of vectors, for flexibility; vcat as needed
-  return xlimTups, ylimTups, slimTups
-end
-
 # Slowly using up the English alphabet
 export e, E, Ec, F, FK, Faff
 export makeA, makeb, makeB, makeAck, makebck, makeBck
-export makeQbounded, makeQrelu
+export makeQϕout, makeQrelu
 export makePbox, makePpolytope
 export makeShyperplane
 export makeXk, makeXinit, makeXsafe
 export makeΩ, makeΩinv
-export propagateBox
 
 end # End module
 
