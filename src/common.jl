@@ -26,7 +26,7 @@ end
 
 # The block index matrix that is [E(k, dims), ..., E(k+b, dims)]
 function E(k :: Int, b :: Int, dims :: Vector{Int})
-  @assert k >= 1 && b >= 0
+  @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(dims)
   Eks = [E(k+j, dims) for j in 0:b]
   return vcat(Eks...)
@@ -45,31 +45,13 @@ function Ec(k :: Int, b :: Int, zdims :: Vector{Int})
   return [Ekb; EK; Ea]
 end
 
-# Selectors within the clique Ck
-function F(k :: Int, b :: Int, i :: Int, zdims :: Vector{Int})
-  @assert k >= 1 && b >= 1 && i >= 1
-  @assert 1 <= k + b <= length(zdims) - 2 # Exclude K and affine
-  @assert zdims[end] == 1 # Affine component
-  Ckdims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
-  return E(i, Ckdims)
-end
-
-# the K selector within the clique Ck
-function FK(k :: Int, b :: Int, zdims :: Vector{Int})
+# The dimension components of a clique
+function Cdims(k :: Int, b :: Int, zdims :: Vector{Int})
   @assert k >= 1 && b >= 1
-  @assert 1 <= k + b <= length(zdims) - 2 # Exclude K and affine
-  @assert zdims[end] == 1 # Affine component
-  Ckdims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
-  return E(b+2, Ckdims)
-end
-
-# The affine selector within the clique Ck
-function Faff(k :: Int, b ::Int, zdims :: Vector{Int})
-  @assert k >= 1 && b >= 1
-  @assert 1 <= k + b <= length(zdims) - 2 # Exclude K and affine
-  @assert zdims[end] == 1 # Affine component
-  Ckdims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
-  return E(b+3, Ckdims)
+  @assert 1 <= k + b <= length(zdims) - 2 # So to exclude K and affine
+  @assert zdims[end] == 1
+  dims = [zdims[k:k+b]; zdims[end-1]; zdims[end]]
+  return dims
 end
 
 # Make the Ack matrix, for 1 <= k + b <= K, to include all the transitions
@@ -322,14 +304,126 @@ function makeΩinv(b :: Int, zdims :: Vector{Int})
   return Ωinv
 end
 
+#
+function makeXkξ(k :: Int, b :: Int, ξk, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= ffnet.K
+
+  qxdim = sum(ffnet.zdims[k+1:k+b])
+  if ffnet.type isa ReluNetwork
+    # Decompose the ξ
+    λ_slope_start = 1
+    λ_slope_final = qxdim
+    τ_slope_start = λ_slope_final + 1
+    τ_slope_final = λ_slope_final + (qxdim)^2
+    η_slope_start = τ_slope_final + 1
+    η_slope_final = τ_slope_final + qxdim
+    ν_slope_start = η_slope_final + 1
+    ν_slope_final = η_slope_final + qxdim
+    d_out_start = ν_slope_final + 1
+    d_out_final = ν_slope_final + qxdim
+
+    @assert length(ξk) == d_out_final
+    λ_slope = ξk[λ_slope_start:λ_slope_final]
+    τ_slope = reshape(ξk[τ_slope_start:τ_slope_final], (qxdim, qxdim))
+    η_slope = ξk[η_slope_start:η_slope_final]
+    ν_slope = ξk[ν_slope_start:ν_slope_final]
+    d_out = ξk[d_out_start:d_out_final]
+    vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
+    return makeXk(k, b, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+  else
+    error("unsupported network: " * string(ffnet))
+  end
+end
+
+#
+function makeXinitξ(ξinit, input :: InputConstraint, ffnet :: FeedForwardNetwork)
+  return makeXinit(ξinit, input, ffnet)
+end
+
+#
+function makeXsafeξ(safety :: SafetyConstraint, ffnet :: FeedForwardNetwork)
+  return makeXsafe(safety.S, ffnet)
+end
+
+# Make a Yk matrix. Specialized for verification, so no ξsafe
+function makeSafetyYk(k :: Int, b :: Int, γk, inst :: SafetyInstance; ϕout_intv = nothing, slope_intv = nothing)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= inst.ffnet.K - 1
+
+  num_cliques = inst.ffnet.K - b - 1
+  @assert num_cliques >= 1
+
+  # The dimension components of this clique
+  Ckdims = Cdims(k, b, inst.ffnet.zdims)
+  F1 = E(1, Ckdims)
+  FK = E(length(Ckdims)-1, Ckdims)
+  Faff = E(length(Ckdims), Ckdims)
+
+  # Since this is the only clique, contains everything
+  if num_cliques == 1
+    ξinit, ξ1, ξ2 = γk
+    Xinit = makeXinitξ(ξinit, inst.input, inst.ffnet)
+    Xsafe = makeXsafeξ(inst.safety, inst.ffnet)
+    X1 = makeXkξ(1, b, ξ1, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+    X2 = makeXkξ(2, b, ξ2, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+
+    # Set up the intra-clique selectors
+    Finit = [F1; Faff]
+    Fsafe = [F1; FK; Faff]
+    FX1 = [E(1, b, Ckdims); Faff]
+    FX2 = [E(2, b, Ckdims); Faff]
+    Yk = (Finit' * Xinit * Finit) + (Fsafe' * Xsafe * Fsafe) + (FX1' * X1 * FX1) + (FX2' * X2 * FX2)
+    return Yk
+
+  # More than one clique, but γ1
+  elseif k == 1
+    ξinit, ξ1 = γk
+    Xinit = makeXinitξ(ξinit, inst.input, inst.ffnet)
+    Xsafe = makeXsafeξ(inst.safety, inst.ffnet)
+    X1 = makeXkξ(1, b, ξ1, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+
+    # Set up the intra-clique selectors
+    Finit = [F1; Faff]
+    Fsafe = [F1; FK; Faff]
+    FX1 = [E(1, b, Ckdims); Faff]
+    Yk = (Finit' * Xinit * Finit) + (Fsafe' * Xsafe * Fsafe) + (FX1' * X1 * FX1)
+    return Yk
+
+  # More than one clique, but γp
+  elseif k == num_cliques
+    ξp, ξq = γk
+    Xp = makeXkξ(k, b, ξp, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+    Xq = makeXkξ(k+1, b, ξq, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+
+    # Set up the intra-clique selectors
+    FXp = [E(1, b, Ckdims); Faff]
+    FXq = [E(2, b, Ckdims); Faff]
+    Yk = (FXp' * Xp * FXp) + (FXq' * Xq * FXq)
+    return Yk
+
+  # Otherwise some intermediate γk
+  else
+    ξk = γk
+    Xk = makeXkξ(k, b, ξk, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+
+    # Set up the intra-clique selectors
+    FXk = [E(1, b, Ckdims); Faff]
+    Yk = FXk' * Xk * FXk
+    return Yk
+  end
+end
+
+
 # Slowly using up the English alphabet
-export e, E, Ec, F, FK, Faff
+export e, E, Ec
 export makeA, makeb, makeB, makeAck, makebck, makeBck
 export makeQϕout, makeQrelu
 export makePbox, makePpolytope
 export makeShyperplane
 export makeXk, makeXinit, makeXsafe
 export makeΩ, makeΩinv
+export makeXkξ, makeXinitξ, makeXsafeξ, makeSafetyYk
 
 end # End module
 
