@@ -16,8 +16,8 @@ Random.seed!(1234)
 
 # This combination makes a difference for 2-stride and all-stride
 # xdims = [2; 3; 4; 5; 4; 3; 2]
-# xdims = [2; 3; 4; 5; 6; 7; 6; 5; 4; 3; 2]
-xdims = [2; 10; 10; 10; 10; 2]
+xdims = [2; 3; 4; 5; 6; 7; 8; 7; 6; 5; 4; 3; 2]
+# xdims = [2; 10; 10; 10; 10; 2]
 # xdims = [2; 20; 20; 20; 20; 2]
 
 ffnet = randomNetwork(xdims, σ=0.5)
@@ -26,9 +26,9 @@ ffnet = randomNetwork(xdims, σ=0.5)
 
 xcenter = ones(ffnet.xdims[1])
 ε = 0.1
-input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
-# input = BoxInput(x1min=-ones(xdims[1]), x1max=ones(xdims[1]))
-# runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
+# input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
+input = BoxInput(x1min=-ones(xdims[1]), x1max=ones(xdims[1]))
+runAndPlotRandomTrajectories(1000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
 norm2 = 50^2
 safety = safetyNormBound(norm2, xdims)
@@ -53,21 +53,22 @@ reach_inst7 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane7)
 reach_inst8 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane8)
 
 #
-x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-rand_x_intvs, _, rand_slope_intvs = randomizedPropagation(input.x1min, input.x1max, ffnet, 100000)
+x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
+rand_x_intvs, rand_ϕin_intvs, rand_slope_intvs = randomizedPropagation(input.x1min, input.x1max, ffnet, 100000)
 xfs = randomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
-deep_opts = DeepSdpOptions(x_intervals=nothing, slope_intervals=slope_intvs, verbose=true)
 
-only_x_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=nothing, verbose=true)
-only_slope_opts = DeepSdpOptions(x_intervals=nothing, slope_intervals=slope_intvs, verbose=true)
-none_opts = DeepSdpOptions(x_intervals=nothing, slope_intervals=nothing, verbose=true)
-deep_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+#
 
-only_slope_soln = DeepSdp.run(reach_inst1, only_slope_opts)
-only_x_soln = DeepSdp.run(reach_inst1, only_x_opts)
+none_opts = DeepSdpOptions(verbose=true)
+x_opts = DeepSdpOptions(x_intervals=x_intvs, verbose=true)
+slope_opts = DeepSdpOptions(slope_intervals=slope_intvs, verbose=true)
+all_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+
 none_soln = DeepSdp.run(reach_inst1, none_opts)
-deep_soln = DeepSdp.run(reach_inst1, deep_opts)
+x_soln = DeepSdp.run(reach_inst1, x_opts)
+slope_soln = DeepSdp.run(reach_inst1, slope_opts)
+all_soln = DeepSdp.run(reach_inst1, all_opts)
 
 
 
@@ -81,9 +82,9 @@ deep_reach_soln7 = DeepSdp.run(reach_inst7, deep_opts)
 deep_reach_soln8 = DeepSdp.run(reach_inst8, deep_opts)
 =#
 
-#=
 split_opts = SplitSdpOptions(β=3, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
 split_reach_soln1 = SplitSdp.run(reach_inst1, split_opts)
+#=
 split_reach_soln2 = SplitSdp.run(reach_inst2, split_opts)
 split_reach_soln3 = SplitSdp.run(reach_inst3, split_opts)
 split_reach_soln4 = SplitSdp.run(reach_inst4, split_opts)

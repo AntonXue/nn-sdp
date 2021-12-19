@@ -37,6 +37,16 @@ function slopeBounds(ymin :: Vector{Float64}, ymax :: Vector{Float64}, ffnet :: 
   end
 end
 
+# Given k, b, ϕin_intvs, find the y[k], ..., x[k+b-1]
+# We should have length(ϕin_intvs) == K - 1
+function selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= length(ϕin_intvs) + 1 # K
+  ymin = vcat([yi[1] for yi in ϕin_intvs[k:k+b-1]]...)
+  ymax = vcat([yi[2] for yi in ϕin_intvs[k:k+b-1]]...)
+  return ymin, ymax
+end
+
 # Given k, b, x_intvs, find the x[k+1], ..., x[k+b]
 # We should have length(x_intvs) == length(zdims) == K + 1
 function selectϕoutIntervals(k :: Int, b :: Int, x_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
@@ -148,7 +158,7 @@ function worstCasePropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}
   return x_intvs, ϕin_intvs, slope_intvs
 end
 
-export selectϕoutIntervals, selectSlopeIntervals
+export selectϕinIntervals, selectϕoutIntervals, selectSlopeIntervals
 export randomizedPropagation, worstCasePropagation
 
 end # End module

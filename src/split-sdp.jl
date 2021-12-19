@@ -28,7 +28,8 @@ function makeSplitXinit!(model, input :: InputConstraint, ffnet :: FeedForwardNe
     error("unsupported input constraints: " * string(input))
   end
   Xinit = makeXinit(γ, input, ffnet)
-  return Xinit, Dict(:γ => γ)
+  Pvars = Dict(:γ => γ)
+  return Xinit, Pvars
 end
 
 # Treat this as though it modifies the model
@@ -41,25 +42,30 @@ end
 function makeSplitXk!(model, k :: Int, ffnet :: FeedForwardNetwork, opts :: SplitSdpOptions)
   qxdim = sum(ffnet.zdims[k+1:k+opts.β])
   if ffnet.type isa ReluNetwork
-    λ = @variable(model, [1:qxdim])
-    τ = @variable(model, [1:qxdim, 1:qxdim], Symmetric)
-    η = @variable(model, [1:qxdim])
-    ν = @variable(model, [1:qxdim])
-    d = @variable(model, [1:qxdim])
+    λ_slope = @variable(model, [1:qxdim])
+    τ_slope = @variable(model, [1:qxdim, 1:qxdim], Symmetric)
+    η_slope = @variable(model, [1:qxdim])
+    ν_slope = @variable(model, [1:qxdim])
+    d_out = @variable(model, [1:qxdim])
 
-    @constraint(model, λ[1:qxdim] .>= 0)
-    @constraint(model, τ[1:qxdim, 1:qxdim] .>= 0)
-    @constraint(model, η[1:qxdim] .>= 0)
-    @constraint(model, ν[1:qxdim] .>= 0)
-    @constraint(model, d[1:qxdim] .>= 0)
+    @constraint(model, λ_slope[1:qxdim] .>= 0)
+    @constraint(model, τ_slope[1:qxdim, 1:qxdim] .>= 0)
+    @constraint(model, η_slope[1:qxdim] .>= 0)
+    @constraint(model, ν_slope[1:qxdim] .>= 0)
+    @constraint(model, d_out[1:qxdim] .>= 0)
 
-    vars = (λ, τ, η, ν, d)
+    vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
     ϕout_intv = (opts.x_intervals isa Nothing) ? nothing : selectϕoutIntervals(k, opts.β, opts.x_intervals)
     slope_intv = (opts.slope_intervals isa Nothing) ? nothing : selectSlopeIntervals(k, opts.β, opts.slope_intervals)
     Xk = makeXk(k, opts.β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
 
     symk(v :: String) = Symbol(v * string(k))
-    return Xk, Dict(symk("λ") => λ, symk("τ") => τ, symk("η") => η, symk("ν") => ν, symk("d") => d)
+    Qvars = Dict(symk("λ_slope") => λ_slope,
+                  symk("τ_slope") => τ_slope,
+                  symk("η_slope") => η_slope,
+                  symk("ν_slope") => ν_slope,
+                  symk("d_out") => d_out)
+    return Xk, Qvars
   else
     error("unsupported network: " * string(ffnet))
   end

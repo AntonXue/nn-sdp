@@ -166,6 +166,43 @@ function makeQϕout(qxdim :: Int, d, ϕout_intv :: Tuple{Vector{Float64}, Vector
   return Q
 end
 
+#=
+# FIXME: This only works in the case where xmin .<= 0 .<= xmax
+# We may come back to it later, but it is deprecated for now
+function makeQreluϕin(qxdim :: Int, λ, μ, ν, ϕin_intv :: Tuple{Vector{Float64}, Vector{Float64}})
+  @assert length(λ) == length(μ) == length(ν) == qxdim
+  xmin, xmax = ϕin_intv
+  @assert all(xmin .<= xmax)
+  w = xmax ./ (xmax - xmin)
+
+  _A11 = zeros(qxdim, qxdim)
+  _A12 = diagm(λ)
+  _A13 = zeros(qxdim)
+  _A22 = -2 * diagm(λ)
+  _A23 = zeros(qxdim)
+  _A33 = 0
+  Q1 = Symmetric([_A11 _A12 _A13; _A12' _A22 _A23; _A13' _A23' _A33])
+
+  _B11 = zeros(qxdim, qxdim)
+  _B12 = diagm(μ .* w)
+  _B13 = zeros(qxdim)
+  _B22 = -2 * diagm(μ)
+  _B23 = - μ .* w .* xmin
+  _B33 = 0
+  Q2 = Symmetric([_B11 _B12 _B13; _B12' _B22 _B23; _B13' _B23' _B33])
+
+  _C11 = -2 * diagm(ν .* w)
+  _C12 = diagm(ν .* (w + ones(qxdim)))
+  _C13 = ν .* w .* xmin
+  _C22 = -2 * diagm(ν)
+  _C23 = - ν .* w .* xmin
+  _C33 = 0
+  Q3 = Symmetric([_C11 _C12 _C13; _C12' _C22 _C23; _C13' _C23' _C33])
+
+  return Q1 + Q2 + Q3
+end
+=#
+
 # Make the Q relu, optionally enabling localized slope limits
 function makeQrelu(qxdim :: Int, λ, τ, η, ν, slope_intv :: Tuple{Vector{Float64}, Vector{Float64}})
   @assert length(λ) == length(η) == length(ν) == qxdim
@@ -197,16 +234,17 @@ function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_int
 
   # For the relu network
   if ffnet.type isa ReluNetwork
-    λ, τ, η, ν, d = vars
-    @assert length(λ) == length(η) == length(ν) == length(d) == qxdim
-    @assert size(τ) == (qxdim, qxdim)
+    λ_slope, τ_slope, η_slope, ν_slope, d_out = vars
+    @assert length(λ_slope) == length(η_slope) == length(ν_slope) == qxdim
+    @assert size(τ_slope) == (qxdim, qxdim)
+    @assert length(d_out) == qxdim
 
     slope_intv = (slope_intv isa Nothing) ? (zeros(qxdim), ones(qxdim)) : slope_intv
-    Q = makeQrelu(qxdim, λ, τ, η, ν, slope_intv)
+    Q = makeQrelu(qxdim, λ_slope, τ_slope, η_slope, ν_slope, slope_intv)
 
     # If the ϕ intervals exist and are not finite, use them
     if !(ϕout_intv isa Nothing) && (-Inf < minimum(ϕout_intv[1]) && maximum(ϕout_intv[2]) < Inf)
-      Q = Q + makeQϕout(qxdim, d, ϕout_intv)
+      Q = Q + makeQϕout(qxdim, d_out, ϕout_intv)
     end
 
   # Other kinds

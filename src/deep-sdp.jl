@@ -31,7 +31,8 @@ function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork,
   Einit = [E1; Ea]
   Xinit = makeXinit(γ, input, ffnet)
   MinP = Einit' * Xinit * Einit
-  return MinP, Dict(:γ => γ)
+  Pvars = Dict(:γ => γ)
+  return MinP, Pvars
 end
 
 # Computes the MoutS matrix. Treat this function as though it modifies the model
@@ -49,17 +50,22 @@ end
 function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   qxdim = sum(ffnet.zdims[2:end-1])
   if ffnet.type isa ReluNetwork
-    @variable(model, λ[1:qxdim] >= 0)
-    @variable(model, τ[1:qxdim, 1:qxdim] >= 0, Symmetric)
-    @variable(model, η[1:qxdim] >= 0)
-    @variable(model, ν[1:qxdim] >= 0)
-    @variable(model, d[1:qxdim] >= 0)
+    @variable(model, λ_slope[1:qxdim] >= 0)
+    @variable(model, τ_slope[1:qxdim, 1:qxdim] >= 0, Symmetric)
+    @variable(model, η_slope[1:qxdim] >= 0)
+    @variable(model, ν_slope[1:qxdim] >= 0)
+    @variable(model, d_out[1:qxdim] >= 0)
     β = ffnet.K - 1
-    vars = (λ, τ, η, ν, d)
+    vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
     ϕout_intv = (opts.x_intervals isa Nothing) ? nothing : selectϕoutIntervals(1, β, opts.x_intervals)
     slope_intv = (opts.slope_intervals isa Nothing) ? nothing : selectSlopeIntervals(1, β, opts.slope_intervals)
     MmidQ = makeXk(1, β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-    return MmidQ, Dict(:λ => λ, :τ => τ, :η => η, :ν => ν, :d => d)
+    Qvars = Dict(:λ_slope => λ_slope,
+                  :τ_slope => τ_slope,
+                  :η_slope => η_slope,
+                  :ν_slope => ν_slope,
+                  :d_out => d_out)
+    return MmidQ, Qvars
   else
     error("unsupported network: " * string(ffnet))
   end
