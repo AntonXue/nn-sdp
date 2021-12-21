@@ -5,6 +5,7 @@ include("intervals.jl"); using .Intervals
 include("utils.jl"); using .Utils
 include("deep-sdp.jl"); using .DeepSdp
 include("split-sdp.jl"); using .SplitSdp
+include("admm-sdp.jl"); using .AdmmSdp
 include("tests.jl"); using .Tests
 
 using LinearAlgebra
@@ -36,8 +37,9 @@ safety = safetyNormBound(norm2, xdims)
 safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
 # SplitSdp options
-split_opts = SplitSdpOptions(β=4, verbose=true)
+split_opts = SplitSdpOptions(β=1, verbose=true)
 
-Tests.testY(safety_inst, split_opts)
+# Admm Options
+admm_opts = AdmmSdpOptions(β=2)
 
 

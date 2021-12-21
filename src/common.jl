@@ -414,16 +414,68 @@ function makeSafetyYk(k :: Int, b :: Int, γk, inst :: SafetyInstance; ϕout_int
   end
 end
 
+# The γ[k-b], ..., γ[k], ..., γ[k+b] involved in an Hc projection
+function Hcinds(k :: Int, b :: Int, γdims :: Vector{Int})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k <= length(γdims)
+  return [k+j for j in -b:b if 1 <= k+j <= length(γdims)]
+end
+
+#
+function Hc(k :: Int, b :: Int, γdims :: Vector{Int})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k <= length(γdims)
+  inds = Hcinds(k, b, γdims)
+  Eks = [E(i, γdims) for i in inds]
+  return vcat(Eks...)
+end
+
+#
+function makeγk(k :: Int, ξvars :: Tuple{Vector{Float64}, Vector{Vector{Float64}}})
+  ξin, ξs = ξvars
+  p = length(ξvars) - 1
+  @assert 1 <= k <= p
+
+  if p == 1 && k == 1
+    return [ξin; ξs[1]; ξs[2]]
+  elseif k == 1
+    return [ξin; ξs[1]]
+  elseif k == p
+    return [ξs[p]; ξs[p+1]]
+  else
+    return ξs[k]
+  end
+end
+
+# Given a γ, project out the ξ components
+function projectξinit(γ, ξvardims :: Tuple{Int, Vector{Int}})
+  ξinitdim, ξkdims = ξvardims
+  return γ[1:ξinitdim]
+end
+
+function projectξvars(k :: Int, γ, ξvardims :: Tuple{Int, Vector{Int}})
+  ξinitdim, ξkdims = ξvardims
+  num_cliques = length(ξkdims) - 1
+  @assert 1 <= k <= length(ξkdims)
+  start = ξinitdim + sum(ξkdims[1:k-1]) + 1
+  final = ξinitdim + sum(ξkdims[1:k])
+  return γ[start:final]
+end
+
+
 
 # Slowly using up the English alphabet
-export e, E, Ec
-export makeA, makeb, makeB, makeAck, makebck, makeBck
+export e, E, Ec, Cdims
+export makeAck, makebck, makeBck
 export makeQϕout, makeQrelu
 export makePbox, makePpolytope
 export makeShyperplane
 export makeXk, makeXinit, makeXsafe
 export makeΩ, makeΩinv
 export makeXkξ, makeXinitξ, makeXsafeξ, makeSafetyYk
+
+export Hcinds, Hc
+export projectξinit, projectξvars
 
 end # End module
 
