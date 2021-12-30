@@ -39,7 +39,7 @@ end
 
 # Given k, b, ϕin_intvs, find the y[k], ..., x[k+b-1]
 # We should have length(ϕin_intvs) == K - 1
-function selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+function _selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(ϕin_intvs) + 1 # K
   ymin = vcat([yi[1] for yi in ϕin_intvs[k:k+b-1]]...)
@@ -47,9 +47,17 @@ function selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs :: Vector{Tuple{Vect
   return ymin, ymax
 end
 
+function selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs)
+  if ϕin_intvs isa Nothing
+    return nothing
+  else
+    return _selectϕinIntervals(k, b, ϕin_intvs)
+  end
+end
+
 # Given k, b, x_intvs, find the x[k+1], ..., x[k+b]
 # We should have length(x_intvs) == length(zdims) == K + 1
-function selectϕoutIntervals(k :: Int, b :: Int, x_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+function _selectϕoutIntervals(k :: Int, b :: Int, x_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(x_intvs) - 1 # K
   ϕmin = vcat([xi[1] for xi in x_intvs[k+1:k+b]]...)
@@ -57,14 +65,30 @@ function selectϕoutIntervals(k :: Int, b :: Int, x_intvs :: Vector{Tuple{Vector
   return ϕmin, ϕmax
 end
 
+function selectϕoutIntervals(k :: Int, b :: Int, x_intvs)
+  if x_intvs isa Nothing
+    return nothing
+  else
+    return _selectϕoutIntervals(k, b, x_intvs)
+  end
+end
+
 # Given k, b, slope_intvs, find the ones at ϕ[k], ..., ϕ[k+b-1]
 # We should have length(slope_intvs) == K - 1
-function selectSlopeIntervals(k :: Int, b :: Int, slope_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+function _selectSlopeIntervals(k :: Int, b :: Int, slope_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(slope_intvs) + 1 # K
   ϕa = vcat([si[1] for si in slope_intvs[k:k+b-1]]...)
   ϕb = vcat([si[2] for si in slope_intvs[k:k+b-1]]...)
   return ϕa, ϕb
+end
+
+function selectSlopeIntervals(k :: Int, b :: Int, slope_intvs)
+  if slope_intvs isa Nothing
+    return nothing
+  else
+    return _selectSlopeIntervals(k, b, slope_intvs)
+  end
 end
 
 # Randomized propagation

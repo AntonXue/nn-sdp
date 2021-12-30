@@ -28,9 +28,9 @@ function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork,
   end
   E1 = E(1, ffnet.zdims)
   Ea = E(ffnet.K+1, ffnet.zdims)
-  Einit = [E1; Ea]
-  Xinit = makeXinit(γ, input, ffnet)
-  MinP = Einit' * Xinit * Einit
+  Ein = [E1; Ea]
+  Xin = makeXin(γ, input, ffnet)
+  MinP = Ein' * Xin * Ein
   Pvars = Dict(:γ => γ)
   return MinP, Pvars
 end
@@ -57,9 +57,9 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
     @variable(model, d_out[1:qxdim] >= 0)
     β = ffnet.K - 1
     vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
-    ϕout_intv = (opts.x_intervals isa Nothing) ? nothing : selectϕoutIntervals(1, β, opts.x_intervals)
-    slope_intv = (opts.slope_intervals isa Nothing) ? nothing : selectSlopeIntervals(1, β, opts.slope_intervals)
-    MmidQ = makeXk(1, β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+    ϕout_intv = selectϕoutIntervals(1, β, opts.x_intervals)
+    slope_intv = selectSlopeIntervals(1, β, opts.slope_intervals)
+    MmidQ = makeXq(1, β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
     Qvars = Dict(:λ_slope => λ_slope,
                   :τ_slope => τ_slope,
                   :η_slope => η_slope,

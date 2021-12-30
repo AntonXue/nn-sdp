@@ -55,7 +55,7 @@ function Cdims(k :: Int, b :: Int, zdims :: Vector{Int})
 end
 
 # Make the Ack matrix, for 1 <= k + b <= K, to include all the transitions
-function makeAck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
+function makeAc(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
   edims = ffnet.zdims[k:k+b]
@@ -65,7 +65,7 @@ function makeAck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
 end
 
 # Make the bck stacked vector
-function makebck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
+function makebc(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
   bck = vcat([ffnet.Ms[k+j-1][1:end, end] for j in 1:b]...)
@@ -73,7 +73,7 @@ function makebck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
 end
 
 # Make the Bck matrix
-function makeBck(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
+function makeBc(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
   edims = ffnet.zdims[k:k+b]
@@ -148,43 +148,6 @@ function makeQϕout(qxdim :: Int, d, ϕout_intv :: Tuple{Vector{Float64}, Vector
   return Q
 end
 
-#=
-# FIXME: This only works in the case where xmin .<= 0 .<= xmax
-# We may come back to it later, but it is deprecated for now
-function makeQreluϕin(qxdim :: Int, λ, μ, ν, ϕin_intv :: Tuple{Vector{Float64}, Vector{Float64}})
-  @assert length(λ) == length(μ) == length(ν) == qxdim
-  xmin, xmax = ϕin_intv
-  @assert all(xmin .<= xmax)
-  w = xmax ./ (xmax - xmin)
-
-  _A11 = zeros(qxdim, qxdim)
-  _A12 = diagm(λ)
-  _A13 = zeros(qxdim)
-  _A22 = -2 * diagm(λ)
-  _A23 = zeros(qxdim)
-  _A33 = 0
-  Q1 = Symmetric([_A11 _A12 _A13; _A12' _A22 _A23; _A13' _A23' _A33])
-
-  _B11 = zeros(qxdim, qxdim)
-  _B12 = diagm(μ .* w)
-  _B13 = zeros(qxdim)
-  _B22 = -2 * diagm(μ)
-  _B23 = - μ .* w .* xmin
-  _B33 = 0
-  Q2 = Symmetric([_B11 _B12 _B13; _B12' _B22 _B23; _B13' _B23' _B33])
-
-  _C11 = -2 * diagm(ν .* w)
-  _C12 = diagm(ν .* (w + ones(qxdim)))
-  _C13 = ν .* w .* xmin
-  _C22 = -2 * diagm(ν)
-  _C23 = - ν .* w .* xmin
-  _C33 = 0
-  Q3 = Symmetric([_C11 _C12 _C13; _C12' _C22 _C23; _C13' _C23' _C33])
-
-  return Q1 + Q2 + Q3
-end
-=#
-
 # Make the Q relu, optionally enabling localized slope limits
 function makeQrelu(qxdim :: Int, λ, τ, η, ν, slope_intv :: Tuple{Vector{Float64}, Vector{Float64}})
   @assert length(λ) == length(η) == length(ν) == qxdim
@@ -209,7 +172,7 @@ function makeQrelu(qxdim :: Int, λ, τ, η, ν, slope_intv :: Tuple{Vector{Floa
 end
 
 # Make an Xk, optionally enabling x bounds and slope limits
-function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
+function makeXq(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
   qxdim = sum(ffnet.zdims[k+1:k+b])
@@ -224,7 +187,7 @@ function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_int
     slope_intv = (slope_intv isa Nothing) ? (zeros(qxdim), ones(qxdim)) : slope_intv
     Q = makeQrelu(qxdim, λ_slope, τ_slope, η_slope, ν_slope, slope_intv)
 
-    # If the ϕ intervals exist and are not finite, use them
+    # If the ϕ intervals exist and are not infinite, use them
     if !(ϕout_intv isa Nothing) && (-Inf < minimum(ϕout_intv[1]) && maximum(ϕout_intv[2]) < Inf)
       Q = Q + makeQϕout(qxdim, d_out, ϕout_intv)
     end
@@ -234,9 +197,9 @@ function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_int
     error("unsupported network: " * string(ffnet.type))
   end
 
-  _R11 = makeAck(k, b, ffnet)
-  _R12 = makebck(k, b, ffnet)
-  _R21 = makeBck(k, b, ffnet)
+  _R11 = makeAc(k, b, ffnet)
+  _R12 = makebc(k, b, ffnet)
+  _R21 = makeBc(k, b, ffnet)
   _R22 = zeros(size(_R12))
   _R31 = zeros(1, size(_R21)[2])
   _R32 = 1
@@ -245,7 +208,7 @@ function makeXk(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_int
 end
 
 # γ is a vector
-function makeXinit(γ, input :: InputConstraint, ffnet :: FeedForwardNetwork)
+function makeXin(γ, input :: InputConstraint, ffnet :: FeedForwardNetwork)
   d1 = ffnet.xdims[1]
   if input isa BoxInput
     @assert length(γ) == d1
@@ -280,202 +243,14 @@ function makeXsafe(S, ffnet :: FeedForwardNetwork)
   return R' * S * R
 end
 
-# Count overlaps
-function makeΩ(b :: Int, zdims :: Vector{Int})
-  @assert 1 <= length(zdims) - b - 2
-  @assert zdims[end] == 1
-  p = length(zdims) - b - 2
-  Ω = zeros(sum(zdims), sum(zdims))
-  for k in 1:p
-    Eck = Ec(k, b, zdims)
-    height = size(Eck)[1]
-    Ω = Ω + Eck' * (fill(1, (height, height))) * Eck
-  end
-  return Ω
-end
-
-# The ℧ matrix that is the "inverse" scaling of Ω
-function makeΩinv(b :: Int, zdims :: Vector{Int})
-  @assert 1 <= length(zdims) - b - 2
-  @assert zdims[end] == 1
-  Ω = makeΩ(b, zdims)
-  Ωinv = 1 ./ Ω
-  Ωinv[isinf.(Ωinv)] .= 0
-  return Ωinv
-end
-
-#
-function makeXkξ(k :: Int, b :: Int, ξk, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
-  @assert k >= 1 && b >= 1
-  @assert 1 <= k + b <= ffnet.K
-
-  qxdim = sum(ffnet.zdims[k+1:k+b])
-  if ffnet.type isa ReluNetwork
-    # Decompose the ξ
-    λ_slope_start = 1
-    λ_slope_final = qxdim
-    τ_slope_start = λ_slope_final + 1
-    τ_slope_final = λ_slope_final + (qxdim)^2
-    η_slope_start = τ_slope_final + 1
-    η_slope_final = τ_slope_final + qxdim
-    ν_slope_start = η_slope_final + 1
-    ν_slope_final = η_slope_final + qxdim
-    d_out_start = ν_slope_final + 1
-    d_out_final = ν_slope_final + qxdim
-
-    @assert length(ξk) == d_out_final
-    λ_slope = ξk[λ_slope_start:λ_slope_final]
-    τ_slope = reshape(ξk[τ_slope_start:τ_slope_final], (qxdim, qxdim))
-    η_slope = ξk[η_slope_start:η_slope_final]
-    ν_slope = ξk[ν_slope_start:ν_slope_final]
-    d_out = ξk[d_out_start:d_out_final]
-    vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
-    return makeXk(k, b, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-  else
-    error("unsupported network: " * string(ffnet))
-  end
-end
-
-#
-function makeXinitξ(ξinit, input :: InputConstraint, ffnet :: FeedForwardNetwork)
-  return makeXinit(ξinit, input, ffnet)
-end
-
-#
-function makeXsafeξ(safety :: SafetyConstraint, ffnet :: FeedForwardNetwork)
-  return makeXsafe(safety.S, ffnet)
-end
-
-# Make a Yk matrix. Specialized for verification, so no ξsafe
-function makeSafetyYk(k :: Int, b :: Int, γk, inst :: SafetyInstance; ϕout_intv = nothing, slope_intv = nothing)
-  @assert k >= 1 && b >= 1
-  @assert 1 <= k + b <= inst.ffnet.K - 1
-
-  num_cliques = inst.ffnet.K - b - 1
-  @assert num_cliques >= 1
-
-  # The dimension components of this clique
-  Ckdims = Cdims(k, b, inst.ffnet.zdims)
-  F1 = E(1, Ckdims)
-  FK = E(length(Ckdims)-1, Ckdims)
-  Faff = E(length(Ckdims), Ckdims)
-
-  # Since this is the only clique, contains everything
-  if num_cliques == 1
-    ξinit, ξ1, ξ2 = γk
-    Xinit = makeXinitξ(ξinit, inst.input, inst.ffnet)
-    Xsafe = makeXsafeξ(inst.safety, inst.ffnet)
-    X1 = makeXkξ(1, b, ξ1, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-    X2 = makeXkξ(2, b, ξ2, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-
-    # Set up the intra-clique selectors
-    Finit = [F1; Faff]
-    Fsafe = [F1; FK; Faff]
-    FX1 = [E(1, b, Ckdims); Faff]
-    FX2 = [E(2, b, Ckdims); Faff]
-    Yk = (Finit' * Xinit * Finit) + (Fsafe' * Xsafe * Fsafe) + (FX1' * X1 * FX1) + (FX2' * X2 * FX2)
-    return Yk
-
-  # More than one clique, but γ1
-  elseif k == 1
-    ξinit, ξ1 = γk
-    Xinit = makeXinitξ(ξinit, inst.input, inst.ffnet)
-    Xsafe = makeXsafeξ(inst.safety, inst.ffnet)
-    X1 = makeXkξ(1, b, ξ1, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-
-    # Set up the intra-clique selectors
-    Finit = [F1; Faff]
-    Fsafe = [F1; FK; Faff]
-    FX1 = [E(1, b, Ckdims); Faff]
-    Yk = (Finit' * Xinit * Finit) + (Fsafe' * Xsafe * Fsafe) + (FX1' * X1 * FX1)
-    return Yk
-
-  # More than one clique, but γp
-  elseif k == num_cliques
-    ξp, ξq = γk
-    Xp = makeXkξ(k, b, ξp, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-    Xq = makeXkξ(k+1, b, ξq, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-
-    # Set up the intra-clique selectors
-    FXp = [E(1, b, Ckdims); Faff]
-    FXq = [E(2, b, Ckdims); Faff]
-    Yk = (FXp' * Xp * FXp) + (FXq' * Xq * FXq)
-    return Yk
-
-  # Otherwise some intermediate γk
-  else
-    ξk = γk
-    Xk = makeXkξ(k, b, ξk, inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-
-    # Set up the intra-clique selectors
-    FXk = [E(1, b, Ckdims); Faff]
-    Yk = FXk' * Xk * FXk
-    return Yk
-  end
-end
-
-# The γ[k-b], ..., γ[k], ..., γ[k+b] involved in an Hc projection
-function Hcinds(k :: Int, b :: Int, γdims :: Vector{Int})
-  @assert k >= 1 && b >= 1
-  @assert 1 <= k <= length(γdims)
-  return [k+j for j in -b:b if 1 <= k+j <= length(γdims)]
-end
-
-#
-function Hc(k :: Int, b :: Int, γdims :: Vector{Int})
-  @assert k >= 1 && b >= 1
-  @assert 1 <= k <= length(γdims)
-  inds = Hcinds(k, b, γdims)
-  Eks = [E(i, γdims) for i in inds]
-  return vcat(Eks...)
-end
-
-#
-function makeγk(k :: Int, ξvars :: Tuple{Vector{Float64}, Vector{Vector{Float64}}})
-  ξin, ξs = ξvars
-  p = length(ξvars) - 1
-  @assert 1 <= k <= p
-
-  if p == 1 && k == 1
-    return [ξin; ξs[1]; ξs[2]]
-  elseif k == 1
-    return [ξin; ξs[1]]
-  elseif k == p
-    return [ξs[p]; ξs[p+1]]
-  else
-    return ξs[k]
-  end
-end
-
-# Given a γ, project out the ξ components
-function projectξinit(γ, ξvardims :: Tuple{Int, Vector{Int}})
-  ξinitdim, ξkdims = ξvardims
-  return γ[1:ξinitdim]
-end
-
-function projectξvars(k :: Int, γ, ξvardims :: Tuple{Int, Vector{Int}})
-  ξinitdim, ξkdims = ξvardims
-  num_cliques = length(ξkdims) - 1
-  @assert 1 <= k <= length(ξkdims)
-  start = ξinitdim + sum(ξkdims[1:k-1]) + 1
-  final = ξinitdim + sum(ξkdims[1:k])
-  return γ[start:final]
-end
-
-
 
 # Slowly using up the English alphabet
 export e, E, Ec, Cdims
-export makeAck, makebck, makeBck
+export makeAc, makebc, makeBc
 export makeQϕout, makeQrelu
 export makePbox, makePpolytope
 export makeShyperplane
-export makeXk, makeXinit, makeXsafe
-export makeΩ, makeΩinv
-export makeXkξ, makeXinitξ, makeXsafeξ, makeSafetyYk
-
-export Hcinds, Hc
-export projectξinit, projectξvars
+export makeXq, makeXin, makeXsafe
 
 end # End module
 

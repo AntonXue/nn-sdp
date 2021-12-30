@@ -3,6 +3,7 @@ module SplitSdp
 
 using ..Header
 using ..Common
+using ..Partitions
 using ..Intervals
 using Parameters
 using LinearAlgebra
@@ -18,153 +19,143 @@ using Mosek
   verbose :: Bool = false
 end
 
-# Treat this as though it modifies the model
-function makeSplitXinit!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork, opts :: SplitSdpOptions)
-  if input isa BoxInput
-    @variable(model, γ[1:ffnet.xdims[1]] >= 0)
-  elseif input isa PolytopeInput
-    @variable(model, γ[1:ffnet.xdims[1]^2] >= 0)
-  else
-    error("unsupported input constraints: " * string(input))
+# Make all the Xs
+function setupReachViaXs(model, inst :: ReachabilityInstance, opts :: SplitSdpOptions)
+
+  input = inst.input
+  ffnet = inst.ffnet
+
+  @assert inst.input isa BoxInput
+  @assert inst.reach_set isa HyperplaneSet
+  ξvardims = makeξvardims(opts.β, inst.ffnet.zdims, ξindim=inst.ffnet.xdims[1], ξsafedim=1)
+  ξindim, ξsafedim, ξkdims = ξvardims
+
+  ξin = @variable(model, [1:ξindim])
+  @constraint(model, ξin[1:ξindim] .>= 0)
+
+  ξsafe = @variable(model)
+  @constraint(model, ξsafe >= 0)
+
+  ξs = Vector{Any}()
+  for k in 1:length(ξkdims)
+    ξk = @variable(model, [1:ξkdims[k]])
+    @constraint(model, ξk[1:ξkdims[k]] .>= 0)
+    push!(ξs, ξk)
   end
-  Xinit = makeXinit(γ, input, ffnet)
-  Pvars = Dict(:γ => γ)
-  return Xinit, Pvars
-end
 
-# Treat this as though it modifies the model
-function makeSplitXsafe!(model, S, ffnet :: FeedForwardNetwork, opts :: SplitSdpOptions)
-  Xsafe = makeXsafe(S, ffnet)
-  return Xsafe
-end
-
-# Treat this as though it modifies the model
-function makeSplitXk!(model, k :: Int, ffnet :: FeedForwardNetwork, opts :: SplitSdpOptions)
-  qxdim = sum(ffnet.zdims[k+1:k+opts.β])
-  if ffnet.type isa ReluNetwork
-    λ_slope = @variable(model, [1:qxdim])
-    τ_slope = @variable(model, [1:qxdim, 1:qxdim], Symmetric)
-    η_slope = @variable(model, [1:qxdim])
-    ν_slope = @variable(model, [1:qxdim])
-    d_out = @variable(model, [1:qxdim])
-
-    @constraint(model, λ_slope[1:qxdim] .>= 0)
-    @constraint(model, τ_slope[1:qxdim, 1:qxdim] .>= 0)
-    @constraint(model, η_slope[1:qxdim] .>= 0)
-    @constraint(model, ν_slope[1:qxdim] .>= 0)
-    @constraint(model, d_out[1:qxdim] .>= 0)
-
-    vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
-    ϕout_intv = (opts.x_intervals isa Nothing) ? nothing : selectϕoutIntervals(k, opts.β, opts.x_intervals)
-    slope_intv = (opts.slope_intervals isa Nothing) ? nothing : selectSlopeIntervals(k, opts.β, opts.slope_intervals)
-    Xk = makeXk(k, opts.β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-
-    symk(v :: String) = Symbol(v * string(k))
-    Qvars = Dict(symk("λ_slope") => λ_slope,
-                  symk("τ_slope") => τ_slope,
-                  symk("η_slope") => η_slope,
-                  symk("ν_slope") => ν_slope,
-                  symk("d_out") => d_out)
-    return Xk, Qvars
-  else
-    error("unsupported network: " * string(ffnet))
+  Xin = makeXinξ(ξin, inst.input, inst.ffnet)
+  Xsafe = makeHyperplaneReachXsafeξ(ξsafe, inst.reach_set, inst.ffnet)
+  Xs = Vector{Any}()
+  num_Xs = length(ξkdims)
+  for k in 1:num_Xs
+    ϕout_intv = selectϕoutIntervals(k, opts.β, opts.x_intervals)
+    slope_intv = selectSlopeIntervals(k, opts.β, opts.slope_intervals)
+    @assert !(ϕout_intv isa Nothing)
+    @assert !(slope_intv isa Nothing)
+    Xk = makeXqξ(k, opts.β, ξs[k], inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+    push!(Xs, Xk)
   end
+
+  #
+  E1 = E(1, ffnet.zdims)
+  EK = E(ffnet.K, ffnet.zdims)
+  Ea = E(ffnet.K+1, ffnet.zdims)
+  Ein = [E1; Ea]
+  Esafe = [E1; EK; Ea]
+
+  ZXs = (Ein' * Xin * Ein) + (Esafe' * Xsafe * Esafe)
+  for k in 1:num_Xs
+    EXk = E(k, opts.β, inst.ffnet.zdims)
+    EXk = [EXk; Ea]
+    ZXs = ZXs + (EXk' * Xs[k] * EXk)
+  end
+
+  @SDconstraint(model, ZXs <= 0)
+
+  @objective(model, Min, ξsafe)
+  println("the other goddamn setup")
+
+  return model, Dict(:h => ξsafe), 1.0
 end
 
-# Solve the safety problem by decomposing it into K-β-1 smaller LMIs
+# Make the Ys
+function makeYs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
+  # Figure out the relevant γ dimensions
+  γdims, ξvardims = makeγdims(opts.β, inst)
+  Ys = Vector{Any}()
+  Yvars = Dict()
+  num_cliques = inst.ffnet.K - opts.β - 1
+
+  # Make each Yk
+  for k = 1:num_cliques
+    γk = @variable(model, [1:γdims[k]])
+    @constraint(model, γk[1:γdims[k]] .>= 0)
+
+    Yk = makeYk(k, opts.β, γk, ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
+
+    push!(Ys, Yk)
+    Yvars[Symbol("γ" * string(k))] = γk
+    println("added γ" * string(k) * " of dim " * string(length(γk)))
+  end
+  return Ys, Yvars, ξvardims
+end
+
+# Do the safety instance
 function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
   setup_start_time = time()
 
-  # Some helpful block index matrices
-  E1 = E(1, inst.ffnet.zdims)
-  EK = E(inst.ffnet.K, inst.ffnet.zdims)
-  Ea = E(inst.ffnet.K+1, inst.ffnet.zdims)
-  Einit = [E1; Ea]
-  Esafe = [E1; EK; Ea]
-
-  # Setup Xinit and Xsafe first
-  Xinit, Pvars = makeSplitXinit!(model, inst.input, inst.ffnet, opts)
-  Xsafe = makeSplitXsafe!(model, inst.safety.S, inst.ffnet, opts)
-  Z = (Einit' * Xinit * Einit) + (Esafe' * Xsafe * Esafe)
-
-  # Make each Zk and add them to Z
-  Qvars = Dict()
-  num_Xks = inst.ffnet.K - opts.β
-  for k in 1:num_Xks
-    if opts.verbose; println("making X[" * string(k) * "/" * string(num_Xks) * "]") end
-    Ekβ = E(k, opts.β, inst.ffnet.zdims)
-    EXk = [Ekβ; Ea]
-    Xk, Qkvars = makeSplitXk!(model, k, inst.ffnet, opts)
-    Z = Z + (EXk' * Xk * EXk)
-    merge!(Qvars, Qkvars)
-  end
-
-  # Select and assert that each Zk is NSD
-  Ωinv = makeΩinv(opts.β, inst.ffnet.zdims)
-  Zscaled = Z .* Ωinv
+  # Construct the Ys
+  Ys, Yvars, ξvardims = makeYs!(model, inst, opts)
+  Ωinvs = makeΩinvs(opts.β, inst.ffnet.zdims)
   num_cliques = inst.ffnet.K - opts.β - 1
+
+  # Use these Yks to construct the Zks
   for k = 1:num_cliques
-    Eck = Ec(k, opts.β, inst.ffnet.zdims)
-    Zk = Eck * Zscaled * Eck'
+    Zk = makeZk(k, opts.β, Ys, Ωinvs[k], inst.ffnet.zdims)
     @SDconstraint(model, Zk <= 0)
   end
 
-  # Time it took to set up the problem
-  vars = merge(Pvars, Qvars)
+  # Ready to return
   setup_time = round(time() - setup_start_time, digits=2)
   if opts.verbose; println("setup time: " * string(setup_time)) end
-  return model, vars, setup_time
+  return model, Yvars, setup_time
 end
 
-# Solve the hyperplane reachability problem by decomposing it into K-β-1 smaller LMIs
+# Do the hyperplane reachability instance
 function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts :: SplitSdpOptions)
   setup_start_time = time()
 
-  # Some helpful block index matrices
-  E1 = E(1, inst.ffnet.zdims)
-  EK = E(inst.ffnet.K, inst.ffnet.zdims)
-  Ea = E(inst.ffnet.K+1, inst.ffnet.zdims)
-  Einit = [E1; Ea]
-  Esafe = [E1; EK; Ea]
-
-  # Setup Xinit first
-  Xinit, Pvars = makeSplitXinit!(model, inst.input, inst.ffnet, opts)
-  Z = Einit' * Xinit * Einit
-
-  # Setup Xsafe and add it to Z
-  @variable(model, h)
-  Svars = Dict(:h => h)
-  S = makeShyperplane(inst.reach_set.normal, h, inst.ffnet)
-  Xsafe = makeSplitXsafe!(model, S, inst.ffnet, opts)
-  Z = Z + (Esafe' * Xsafe * Esafe)
-
-  # Make each Zk and add them to Z
-  Qvars = Dict()
-  num_Xks = inst.ffnet.K - opts.β
-  for k in 1:num_Xks
-    if opts.verbose; println("making X[" * string(k) * "/" * string(num_Xks) * "]") end
-    Ekβ = E(k, opts.β, inst.ffnet.zdims)
-    EXk = [Ekβ; Ea]
-    Xk, Qkvars = makeSplitXk!(model, k, inst.ffnet, opts)
-    Z = Z + (EXk' * Xk * EXk)
-    merge!(Qvars, Qkvars)
-  end
-
-  # Select and assert that each Zk is NSD
-  Ωinv = makeΩinv(opts.β, inst.ffnet.zdims)
-  Zscaled = Z .* Ωinv
+  # Construct the Ys
+  Ys, Yvars, ξvardims = makeYs!(model, inst, opts)
+  Ωinvs = makeΩinvs(opts.β, inst.ffnet.zdims)
   num_cliques = inst.ffnet.K - opts.β - 1
+
+  # Use these Yks to construct the Zks
+  #=
   for k = 1:num_cliques
-    Eck = Ec(k, opts.β, inst.ffnet.zdims)
-    Zk = Eck * Zscaled * Eck'
+    println("adding Z[" * string(k) * "/" * string(num_cliques) * "]")
+    Zk = makeZk(k, opts.β, Ys, Ωinvs[k], inst.ffnet.zdims)
     @SDconstraint(model, Zk <= 0)
   end
+  =#
 
-  # And the objective
-  @objective(model, Min, h)
+  #=
+  for k in 1:length(Ωinvs)
+    println("Ω[" * string(k) * "]inv is:")
+    display(Ωinvs[k])
+  end
+  =#
 
-  # Time it took to set up the problem
-  vars = merge(Pvars, Qvars, Svars)
+  Zs = [makeZk(k, opts.β, Ys, Ωinvs[k], inst.ffnet.zdims) for k in 1:num_cliques]
+  bigZ = sum(Ec(k, opts.β, inst.ffnet.zdims)' * Zs[k] * Ec(k, opts.β, inst.ffnet.zdims) for k in 1:num_cliques)
+  @SDconstraint(model, bigZ <= 0)
+  println("Just asserted that BigZ is NSD")
+
+  ξsafe = spliceγ1(Yvars[:γ1], ξvardims)[2][1]
+  vars = merge(Yvars, Dict(:h => ξsafe))
+  @objective(model, Min, ξsafe)
+
+  # Ready to return
   setup_time = round(time() - setup_start_time, digits=2)
   if opts.verbose; println("setup time: " * string(setup_time)) end
   return model, vars, setup_time
@@ -199,6 +190,9 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
     error("unrecognized query instance: " * string(inst))
   end
 
+  # _, vars, setup_time = setupReachViaXs(model, inst, opts)
+
+
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = round(time() - total_start_time, digits=2)
@@ -213,8 +207,8 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
     solve_time = solve_time)
 end
 
+
 # For debugging purposes we export more than what is needed
-export SumXThenSplitSetup
 export SplitSdpOptions
 export setup, solve!, run
 

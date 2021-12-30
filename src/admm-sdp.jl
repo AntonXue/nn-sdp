@@ -2,6 +2,7 @@ module AdmmSdp
 
 using ..Header
 using ..Common
+using ..Partitions
 using ..Intervals
 using Parameters
 using LinearAlgebra
@@ -56,17 +57,17 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   qxdims = [sum(ffnet.zdims[(k+1):(k+opts.β)]) for k in 1:(num_cliques+1)]
 
   # Use qxdims to calculate the ξvardims
-  ξinitdim = (input isa BoxInput) ? ffnet.xdims[1] : (input isa PolytopeInput ? ffnet.xdims[1]^2 : error(""))
+  ξindim = (input isa BoxInput) ? ffnet.xdims[1] : (input isa PolytopeInput ? ffnet.xdims[1]^2 : error(""))
   ξkdims = [qxdims[k]^2 + (4 * qxdims[k]) for k in 1:(num_cliques+1)]
-  ξvardims = (ξinitdim, ξkdims)
+  ξvardims = (ξindim, ξkdims)
 
   # Use the ξvardims information to calculate γdims
   γdims = Vector{Int}()
   for k = 1:num_cliques
     if num_cliques == 1 && k == 1
-      push!(γdims, ξinitdim + ξkdims[1] + ξkdims[2])
+      push!(γdims, ξindim + ξkdims[1] + ξkdims[2])
     elseif k == 1
-      push!(γdims, ξinitdim + ξkdims[1])
+      push!(γdims, ξindim + ξkdims[1])
     elseif k == num_cliques
       push!(γdims, ξkdims[k] + ξkdims[k+1])
     else
