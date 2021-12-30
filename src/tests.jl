@@ -187,9 +187,10 @@ end
 function testP1P2reach(verbose=true)
   Random.seed!(12345)
 
-  #xdims = [2; 3; 4; 5; 4; 3; 2]
-  xdims = [2; 2; 2; 2; 2; 2]
-  ffnet = randomNetwork(xdims, σ=1.0)
+  xdims = [2; 4; 6; 8; 6; 4; 2]
+  # xdims = [2; 3; 4; 5; 4; 3; 2]
+  # xdims = [2; 2; 2; 2; 2; 2]
+  ffnet = randomNetwork(xdims, σ=0.5)
 
   xcenter = ones(ffnet.xdims[1])
   ε = 0.1
@@ -229,31 +230,23 @@ function testP1P2reach(verbose=true)
 
   # Let us just test the hplane1 reachability for simplicity
 
-  #=
   deep_soln = DeepSdp.run(reach_inst, deep_opts)
   println("\n\n")
-  =#
 
   split_soln1 = SplitSdp.run(reach_inst, split_opts1)
   println("\n\n")
 
   split_soln2 = SplitSdp.run(reach_inst, split_opts2)
-  println("value: " * string(split_soln2.values[:h]))
   println("\n\n")
 
   split_soln3 = SplitSdp.run(reach_inst, split_opts3)
-  println("value: " * string(split_soln3.values[:h]))
   println("\n\n")
 
-  # split_soln4 = SplitSdp.run(reach_inst, split_opts4)
-  # println("value: " * string(split_soln4.values[:h]))
-  # println("\n\n")
+  split_soln4 = SplitSdp.run(reach_inst, split_opts4)
+  println("\n\n")
 
-  return split_soln1, split_soln2, split_soln3
-
-  # return deep_soln, split_soln1, split_soln2, split_soln3, split_soln4
-
-
+  # return deep_soln, split_soln1, split_soln2, split_soln3
+  return deep_soln, split_soln1, split_soln2, split_soln3, split_soln4
 end
 
 

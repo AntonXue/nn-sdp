@@ -69,11 +69,11 @@ function spliceγ1(γ1, ξvardims)
   ξindim, ξsafedim, ξkdims = ξvardims
   @assert length(ξkdims) >= 2
 
-  # There is only 1 clique
+  # When there is only 1 clique
   if length(ξkdims) == 2
     return splice(γ1, [ξindim; ξsafedim; ξkdims[1]; ξkdims[2]])
 
-  # There is > 1 clique
+  # When there are > 1 clique
   else
     return splice(γ1, [ξindim; ξsafedim; ξkdims[1]])
   end
@@ -102,7 +102,7 @@ function makeXqξ(k :: Int, b :: Int, ξk, ffnet :: FeedForwardNetwork; ϕout_in
 
   qxdim = sum(ffnet.zdims[k+1:k+b])
   if ffnet.type isa ReluNetwork
-    # Decompose the ξ
+    # Decompose the ξk
     λ_slope_start = 1
     λ_slope_final = qxdim
     τ_slope_start = λ_slope_final + 1
@@ -305,7 +305,7 @@ function makeΩinvs(b :: Int, zdims :: Vector{Int})
   num_cliques = length(zdims) - b - 2
   Ωs = makeΩs(b, zdims)
   @assert length(Ωs) == num_cliques
-  Ωinvs = Vector{Any}()
+  Ωinvs = Vector{Matrix{Float64}}()
   for k in 1:num_cliques
     Ωkinv = 1 ./ Ωs[k]
     Ωkinv[isinf.(Ωkinv)] .= 0
@@ -315,17 +315,14 @@ function makeΩinvs(b :: Int, zdims :: Vector{Int})
 end
 
 # Make Zk from a bunch of Ys and Ωinvs
-function makeZk(k :: Int, b :: Int, Ys, Ωinvs, zdims :: Vector{Int})
+function makeZk(k :: Int, b :: Int, Ys, Ωinvs :: Vector{Matrix{Float64}}, zdims :: Vector{Int})
   @assert k >= 1 && b >= 1
   num_cliques = length(zdims) - b - 2
-  @assert num_cliques >= 1
+  @assert 1 <= num_cliques == length(Ωinvs)
   Zdim = sum(zdims)
   Ysum = zeros(Zdim, Zdim)
-  println("making Z" * string(k) * " with stride " * string(b))
   for j = -b:b
     if (k+j < 1) || (k+j > num_cliques); continue end
-    println("\tusing k, j pair: " * string((k, j)))
-
     Eckj = Ec(k+j, b, zdims)
     Ysum = Ysum + (Eckj' * (Ωinvs[k+j] .* Ys[k+j]) * Eckj)
   end
@@ -333,7 +330,6 @@ function makeZk(k :: Int, b :: Int, Ys, Ωinvs, zdims :: Vector{Int})
   Zk = Eck * Ysum * Eck'
   return Zk
 end
-
 
 #
 export splice, spliceγ1

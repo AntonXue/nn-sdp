@@ -26,14 +26,12 @@ ffnet = randomNetwork(xdims, σ=1.0)
 
 xcenter = ones(ffnet.xdims[1])
 ε = 0.1
-# input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
-input = BoxInput(x1min=-ones(xdims[1]), x1max=ones(xdims[1]))
+input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
 # runAndPlotRandomTrajectories(1000, ffnet, x1min=input.x1min, x1max=input.x1max)
 x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
 # Safety instance
-norm2 = 5^2
-safety = safetyNormBound(norm2, xdims)
+safety = safetyNormBound(5^2, xdims)
 safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
 # Reachability Instance

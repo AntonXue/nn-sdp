@@ -19,65 +19,6 @@ using Mosek
   verbose :: Bool = false
 end
 
-# Make all the Xs
-function setupReachViaXs(model, inst :: ReachabilityInstance, opts :: SplitSdpOptions)
-
-  input = inst.input
-  ffnet = inst.ffnet
-
-  @assert inst.input isa BoxInput
-  @assert inst.reach_set isa HyperplaneSet
-  ξvardims = makeξvardims(opts.β, inst.ffnet.zdims, ξindim=inst.ffnet.xdims[1], ξsafedim=1)
-  ξindim, ξsafedim, ξkdims = ξvardims
-
-  ξin = @variable(model, [1:ξindim])
-  @constraint(model, ξin[1:ξindim] .>= 0)
-
-  ξsafe = @variable(model)
-  @constraint(model, ξsafe >= 0)
-
-  ξs = Vector{Any}()
-  for k in 1:length(ξkdims)
-    ξk = @variable(model, [1:ξkdims[k]])
-    @constraint(model, ξk[1:ξkdims[k]] .>= 0)
-    push!(ξs, ξk)
-  end
-
-  Xin = makeXinξ(ξin, inst.input, inst.ffnet)
-  Xsafe = makeHyperplaneReachXsafeξ(ξsafe, inst.reach_set, inst.ffnet)
-  Xs = Vector{Any}()
-  num_Xs = length(ξkdims)
-  for k in 1:num_Xs
-    ϕout_intv = selectϕoutIntervals(k, opts.β, opts.x_intervals)
-    slope_intv = selectSlopeIntervals(k, opts.β, opts.slope_intervals)
-    @assert !(ϕout_intv isa Nothing)
-    @assert !(slope_intv isa Nothing)
-    Xk = makeXqξ(k, opts.β, ξs[k], inst.ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
-    push!(Xs, Xk)
-  end
-
-  #
-  E1 = E(1, ffnet.zdims)
-  EK = E(ffnet.K, ffnet.zdims)
-  Ea = E(ffnet.K+1, ffnet.zdims)
-  Ein = [E1; Ea]
-  Esafe = [E1; EK; Ea]
-
-  ZXs = (Ein' * Xin * Ein) + (Esafe' * Xsafe * Esafe)
-  for k in 1:num_Xs
-    EXk = E(k, opts.β, inst.ffnet.zdims)
-    EXk = [EXk; Ea]
-    ZXs = ZXs + (EXk' * Xs[k] * EXk)
-  end
-
-  @SDconstraint(model, ZXs <= 0)
-
-  @objective(model, Min, ξsafe)
-  println("the other goddamn setup")
-
-  return model, Dict(:h => ξsafe), 1.0
-end
-
 # Make the Ys
 function makeYs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   # Figure out the relevant γ dimensions
@@ -90,12 +31,9 @@ function makeYs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   for k = 1:num_cliques
     γk = @variable(model, [1:γdims[k]])
     @constraint(model, γk[1:γdims[k]] .>= 0)
-
     Yk = makeYk(k, opts.β, γk, ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
-
     push!(Ys, Yk)
     Yvars[Symbol("γ" * string(k))] = γk
-    println("added γ" * string(k) * " of dim " * string(length(γk)))
   end
   return Ys, Yvars, ξvardims
 end
@@ -111,7 +49,7 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
 
   # Use these Yks to construct the Zks
   for k = 1:num_cliques
-    Zk = makeZk(k, opts.β, Ys, Ωinvs[k], inst.ffnet.zdims)
+    Zk = makeZk(k, opts.β, Ys, Ωinvs, inst.ffnet.zdims)
     @SDconstraint(model, Zk <= 0)
   end
 
@@ -131,25 +69,10 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
   num_cliques = inst.ffnet.K - opts.β - 1
 
   # Use these Yks to construct the Zks
-  #=
   for k = 1:num_cliques
-    println("adding Z[" * string(k) * "/" * string(num_cliques) * "]")
-    Zk = makeZk(k, opts.β, Ys, Ωinvs[k], inst.ffnet.zdims)
+    Zk = makeZk(k, opts.β, Ys, Ωinvs, inst.ffnet.zdims)
     @SDconstraint(model, Zk <= 0)
   end
-  =#
-
-  #=
-  for k in 1:length(Ωinvs)
-    println("Ω[" * string(k) * "]inv is:")
-    display(Ωinvs[k])
-  end
-  =#
-
-  Zs = [makeZk(k, opts.β, Ys, Ωinvs[k], inst.ffnet.zdims) for k in 1:num_cliques]
-  bigZ = sum(Ec(k, opts.β, inst.ffnet.zdims)' * Zs[k] * Ec(k, opts.β, inst.ffnet.zdims) for k in 1:num_cliques)
-  @SDconstraint(model, bigZ <= 0)
-  println("Just asserted that BigZ is NSD")
 
   ξsafe = spliceγ1(Yvars[:γ1], ξvardims)[2][1]
   vars = merge(Yvars, Dict(:h => ξsafe))
@@ -189,9 +112,6 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
   else
     error("unrecognized query instance: " * string(inst))
   end
-
-  # _, vars, setup_time = setupReachViaXs(model, inst, opts)
-
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
