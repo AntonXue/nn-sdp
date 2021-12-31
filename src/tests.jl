@@ -241,34 +241,32 @@ end
 # Helper function for testing cache
 function _setupSafetyViaCache(model, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   setup_start_time = time()
-
-  # Extract the dimensions
-  γdims = params.γdims
-  num_cliques = length(γdims)
-
-  # Set up the γ variables
+  num_cliques = length(params.γdims)
   Yvars = Dict()
   γs = Vector{Any}()
   for k = 1:num_cliques
-    γk = @variable(model, [1:γdims[k]])
-    @constraint(model, γk[1:γdims[k]] .>= 0)
+    γk = @variable(model, [1:params.γdims[k]])
+    @constraint(model, γk[1:params.γdims[k]] .>= 0)
     push!(γs, γk)
     Yvars[Symbol("γ" * string(k))] = γk
   end
-
   γ = vcat(γs...)
 
   # Now construct each Zk with a cache
   for k = 1:num_cliques
-    ωk = H(k, opts.β, γdims) * γ
+    ωk = H(k, opts.β, params.γdims) * γ
     zk = cache.Js[k] * ωk + cache.zaffs[k]
     Zkdim = Int(round(sqrt(length(zk))))
     Zk = reshape(zk, (Zkdim, Zkdim))
     @SDconstraint(model, Zk <= 0)
   end
 
+  # Artificial constraint to force strong convexity
+  γnorm = @variable(model)
+  @constraint(model, [γ; γnorm] in SecondOrderCone())
+  @objective(model, Min, γnorm)
   setup_time = round(time() - setup_start_time, digits=2)
-  return model, Yvars, setup_time
+  return model, Yvars, setup_time, γ
 end
 
 function _runWithAdmmCache(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
@@ -280,7 +278,7 @@ function _runWithAdmmCache(params :: AdmmParams, cache :: AdmmCache, opts :: Adm
     "QUIET" => true,
     "INTPNT_CO_TOL_DFEAS" => 1e-9))
 
-  _, vars, setup_time = _setupSafetyViaCache(model, params, cache, opts)
+  _, vars, setup_time, γ = _setupSafetyViaCache(model, params, cache, opts)
 
   # Run the solve! function equivalent manually
   optimize!(model)
@@ -292,13 +290,51 @@ function _runWithAdmmCache(params :: AdmmParams, cache :: AdmmCache, opts :: Adm
   # Set up the thing to return
   total_time = round(time() - total_start_time, digits=2)
   return SolutionOutput(
-    objective_value = objective_value(model),
-    values = values,
-    summary = summary,
-    termination_status = summary.termination_status,
-    total_time = total_time,
-    setup_time = setup_time,
-    solve_time = solve_time)
+      objective_value = objective_value(model),
+      values = values,
+      summary = summary,
+      termination_status = summary.termination_status,
+      total_time = total_time,
+      setup_time = setup_time,
+      solve_time = solve_time),
+    value.(γ)
+end
+
+# The split safety instance, but with an artificial norm constraint injected
+function _runSplitCustom(inst :: SafetyInstance, opts :: SplitSdpOptions)
+  total_start_time = time()
+
+  # Set up the instance
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_DFEAS" => 1e-9))
+
+  _, vars, setup_time = SplitSdp.setupSafety!(model, inst, opts)
+  γ = Vector{Any}()
+  for k in 1:vars.count
+    γk = vars[Symbol("γ" * string(k))]
+    push!(γ, γk)
+  end
+  γ = vcat(γ...)
+
+  # Artificial constraint to force strong convexity
+  γnorm = @variable(model)
+  @constraint(model, [γ; γnorm] in SecondOrderCone())
+  @objective(model, Min, γnorm)
+
+  # Solve
+  summary, values, solve_time = solve!(model, vars, opts)
+  total_time = round(time() - total_start_time, digits=2)
+  return SolutionOutput(
+      objective_value = objective_value(model),
+      values = values,
+      summary = summary,
+      termination_status = summary.termination_status,
+      total_time = total_time,
+      setup_time = setup_time,
+      solve_time = solve_time),
+    value.(γ)
 end
 
 # test that the cache is well-formed
@@ -307,7 +343,7 @@ function testAdmmCache(verbose=true)
   # Don't touch!!
   Random.seed!(12345)
   xdims = [2; 6; 8; 10; 8; 6; 2]
-  ffnet = randomNetwork(xdims, σ=0.4)
+  ffnet = randomNetwork(xdims, σ=0.5)
 
   xcenter = ones(ffnet.xdims[1])
   ε = 0.01
@@ -315,21 +351,25 @@ function testAdmmCache(verbose=true)
   runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
   x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
-  safety = safetyNormBound(0.4, xdims)
+  safety = safetyNormBound(8, xdims)
   safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
   # The split stuff
   split_opts = SplitSdpOptions(β=3, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
-  split_soln = SplitSdp.run(safety_inst, split_opts)
+  split_soln, split_γ = _runSplitCustom(safety_inst, split_opts)
 
   # The admm stuff
   admm_opts = AdmmSdpOptions(β=3, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
   admm_params = initParams(safety_inst, admm_opts)
   admm_cache = precomputeCache(admm_params, safety_inst, admm_opts)
-  admm_soln = _runWithAdmmCache(admm_params, admm_cache, admm_opts)
+  admm_soln, admm_γ = _runWithAdmmCache(admm_params, admm_cache, admm_opts)
+
+  # Tests differences
+  maxdiff = maximum(abs.(split_γ - admm_γ))
+  if verbose; println("maxdiff: " * string(maxdiff)) end
 
   # Return stuff
-  return split_soln, admm_soln, admm_cache
+  return split_soln, admm_soln, admm_cache, split_γ, admm_γ
 end
 
 end # End module
