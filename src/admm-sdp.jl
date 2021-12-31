@@ -2,8 +2,8 @@ module AdmmSdp
 
 using ..Header
 using ..Common
-using ..Partitions
 using ..Intervals
+using ..Partitions
 using Parameters
 using LinearAlgebra
 using JuMP
@@ -33,7 +33,7 @@ end
 
   # Some auxiliary stuff that we keep around too
   γdims :: Vector{Int}
-  ξvardims :: Tuple{Int, Vector{Int}}
+  ξvardims :: Tuple{Int, Int, Vector{Int}}
 end
 
 #
@@ -42,8 +42,8 @@ end
   zaffs :: Vector{Vector{Float64}}
   Jtzaffs :: Vector{Vector{Float64}}
   I_JtJ_invs :: Vector{Matrix{Float64}}
+  Dinv :: Vector{Float64}
 end
-
 
 #
 function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
@@ -51,35 +51,18 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   input = inst.input
   safety = inst.safety
 
-  num_cliques = ffnet.K - opts.β - 1
-
-  # First calculate the qxdims, which are used to calculate ξdims
-  qxdims = [sum(ffnet.zdims[(k+1):(k+opts.β)]) for k in 1:(num_cliques+1)]
-
-  # Use qxdims to calculate the ξvardims
-  ξindim = (input isa BoxInput) ? ffnet.xdims[1] : (input isa PolytopeInput ? ffnet.xdims[1]^2 : error(""))
-  ξkdims = [qxdims[k]^2 + (4 * qxdims[k]) for k in 1:(num_cliques+1)]
-  ξvardims = (ξindim, ξkdims)
-
-  # Use the ξvardims information to calculate γdims
-  γdims = Vector{Int}()
-  for k = 1:num_cliques
-    if num_cliques == 1 && k == 1
-      push!(γdims, ξindim + ξkdims[1] + ξkdims[2])
-    elseif k == 1
-      push!(γdims, ξindim + ξkdims[1])
-    elseif k == num_cliques
-      push!(γdims, ξkdims[k] + ξkdims[k+1])
-    else
-      push!(γdims, ξkdims[k])
-    end
-  end
+  γdims, ξvardims = makeγdims(opts.β, inst)
+  ξindim, ξsafedim, ξkdims = ξvardims
+  @assert ξsafedim == 0
+  @assert length(ξkdims) >= 2
 
   # Initialize the iteration variables
   γ = zeros(sum(γdims))
 
+  num_cliques = ffnet.K - opts.β - 1
+
   # Each ωk = Hk * γ
-  ωs = [zeros(sum(γdims[i] for i in Hcinds(k, opts.β, γdims))) for k in 1:num_cliques]
+  ωs = [zeros(sum(γdims[i] for i in Hinds(k, opts.β, γdims))) for k in 1:num_cliques]
 
   # Each vk is the size of sum(Ckdim)^2
   vs = [zeros(length(sum(Cdims(k, opts.β, ffnet.zdims))^2)) for k in 1:num_cliques]
@@ -88,14 +71,107 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   λs = [zeros(length(vs[k])) for k in 1:num_cliques]
   μs = [zeros(length(ωs[k])) for k in 1:num_cliques]
 
-  return AdmmParams(
-    γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs,
-    γdims=γdims,
-    ξvardims=ξvardims)
+  params = AdmmParams(γ=γ, vs=vs, ωs=ωs, λs=λs, μs=μs, γdims=γdims, ξvardims=ξvardims)
+  return params
 end
 
 #
-function precompute
+function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: AdmmSdpOptions)
+  precompute_start_time = time()
+  if opts.verbose; println("precompute") end
+
+  γdims = params.γdims
+  ξvardims = params.ξvardims
+  ffnet = inst.ffnet
+  num_cliques = length(γdims)
+
+  # Yss[k] is the non-affine components of Yk, Yaffs[k] is the affine component of Yk
+  Yss = Vector{Vector{Matrix{Float64}}}()
+  Yaffs = Vector{Matrix{Float64}}()
+  for k = 1:num_cliques
+    Yk_start_time = time()
+    γkdim = γdims[k]
+
+    # Need to construct the affine component first
+    Ykaff = makeYk(k, opts.β, zeros(γkdim), ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
+
+    # Now do the other parts
+    Ykparts = Vector{Matrix{Float64}}()
+    for i in 1:γkdim
+      tmp = makeYk(k, opts.β, e(i, γkdim), ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
+      Yki = tmp - Ykaff
+      push!(Ykparts, Yki)
+    end
+
+    # Store both the Ykparts and the affine component
+    push!(Yss, Ykparts)
+    push!(Yaffs, Ykaff)
+
+    Yk_time = round(time() - Yk_start_time, digits=2)
+    if opts.verbose; println("\tYss[" * string(k) * "/" * string(num_cliques) * "], time: " * string(Yk_time)) end
+  end
+
+  # Compute the other components that are dependent on the Ys
+  Js = Vector{Matrix{Float64}}()
+  zaffs = Vector{Vector{Float64}}()
+  Jtzaffs = Vector{Vector{Float64}}()
+  I_JtJ_invs = Vector{Matrix{Float64}}()
+
+  Ωinvs = makeΩinvs(opts.β, ffnet.zdims)
+
+  for k in 1:num_cliques
+    Jk_start_time = time()
+
+    # We start off Jk as a list of vectors that we will then hcat together
+    Jk = Vector{Vector{Float64}}()
+
+    # We will eventually sum the elements of this to get zkaff
+    zkaffparts = Vector{Vector{Float64}}()
+
+    Eck = Ec(k, opts.β, ffnet.zdims)
+    for j = -opts.β:opts.β
+      if (k+j < 1) || (k+j > num_cliques); continue end
+
+      Eckj = Ec(k+j, opts.β, ffnet.zdims)
+      γkjdim = γdims[k+j]
+      for Ykji in Yss[k+j]
+        insYkji = Eck * Eckj' * (Ωinvs[k+j] .* Ykji) * Eckj * Eck'
+        push!(Jk, vec(insYkji))
+      end
+
+      insYkjaff = Eck * Eckj' * (Ωinvs[k+j] .* Yaffs[k+j]) * Eckj * Eck'
+      push!(zkaffparts, vec(insYkjaff))
+    end
+
+    # Finish and store Jk
+    Jk = hcat(Jk...)
+    push!(Js, Jk)
+
+    # Finish and store zkaff
+    zkaff = sum(zkaffparts)
+    push!(zaffs, zkaff)
+
+    # Jk' * zkaff
+    _Jktzaff = Jk' * zkaff
+    push!(Jtzaffs, _Jktzaff)
+
+    # inv(I + Jk' * Jk)
+    _I_JktJk_inv = inv(Symmetric(I + Jk' * Jk))
+    push!(I_JtJ_invs, _I_JktJk_inv)
+
+    Jk_time = round(time() - Jk_start_time, digits=2)
+    if opts.verbose; println("\tJ[" * string(k) * "/" * string(num_cliques) * "], time: " * string(Jk_time)) end
+  end
+
+  # Compute Dinv
+  D = sum(H(k, opts.β+1, γdims)' * H(k, opts.β+1, γdims) for k in 1:num_cliques)
+  D = diag(D)
+  @assert minimum(D) >= 1
+  Dinv = 1 ./ D
+
+  # Complete
+  cache = AdmmCache(Js=Js, zaffs=zaffs, Jtzaffs=Jtzaffs, I_JtJ_invs=I_JtJ_invs, Dinv=Dinv)
+  return cache
 end
 
 #
@@ -139,6 +215,7 @@ function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
 end
 
 
+export initParams, precomputeCache
 export AdmmSdpOptions, AdmmParams, AdmmCache
 
 end # End module

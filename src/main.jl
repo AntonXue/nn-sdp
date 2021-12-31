@@ -45,6 +45,6 @@ split_opts3 = SplitSdpOptions(β=3, verbose=true, x_intervals=x_intvs, slope_int
 split_opts4 = SplitSdpOptions(β=4, verbose=true, x_intervals=x_intvs, slope_intervals=slope_intvs)
 
 # Admm Options
-admm_opts = AdmmSdpOptions(β=2)
-
-
+# admm_opts = AdmmSdpOptions(β=2)
+# admm_params = initParams(safety_inst, admm_opts)
+# cache = precomputeCache(admm_params, safety_inst, admm_opts)

@@ -2,10 +2,11 @@ module Tests
 
 using ..Header
 using ..Common
+using ..Intervals
 using ..Partitions
 using ..DeepSdp
 using ..SplitSdp
-using ..Intervals
+using ..AdmmSdp
 using ..Utils
 
 using LinearAlgebra
@@ -16,7 +17,7 @@ using MosekTools
 
 
 # Test that that Z safety construction by Xk, Yk, and Zk are equivalent.
-function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions, verbose=true)
+function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions; verbose=true)
   ffnet = inst.ffnet
   input = inst.input
   safety = inst.safety
@@ -99,7 +100,7 @@ function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions, verbose=t
 end
 
 # Test that that Z reachability construction by Xk, Yk, and Zk are equivalent.
-function testReachZk(inst :: ReachabilityInstance, opts :: SplitSdpOptions, verbose=true)
+function testReachZk(inst :: ReachabilityInstance, opts :: SplitSdpOptions; verbose=true)
   ffnet = inst.ffnet
   input = inst.input
   hplane = inst.reach_set
@@ -185,15 +186,14 @@ end
 
 # Test that the P1 and P2 give the expected values for reachability
 function testP1P2reach(verbose=true)
-  Random.seed!(12345)
 
-  xdims = [2; 4; 6; 8; 6; 4; 2]
-  # xdims = [2; 3; 4; 5; 4; 3; 2]
-  # xdims = [2; 2; 2; 2; 2; 2]
-  ffnet = randomNetwork(xdims, σ=0.5)
+  # Don't touch!!
+  Random.seed!(12345)
+  xdims = [2; 6; 8; 10; 8; 6; 2]
+  ffnet = randomNetwork(xdims, σ=0.4)
 
   xcenter = ones(ffnet.xdims[1])
-  ε = 0.1
+  ε = 0.01
   input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
   runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
 
@@ -231,24 +231,106 @@ function testP1P2reach(verbose=true)
   # Let us just test the hplane1 reachability for simplicity
 
   deep_soln = DeepSdp.run(reach_inst, deep_opts)
-  println("\n\n")
-
   split_soln1 = SplitSdp.run(reach_inst, split_opts1)
-  println("\n\n")
-
   split_soln2 = SplitSdp.run(reach_inst, split_opts2)
-  println("\n\n")
-
   split_soln3 = SplitSdp.run(reach_inst, split_opts3)
-  println("\n\n")
-
   split_soln4 = SplitSdp.run(reach_inst, split_opts4)
-  println("\n\n")
-
-  # return deep_soln, split_soln1, split_soln2, split_soln3
   return deep_soln, split_soln1, split_soln2, split_soln3, split_soln4
 end
 
+# Helper function for testing cache
+function _setupSafetyViaCache(model, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  setup_start_time = time()
+
+  # Extract the dimensions
+  γdims = params.γdims
+  num_cliques = length(γdims)
+
+  # Set up the γ variables
+  Yvars = Dict()
+  γs = Vector{Any}()
+  for k = 1:num_cliques
+    γk = @variable(model, [1:γdims[k]])
+    @constraint(model, γk[1:γdims[k]] .>= 0)
+    push!(γs, γk)
+    Yvars[Symbol("γ" * string(k))] = γk
+  end
+
+  γ = vcat(γs...)
+
+  # Now construct each Zk with a cache
+  for k = 1:num_cliques
+    ωk = H(k, opts.β, γdims) * γ
+    zk = cache.Js[k] * ωk + cache.zaffs[k]
+    Zkdim = Int(round(sqrt(length(zk))))
+    Zk = reshape(zk, (Zkdim, Zkdim))
+    @SDconstraint(model, Zk <= 0)
+  end
+
+  setup_time = round(time() - setup_start_time, digits=2)
+  return model, Yvars, setup_time
+end
+
+function _runWithAdmmCache(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  total_start_time = time()
+
+  # Set up the instance
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_DFEAS" => 1e-9))
+
+  _, vars, setup_time = _setupSafetyViaCache(model, params, cache, opts)
+
+  # Run the solve! function equivalent manually
+  optimize!(model)
+  summary = solution_summary(model)
+  solve_time = round(summary.solve_time, digits=2)
+  values = Dict()
+  for (k, v) in vars; values[k] = value.(v) end
+
+  # Set up the thing to return
+  total_time = round(time() - total_start_time, digits=2)
+  return SolutionOutput(
+    objective_value = objective_value(model),
+    values = values,
+    summary = summary,
+    termination_status = summary.termination_status,
+    total_time = total_time,
+    setup_time = setup_time,
+    solve_time = solve_time)
+end
+
+# test that the cache is well-formed
+function testAdmmCache(verbose=true)
+
+  # Don't touch!!
+  Random.seed!(12345)
+  xdims = [2; 6; 8; 10; 8; 6; 2]
+  ffnet = randomNetwork(xdims, σ=0.4)
+
+  xcenter = ones(ffnet.xdims[1])
+  ε = 0.01
+  input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
+  runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
+  x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
+
+  safety = safetyNormBound(0.4, xdims)
+  safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
+
+  # The split stuff
+  split_opts = SplitSdpOptions(β=3, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
+  split_soln = SplitSdp.run(safety_inst, split_opts)
+
+  # The admm stuff
+  admm_opts = AdmmSdpOptions(β=3, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
+  admm_params = initParams(safety_inst, admm_opts)
+  admm_cache = precomputeCache(admm_params, safety_inst, admm_opts)
+  admm_soln = _runWithAdmmCache(admm_params, admm_cache, admm_opts)
+
+  # Return stuff
+  return split_soln, admm_soln, admm_cache
+end
 
 end # End module
 
