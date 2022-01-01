@@ -13,8 +13,8 @@ using MosekTools
 #
 @with_kw struct AdmmSdpOptions
   max_iters :: Int = 200
-  begin_check_at_iter :: Int = 1
-  check_every_k_iters :: Int = 1
+  begin_check_at_iter :: Int = 5
+  check_every_k_iters :: Int = 2
   nsd_tol :: Float64 = 1e-4
   β :: Int = 1
   ρ :: Float64 = 1.0
@@ -108,7 +108,7 @@ function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: A
     push!(Yss, Ykparts)
     push!(Yaffs, Ykaff)
 
-    Yk_time = round(time() - Yk_start_time, digits=2)
+    Yk_time = round(time() - Yk_start_time, digits=3)
     if opts.verbose; println("\tYss[" * string(k) * "/" * string(num_cliques) * "], time: " * string(Yk_time)) end
   end
 
@@ -160,7 +160,7 @@ function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: A
     _I_JktJk_inv = inv(Symmetric(I + Jk' * Jk))
     push!(I_JtJ_invs, _I_JktJk_inv)
 
-    Jk_time = round(time() - Jk_start_time, digits=2)
+    Jk_time = round(time() - Jk_start_time, digits=3)
     if opts.verbose; println("\tJ[" * string(k) * "/" * string(num_cliques) * "], time: " * string(Jk_time)) end
   end
 
@@ -293,12 +293,12 @@ function shouldStop(t :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: 
 end
 
 #
-function admm(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   println("admm!")
 
   iters_run = 0
   total_time = 0
-  iter_params = deepcopy(params)
+  iter_params = deepcopy(_params)
 
   for t = 1:opts.max_iters
     step_start_time = time()
@@ -329,16 +329,17 @@ function admm(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
     # Coalesce time statistics
     step_time = time() - step_start_time
     total_time = total_time + step_time
-    all_times = round.((x_time, y_time, z_time, step_time, total_time), digits=2)
+    all_times = round.((x_time, y_time, z_time, step_time, total_time), digits=3)
 
     if opts.verbose
       println("step[" * string(t) * "/" * string(opts.max_iters) * "] times: " * string(all_times))
       println("\tprimal residual: " * string(presidual))
     end
 
-    if shouldStop(t, params, cache, opts); break end
+    if shouldStop(t, iter_params, cache, opts); break end
   end
 
+  println("about to return iter_params")
   return iter_params
 end
 
