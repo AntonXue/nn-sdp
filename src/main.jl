@@ -1,4 +1,7 @@
 #
+main_start_time = time()
+
+#
 include("header.jl"); using .Header
 include("common.jl"); using .Common
 include("intervals.jl"); using .Intervals
@@ -24,27 +27,25 @@ ffnet = randomNetwork(xdims, σ=1.0)
 
 # Plot some trajectories
 
-xcenter = ones(ffnet.xdims[1])
-ε = 0.1
-input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
+# xcenter = ones(ffnet.xdims[1])
+# ε = 0.1
+# input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
 # runAndPlotRandomTrajectories(1000, ffnet, x1min=input.x1min, x1max=input.x1max)
-x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
+# x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
 # Safety instance
-safety = safetyNormBound(5^2, xdims)
-safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
-
-# Reachability Instance
-hplane = HyperplaneSet(normal=[0.0; 1.0])
-reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane)
-
-# SplitSdp options
-split_opts1 = SplitSdpOptions(β=1, verbose=true, x_intervals=x_intvs, slope_intervals=slope_intvs)
-split_opts2 = SplitSdpOptions(β=2, verbose=true, x_intervals=x_intvs, slope_intervals=slope_intvs)
-split_opts3 = SplitSdpOptions(β=3, verbose=true, x_intervals=x_intvs, slope_intervals=slope_intvs)
-split_opts4 = SplitSdpOptions(β=4, verbose=true, x_intervals=x_intvs, slope_intervals=slope_intvs)
+# safety = safetyNormBound(10^2, xdims)
+# safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
 # Admm Options
-# admm_opts = AdmmSdpOptions(β=2)
+println("finally about to do the ADMM stuff! after " * string(time() - main_start_time))
+
+# split_opts = SplitSdpOptions(β=2, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+# admm_opts = AdmmSdpOptions(β=2, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
 # admm_params = initParams(safety_inst, admm_opts)
-# cache = precomputeCache(admm_params, safety_inst, admm_opts)
+# admm_cache = precomputeCache(admm_params, safety_inst, admm_opts)
+# iter_params = AdmmSdp.admm(admm_params, admm_cache, admm_opts)
+
+
+
+sn, an, ac, sy, ay = Tests.testAdmmCache()

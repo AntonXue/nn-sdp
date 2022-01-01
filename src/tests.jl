@@ -263,7 +263,7 @@ function _setupSafetyViaCache(model, params :: AdmmParams, cache :: AdmmCache, o
 
   # Artificial constraint to force strong convexity
   γnorm = @variable(model)
-  @constraint(model, [γ; γnorm] in SecondOrderCone())
+  @constraint(model, [γnorm; γ] in SecondOrderCone())
   @objective(model, Min, γnorm)
   setup_time = round(time() - setup_start_time, digits=2)
   return model, Yvars, setup_time, γ
@@ -320,7 +320,7 @@ function _runSplitCustom(inst :: SafetyInstance, opts :: SplitSdpOptions)
 
   # Artificial constraint to force strong convexity
   γnorm = @variable(model)
-  @constraint(model, [γ; γnorm] in SecondOrderCone())
+  @constraint(model, [γnorm; γ] in SecondOrderCone())
   @objective(model, Min, γnorm)
 
   # Solve
@@ -351,15 +351,15 @@ function testAdmmCache(verbose=true)
   runAndPlotRandomTrajectories(10000, ffnet, x1min=input.x1min, x1max=input.x1max)
   x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
-  safety = safetyNormBound(8, xdims)
+  safety = safetyNormBound(10, xdims)
   safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
   # The split stuff
-  split_opts = SplitSdpOptions(β=3, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
+  split_opts = SplitSdpOptions(β=2, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
   split_soln, split_γ = _runSplitCustom(safety_inst, split_opts)
 
   # The admm stuff
-  admm_opts = AdmmSdpOptions(β=3, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
+  admm_opts = AdmmSdpOptions(β=2, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
   admm_params = initParams(safety_inst, admm_opts)
   admm_cache = precomputeCache(admm_params, safety_inst, admm_opts)
   admm_soln, admm_γ = _runWithAdmmCache(admm_params, admm_cache, admm_opts)

@@ -12,9 +12,9 @@ using MosekTools
 
 #
 @with_kw struct AdmmSdpOptions
-  max_iters :: Int = 400
-  begin_check_at_iter :: Int = 5
-  check_every_k_iters :: Int = 2
+  max_iters :: Int = 200
+  begin_check_at_iter :: Int = 1
+  check_every_k_iters :: Int = 1
   nsd_tol :: Float64 = 1e-4
   β :: Int = 1
   ρ :: Float64 = 1.0
@@ -34,6 +34,7 @@ end
   # Some auxiliary stuff that we keep around too
   γdims :: Vector{Int}
   ξvardims :: Tuple{Int, Int, Vector{Int}}
+  num_cliques :: Int = length(γdims)
 end
 
 #
@@ -65,7 +66,7 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   ωs = [zeros(sum(γdims[i] for i in Hinds(k, opts.β, γdims))) for k in 1:num_cliques]
 
   # Each vk is the size of sum(Ckdim)^2
-  vs = [zeros(length(sum(Cdims(k, opts.β, ffnet.zdims))^2)) for k in 1:num_cliques]
+  vs = [zeros(sum(Cdims(k, opts.β, ffnet.zdims))^2) for k in 1:num_cliques]
 
   # These are derived from vs and ωs respectively
   λs = [zeros(length(vs[k])) for k in 1:num_cliques]
@@ -164,7 +165,7 @@ function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: A
   end
 
   # Compute Dinv
-  D = sum(H(k, opts.β+1, γdims)' * H(k, opts.β+1, γdims) for k in 1:num_cliques)
+  D = sum(H(k, opts.β, γdims)' * H(k, opts.β, γdims) for k in 1:num_cliques)
   D = diag(D)
   @assert minimum(D) >= 1
   Dinv = 1 ./ D
@@ -195,23 +196,150 @@ function projectNsd(vk :: Vector{Float64})
 end
 
 #
-function stepγ(params :: AdmmParams, cache :: AdmmCache)
+function stepγ(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  tmp = [H(k, opts.β, params.γdims)' * (params.ωs[k] + (params.μs[k] / opts.ρ)) for k in 1:params.num_cliques]
+  tmp = sum(tmp)
+  tmp = cache.Dinv .* tmp
+  return projectΓ(tmp)
 end
 
 #
-function stepvk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+function stepvk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  tmp = makezk(k, params.ωs[k], cache)
+  tmp = tmp - (params.λs[k] / opts.ρ)
+  return projectNsd(tmp)
 end
 
 #
-function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  tmp = cache.Js[k]' * params.vs[k]
+  tmp = tmp + H(k, opts.β, params.γdims) * params.γ
+  tmp = tmp + (cache.Js[k]' * params.λs[k] - params.μs[k]) / opts.ρ
+  tmp = tmp - cache.Jtzaffs[k]
+  tmp = cache.I_JtJ_invs[k] * tmp
+  return tmp
 end
 
 #
-function stepλk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+function stepλk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  tmp = params.vs[k] - makezk(k, params.ωs[k], cache)
+  tmp = params.λs[k] + opts.ρ * tmp
+  return tmp
 end
 
 #
-function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache)
+function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  tmp = params.ωs[k] - H(k, opts.β, params.γdims) * params.γ
+  tmp = params.μs[k] + opts.ρ * tmp
+  return tmp
+end
+
+# X = {γ, v1, ..., vp}
+function stepX(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  new_γ = stepγ(params, cache, opts)
+  new_vs = Vector([stepvk(k, params, cache, opts) for k in 1:params.num_cliques])
+  return new_γ, new_vs
+end
+
+
+# Y = {ω1, ..., ωk}
+function stepY(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  new_ωs = Vector([stepωk(k, params, cache, opts) for k in 1:params.num_cliques])
+  return new_ωs
+end
+
+
+# Z = {λ1, ..., λp, μ1, ..., μp}
+function stepZ(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  new_λs = Vector([stepλk(k, params, cache, opts) for k in 1:params.num_cliques])
+  new_μs = Vector([stepμk(k, params, cache, opts) for k in 1:params.num_cliques])
+  return new_λs, new_μs
+end
+
+# Residual values
+function primalResidual(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  vz_diffs = [params.vs[k] - makezk(k, params.ωs[k], cache) for k in 1:params.num_cliques]
+  ωγ_diffs = [params.ωs[k] - H(k, opts.β, params.γdims) * params.γ for k in 1:params.num_cliques]
+  vz_norm2 = sum(norm(vz_diffs[k])^2 for k in 1:params.num_cliques)
+  ωγ_norm2 = sum(norm(ωγ_diffs[k])^2 for k in 1:params.num_cliques)
+  norm2 = vz_norm2 + ωγ_norm2
+  return vz_diffs, ωγ_diffs, norm2
+end
+
+#
+function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  # for k in 1:params.num_cliques
+  for k in reverse(1:params.num_cliques)
+    # ωk = H(k, opts.β, params.γdims) * params.γ
+    ωk = params.ωs[k]
+    zk = makezk(k, ωk, cache)
+    dim = Int(round(sqrt(length(zk))))
+    tmp = Symmetric(reshape(zk, (dim, dim)))
+    if eigmax(tmp) > opts.nsd_tol
+      println("failed check pair (k, nsdtol): " * string((k, eigmax(tmp))))
+      return false
+    end
+  end
+  println("SAT!")
+  return true
+end
+
+#
+function shouldStop(t :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  if t > opts.begin_check_at_iter && mod(t, opts.check_every_k_iters) == 0
+    if isγSat(params, cache, opts); return true end
+  end
+  return false
+end
+
+#
+function admm(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  println("admm!")
+
+  iters_run = 0
+  total_time = 0
+  iter_params = deepcopy(params)
+
+  for t = 1:opts.max_iters
+    step_start_time = time()
+
+    # X stuff
+    x_start_time = time()
+    new_γ, new_vs = stepX(iter_params, cache, opts)
+    iter_params.γ = new_γ
+    iter_params.vs = new_vs
+    x_time = time() - x_start_time
+
+    # Y stuff
+    y_start_time = time()
+    new_ωs = stepY(iter_params, cache, opts)
+    iter_params.ωs = new_ωs
+    y_time = time() - y_start_time
+
+    # Z stuff
+    z_start_time = time()
+    new_λs, new_μs = stepZ(iter_params, cache, opts)
+    iter_params.λs = new_λs
+    iter_params.μs = new_μs
+    z_time = time() - z_start_time
+
+    # Primal residual
+    _, _, presidual = primalResidual(iter_params, cache, opts)
+
+    # Coalesce time statistics
+    step_time = time() - step_start_time
+    total_time = total_time + step_time
+    all_times = round.((x_time, y_time, z_time, step_time, total_time), digits=2)
+
+    if opts.verbose
+      println("step[" * string(t) * "/" * string(opts.max_iters) * "] times: " * string(all_times))
+      println("\tprimal residual: " * string(presidual))
+    end
+
+    if shouldStop(t, params, cache, opts); break end
+  end
+
+  return iter_params
 end
 
 
