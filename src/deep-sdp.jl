@@ -86,7 +86,7 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
 
   # The time it took to set up the problem
   vars = merge(Pvars, Qvars)
-  setup_time = round(time() - setup_start_time, digits=2)
+  setup_time = round(time() - setup_start_time, digits=3)
   if opts.verbose; println("setup time: " * string(setup_time)) end
   return model, vars, setup_time
 end
@@ -113,7 +113,7 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
 
   # Calculate setup times and return
   vars = merge(Pvars, Qvars, Svars)
-  setup_time = round(time() - setup_start_time, digits=2)
+  setup_time = round(time() - setup_start_time, digits=3)
   if opts.verbose; println("setup time: " * string(setup_time)) end
   return model, vars, setup_time
 end
@@ -122,7 +122,7 @@ end
 function solve!(model, vars, opts :: DeepSdpOptions)
   optimize!(model)
   summary = solution_summary(model)
-  solve_time = round(summary.solve_time, digits=2)
+  solve_time = round(summary.solve_time, digits=3)
   if opts.verbose; println("solve time: " * string(solve_time)) end
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
@@ -148,7 +148,7 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
-  total_time = round(time() - total_start_time, digits=2)
+  total_time = round(time() - total_start_time, digits=3)
   if opts.verbose; println("total time: " * string(total_time)) end
   return SolutionOutput(
     objective_value = objective_value(model),

@@ -265,7 +265,7 @@ function _setupSafetyViaCache(model, params :: AdmmParams, cache :: AdmmCache, o
   γnorm = @variable(model)
   @constraint(model, [γnorm; γ] in SecondOrderCone())
   @objective(model, Min, γnorm)
-  setup_time = round(time() - setup_start_time, digits=2)
+  setup_time = round(time() - setup_start_time, digits=3)
   return model, Yvars, setup_time, γ
 end
 
@@ -283,12 +283,12 @@ function _runWithAdmmCache(params :: AdmmParams, cache :: AdmmCache, opts :: Adm
   # Run the solve! function equivalent manually
   optimize!(model)
   summary = solution_summary(model)
-  solve_time = round(summary.solve_time, digits=2)
+  solve_time = round(summary.solve_time, digits=3)
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
 
   # Set up the thing to return
-  total_time = round(time() - total_start_time, digits=2)
+  total_time = round(time() - total_start_time, digits=3)
   return SolutionOutput(
       objective_value = objective_value(model),
       values = values,
@@ -325,7 +325,7 @@ function _runSplitCustom(inst :: SafetyInstance, opts :: SplitSdpOptions)
 
   # Solve
   summary, values, solve_time = solve!(model, vars, opts)
-  total_time = round(time() - total_start_time, digits=2)
+  total_time = round(time() - total_start_time, digits=3)
   return SolutionOutput(
       objective_value = objective_value(model),
       values = values,

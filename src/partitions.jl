@@ -95,6 +95,30 @@ function H(k :: Int, b :: Int, γdims :: Vector{Int})
   return vcat(Eks...)
 end
 
+# Indexed version to calculate ωk = Hk * γ
+function indexedH(k :: Int, b :: Int, γdims :: Vector{Int}, γ)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k <= length(γdims)
+  @assert length(γ) == sum(γdims)
+  low, high = max(k-b, 1), min(k+b, length(γdims))
+  start = sum(γdims[1:(low-1)]) + 1
+  final = sum(γdims[1:high])
+  return γ[start:final]
+end
+
+# Indexed version to calculate Hk' * x
+function indexedHt(k :: Int, b :: Int, γdims :: Vector{Int}, x)
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k <= length(γdims)
+  low, high = max(k-b, 1), min(k+b, length(γdims))
+  start = sum(γdims[1:(low-1)]) + 1
+  final = sum(γdims[1:high])
+  @assert length(x) == final - start + 1
+  Hktx = zeros(sum(γdims))
+  Hktx[start:final] = x
+  return Hktx
+end
+
 # The version of makeXq that takes a vector ξk
 function makeXqξ(k :: Int, b :: Int, ξk, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
   @assert k >= 1 && b >= 1
@@ -334,7 +358,7 @@ end
 #
 export splice, spliceγ1
 export makeξvardims, makeγdims
-export Hinds, H
+export Hinds, H, indexedH, indexedHt
 export makeXqξ, makeXinξ, makeSafetyXsafeξ, makeHyperplaneReachXsafeξ
 export makeYk
 export makeΩs, makeΩinvs

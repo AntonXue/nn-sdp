@@ -10,7 +10,7 @@ using JuMP
 using Mosek
 using MosekTools
 
-#
+# The options for ADMM
 @with_kw struct AdmmSdpOptions
   max_iters :: Int = 200
   begin_check_at_iter :: Int = 5
@@ -23,7 +23,7 @@ using MosekTools
   verbose :: Bool = false
 end
 
-#
+# The parameters used by ADMM, as well as some helpful information
 @with_kw mutable struct AdmmParams
   γ :: Vector{Float64}
   vs :: Vector{Vector{Float64}}
@@ -37,7 +37,7 @@ end
   num_cliques :: Int = length(γdims)
 end
 
-#
+# The things that we cache prior to the ADMM steps
 @with_kw struct AdmmCache
   Js :: Vector{Matrix{Float64}}
   zaffs :: Vector{Vector{Float64}}
@@ -46,7 +46,13 @@ end
   Dinv :: Vector{Float64}
 end
 
-#
+# Admm step status
+#=
+@with_kw struct AdmmSummary
+end
+=#
+
+# Initialize zero-valued parameters of the appropriate size
 function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   ffnet = inst.ffnet
   input = inst.input
@@ -76,10 +82,10 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   return params
 end
 
-#
+# Caching process to be run before the ADMM iterations
 function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: AdmmSdpOptions)
   precompute_start_time = time()
-  if opts.verbose; println("precompute") end
+  if opts.verbose; println("precompute start") end
 
   γdims = params.γdims
   ξvardims = params.ξvardims
@@ -172,7 +178,9 @@ function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: A
 
   # Complete
   cache = AdmmCache(Js=Js, zaffs=zaffs, Jtzaffs=Jtzaffs, I_JtJ_invs=I_JtJ_invs, Dinv=Dinv)
-  return cache
+  precompute_time = round(time() - precompute_start_time, digits=3)
+  if opts.verbose; println("precompute time: " * string(precompute_time)) end
+  return cache, precompute_time
 end
 
 #
@@ -197,7 +205,8 @@ end
 
 #
 function stepγ(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  tmp = [H(k, opts.β, params.γdims)' * (params.ωs[k] + (params.μs[k] / opts.ρ)) for k in 1:params.num_cliques]
+  # tmp = [H(k, opts.β, params.γdims)' * (params.ωs[k] + (params.μs[k] / opts.ρ)) for k in 1:params.num_cliques]
+  tmp = [indexedHt(k, opts.β, params.γdims, params.ωs[k] + (params.μs[k] / opts.ρ)) for k in 1:params.num_cliques]
   tmp = sum(tmp)
   tmp = cache.Dinv .* tmp
   return projectΓ(tmp)
@@ -213,7 +222,8 @@ end
 #
 function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   tmp = cache.Js[k]' * params.vs[k]
-  tmp = tmp + H(k, opts.β, params.γdims) * params.γ
+  # tmp = tmp + H(k, opts.β, params.γdims) * params.γ
+  tmp = tmp + indexedH(k, opts.β, params.γdims, params.γ)
   tmp = tmp + (cache.Js[k]' * params.λs[k] - params.μs[k]) / opts.ρ
   tmp = tmp - cache.Jtzaffs[k]
   tmp = cache.I_JtJ_invs[k] * tmp
@@ -229,7 +239,8 @@ end
 
 #
 function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  tmp = params.ωs[k] - H(k, opts.β, params.γdims) * params.γ
+  # tmp = params.ωs[k] - H(k, opts.β, params.γdims) * params.γ
+  tmp = params.ωs[k] - indexedH(k, opts.β, params.γdims, params.γ)
   tmp = params.μs[k] + opts.ρ * tmp
   return tmp
 end
@@ -259,7 +270,8 @@ end
 # Residual values
 function primalResidual(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   vz_diffs = [params.vs[k] - makezk(k, params.ωs[k], cache) for k in 1:params.num_cliques]
-  ωγ_diffs = [params.ωs[k] - H(k, opts.β, params.γdims) * params.γ for k in 1:params.num_cliques]
+  # ωγ_diffs = [params.ωs[k] - H(k, opts.β, params.γdims) * params.γ for k in 1:params.num_cliques]
+  ωγ_diffs = [params.ωs[k] - indexedH(k, opts.β, params.γdims, params.γ) for k in 1:params.num_cliques]
   vz_norm2 = sum(norm(vz_diffs[k])^2 for k in 1:params.num_cliques)
   ωγ_norm2 = sum(norm(ωγ_diffs[k])^2 for k in 1:params.num_cliques)
   norm2 = vz_norm2 + ωγ_norm2
@@ -271,7 +283,7 @@ function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOption
   # for k in 1:params.num_cliques
   for k in reverse(1:params.num_cliques)
     # ωk = H(k, opts.β, params.γdims) * params.γ
-    ωk = params.ωs[k]
+    ωk = indexedH(k, opts.β, params.γdims, params.γ)
     zk = makezk(k, ωk, cache)
     dim = Int(round(sqrt(length(zk))))
     tmp = Symmetric(reshape(zk, (dim, dim)))
@@ -294,8 +306,6 @@ end
 
 #
 function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  println("admm!")
-
   iters_run = 0
   total_time = 0
   iter_params = deepcopy(_params)
@@ -339,10 +349,20 @@ function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
     if shouldStop(t, iter_params, cache, opts); break end
   end
 
-  println("about to return iter_params")
-  return iter_params
+  return iter_params, total_time
 end
 
+# Call this
+function run(inst :: SafetyInstance, opts :: AdmmSdpOptions)
+  start_time = time()
+  init_params = initParams(inst, opts)
+  cache, setup_time = precomputeCache(init_params, inst, opts)
+
+  final_params, admm_time = admm(start_params, cache, opts)
+  total_time = time() - start_time
+    
+
+end
 
 export initParams, precomputeCache
 export AdmmSdpOptions, AdmmParams, AdmmCache

@@ -54,7 +54,7 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
   end
 
   # Ready to return
-  setup_time = round(time() - setup_start_time, digits=2)
+  setup_time = round(time() - setup_start_time, digits=3)
   if opts.verbose; println("setup time: " * string(setup_time)) end
   return model, Yvars, setup_time
 end
@@ -79,7 +79,7 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
   @objective(model, Min, ξsafe)
 
   # Ready to return
-  setup_time = round(time() - setup_start_time, digits=2)
+  setup_time = round(time() - setup_start_time, digits=3)
   if opts.verbose; println("setup time: " * string(setup_time)) end
   return model, vars, setup_time
 end
@@ -88,7 +88,7 @@ end
 function solve!(model, vars, opts :: SplitSdpOptions)
   optimize!(model)
   summary = solution_summary(model)
-  solve_time = round(summary.solve_time, digits=2)
+  solve_time = round(summary.solve_time, digits=3)
   if opts.verbose; println("solve time: " * string(solve_time)) end
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
@@ -115,7 +115,7 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
-  total_time = round(time() - total_start_time, digits=2)
+  total_time = round(time() - total_start_time, digits=3)
   if opts.verbose; println("total time: " * string(total_time)) end
   return SolutionOutput(
     objective_value = objective_value(model),
