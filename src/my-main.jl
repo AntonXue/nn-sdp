@@ -2,14 +2,14 @@
 main_start_time = time()
 
 #
-include("header.jl"); using .Header
-include("common.jl"); using .Common
-include("intervals.jl"); using .Intervals
-include("partitions.jl"); using .Partitions
+include("core/header.jl"); using .Header
+include("core/common.jl"); using .Common
+include("core/intervals.jl"); using .Intervals
+include("core/partitions.jl"); using .Partitions
+include("core/deep-sdp.jl"); using .DeepSdp
+include("core/split-sdp.jl"); using .SplitSdp
+include("core/admm-sdp.jl"); using .AdmmSdp
 include("utils.jl"); using .Utils
-include("deep-sdp.jl"); using .DeepSdp
-include("split-sdp.jl"); using .SplitSdp
-include("admm-sdp.jl"); using .AdmmSdp
 include("tests.jl"); using .Tests
 using LinearAlgebra
 using JuMP
@@ -19,10 +19,10 @@ using Random
 Random.seed!(1234)
 
 # This combination makes a difference for 2-stride and all-stride
-# xdims = [2; 3; 4; 5; 4; 3; 2]
+xdims = [2; 3; 4; 5; 4; 3; 2]
 # xdims = [2; 3; 4; 5; 6; 7; 8; 7; 6; 5; 4; 3; 2]
 # xdims = [2; 10; 10; 10; 10; 2]
-xdims = [2; 20; 20; 20; 20; 20; 20; 2]
+# xdims = [2; 20; 20; 20; 20; 20; 20; 2]
 
 ffnet = randomNetwork(xdims, σ=0.2)
 

@@ -3,6 +3,8 @@
 module Utils
 
 using ..Header
+using ..NNetParser: NNet
+using ..VnnlibParser
 using LinearAlgebra
 using DelimitedFiles
 using Random
@@ -138,6 +140,11 @@ function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{
   plt = scatter!(xs, ys, markersize=4, alpha=0.3, color=:blue, xlim=plotxlim, ylim=plotylim)
   savefig(plt, imgfile)
   return plt
+end
+
+# Convert NNet to FeedForwardNetwork + BoxInput
+function NNet2FeedForwardNetwork(nnet :: NNet)
+  print("inside here!")
 end
 
 #
