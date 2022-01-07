@@ -3,6 +3,7 @@
 module Utils
 
 using ..Header
+using ..Common
 using ..NNetParser: NNet
 using ..VnnlibParser
 using LinearAlgebra
@@ -144,7 +145,42 @@ end
 
 # Convert NNet to FeedForwardNetwork + BoxInput
 function NNet2FeedForwardNetwork(nnet :: NNet)
-  print("inside here!")
+  Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
+  ffnet = FeedForwardNetwork(type=ReluNetwork(), xdims=nnet.layerSizes, Ms=Ms)
+  return ffnet
+end
+
+# Returns a DNF in list form of OR{(input1, safety1), ..., (inputN, safetyN)}
+function vnnlib2constraints(parsed, ffnet :: FeedForwardNetwork)
+  disjs = Vector{Vector{Tuple{BoxInput, SafetyConstraint}}}()
+
+  # The raw parsed is a disjunction list of form OR{(input, OR{AND{...}, ..., AND{...}})}
+  for p in parsed
+    # Each p has form (input, OR{AND{...}, ..., AND{...}})
+    xconstrs = p[1]
+    @assert all(xc -> length(xc) == 2, xconstrs)
+    xmin = [xc[1] for xc in xconstrs]
+    xmax = [xc[2] for xc in xconstrs]
+    input = BoxInput(x1min=xmin, x1max=xmax)
+
+    # And the RHS is a DNF, i.e. OR{AND{...}, ..., AND{...}}
+    ydisjs = p[2]
+    for yconj in ydisjs
+      # The constraints on Y are of form Ax <= b
+      # The first of the pair gives the rows of A
+      # The second of the pair gives the rows of b
+      Arows, b = yconj
+      conjs = Vector{Tuple{BoxInput, SafetyConstraint}}()
+      @assert length(Arows) == length(b)
+      for (c, d) in zip(Arows, b)
+        S = makeShyperplane(Vector{Float64}(c), Float64(d), ffnet)
+        safety = SafetyConstraint(S=S)
+        push!(conjs, (input, safety))
+      end
+      push!(disjs, conjs)
+    end
+  end
+  return disjs
 end
 
 #
@@ -153,6 +189,7 @@ export inputUnitBox, safetyNormBound
 export randomNetwork
 export runNetwork, randomTrajectories, runAndPlotRandomTrajectories
 export plotReachPolytope
+export NNet2FeedForwardNetwork, vnnlib2constraints
 
 end # End Module
 
