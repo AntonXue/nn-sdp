@@ -125,8 +125,19 @@ function makeT(dim :: Int, τ)
   ijs = [(i, j) for i in 1:(dim-1) for j in (i+1):dim]
   δts = [e(i, dim)' - e(j, dim)' for (i, j) in ijs]
   Δ = vcat(δts...)
+  v = vec([τ[i,j] for (i, j) in ijs])
+
+  tstart = time()
+  T = Δ' * (v .* Δ)
+  println("mult total tme: " * string(time() - tstart))
+
+  #=
   V = diagm(vec([τ[i,j] for (i, j) in ijs]))
+  println("size Δ: "  * string(size(Δ)))
+  println("size V: "  * string(size(V)))
   T = Δ' * V * Δ
+  =#
+  println("makeT: F")
   return T
 end
 

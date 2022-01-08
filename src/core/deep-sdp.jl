@@ -76,8 +76,11 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
   setup_start_time = time()
 
   # Make the components
+  if opts.verbose; println("about to call MinP") end
   MinP, Pvars = makeMinP!(model, inst.input, inst.ffnet, opts)
+  if opts.verbose; println("about to call MmidQ") end
   MmidQ, Qvars = makeMmidQ!(model, inst.ffnet, opts)
+  if opts.verbose; println("about to call MoutS") end
   MoutS = makeMoutS!(model, inst.safety.S, inst.ffnet, opts)
 
   # Now the LMI
@@ -131,6 +134,7 @@ end
 
 # The interface to call
 function run(inst :: QueryInstance, opts :: DeepSdpOptions)
+  if opts.verbose; println("running deepsdp") end
   total_start_time = time()
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
@@ -145,6 +149,8 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   else
     error("unrecognized query instance: " * string(inst))
   end
+
+  if opts.verbose; println("deepsdp model is set up") end
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)

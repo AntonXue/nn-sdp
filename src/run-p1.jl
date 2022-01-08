@@ -10,7 +10,6 @@ include("parsers/nnet-parser.jl"); using .NNetParser
 include("parsers/vnnlib-parser.jl"); using .VnnlibParser
 include("utils.jl"); using .Utils
 
-
 prop1_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_1.vnnlib"
 prop2_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_2.vnnlib"
 prop3_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_3.vnnlib"
@@ -34,22 +33,43 @@ parsed8 = VnnlibParser.read_vnnlib_simple(prop8_filepath, 5, 5)
 parsed9 = VnnlibParser.read_vnnlib_simple(prop9_filepath, 5, 5)
 parsed10 = VnnlibParser.read_vnnlib_simple(prop10_filepath, 5, 5)
 
-hello = VnnlibParser.read_vnnlib_simple(prophello_filepath, 5, 5)
-
 ACAS_1_1 = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/nnet/ACASXU_run2a_1_1_batch_2000.nnet"
 nnet = NNetParser.NNet(ACAS_1_1)
 ffnet = Utils.NNet2FeedForwardNetwork(nnet)
-res1 = vnnlib2constraints(parsed1, ffnet)
-res2 = vnnlib2constraints(parsed2, ffnet)
-res3 = vnnlib2constraints(parsed3, ffnet)
-res4 = vnnlib2constraints(parsed4, ffnet)
-res5 = vnnlib2constraints(parsed5, ffnet)
-res6 = vnnlib2constraints(parsed6, ffnet)
-res7 = vnnlib2constraints(parsed7, ffnet)
-res8 = vnnlib2constraints(parsed8, ffnet)
-res9 = vnnlib2constraints(parsed9, ffnet)
-res10 = vnnlib2constraints(parsed10, ffnet)
+constrs1 = vnnlib2constraints(parsed1, ffnet)
+constrs2 = vnnlib2constraints(parsed2, ffnet)
+constrs3 = vnnlib2constraints(parsed3, ffnet)
+constrs4 = vnnlib2constraints(parsed4, ffnet)
+constrs5 = vnnlib2constraints(parsed5, ffnet)
+constrs6 = vnnlib2constraints(parsed6, ffnet)
+constrs7 = vnnlib2constraints(parsed7, ffnet)
+constrs8 = vnnlib2constraints(parsed8, ffnet)
+constrs9 = vnnlib2constraints(parsed9, ffnet)
+constrs10 = vnnlib2constraints(parsed10, ffnet)
 
+# Some interval propagation
+# x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation()
+
+# Deep Sdp options
+
+deep_pairs = Vector{Any}()
+
+for c1s in constrs1
+  for c1 in c1s
+    input, safety = c1
+    inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
+    x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
+    opt = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
+    push!(deep_pairs, (inst, opt))
+  end
+end
+
+println("here!")
+
+inst = deep_pairs[1][1]
+opts = deep_pairs[1][2]
+
+res = DeepSdp.run(inst, opts)
 
 
 
