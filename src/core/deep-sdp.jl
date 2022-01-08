@@ -12,8 +12,9 @@ using Mosek
 
 # Configuration options
 @with_kw struct DeepSdpOptions
-  x_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  slope_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  tband :: Union{Nothing, Int} = nothing
   verbose :: Bool = false
 end
 
@@ -50,18 +51,37 @@ end
 function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   qxdim = sum(ffnet.zdims[2:end-1])
   if ffnet.type isa ReluNetwork
-    @variable(model, λ_slope[1:qxdim] >= 0)
-    @variable(model, τ_slope[1:qxdim, 1:qxdim] >= 0, Symmetric)
+
+    # The true band must be in range 0 <= tband <= qxdim - 1, so adjust accordingly
+    if opts.tband isa Nothing
+      tband = qxdim - 1
+    else
+      tband = max(0, min(opts.tband, qxdim-1))
+    end
+
+    println("qxdim, tbnad: " * string((qxdim, tband)))
+
+    if opts.verbose && (tband != opts.tband)
+      @warn ("adjusted opts.tband from " * string(opts.tband) * " to " * string(tband))
+    end
+
+    λ_slope_length = λlength(qxdim, tband)
+    @variable(model, λ_slope[1:λ_slope_length] >= 0)
     @variable(model, η_slope[1:qxdim] >= 0)
     @variable(model, ν_slope[1:qxdim] >= 0)
     @variable(model, d_out[1:qxdim] >= 0)
+
     β = ffnet.K - 1
-    vars = (λ_slope, τ_slope, η_slope, ν_slope, d_out)
-    ϕout_intv = selectϕoutIntervals(1, β, opts.x_intervals)
-    slope_intv = selectSlopeIntervals(1, β, opts.slope_intervals)
-    MmidQ = makeXq(1, β, vars, ffnet, ϕout_intv=ϕout_intv, slope_intv=slope_intv)
+    vars = (λ_slope, η_slope, ν_slope, d_out)
+
+    xqinfo = Xqinfo(
+      ffnet = ffnet,
+      ϕout_intv = selectϕoutIntervals(1, β, opts.x_intvs),
+      slope_intv = selectSlopeIntervals(1, β, opts.slope_intvs),
+      tband = tband)
+
+    MmidQ = makeXq(1, β, vars, xqinfo)
     Qvars = Dict(:λ_slope => λ_slope,
-                  :τ_slope => τ_slope,
                   :η_slope => η_slope,
                   :ν_slope => ν_slope,
                   :d_out => d_out)
@@ -76,11 +96,8 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
   setup_start_time = time()
 
   # Make the components
-  if opts.verbose; println("about to call MinP") end
   MinP, Pvars = makeMinP!(model, inst.input, inst.ffnet, opts)
-  if opts.verbose; println("about to call MmidQ") end
   MmidQ, Qvars = makeMmidQ!(model, inst.ffnet, opts)
-  if opts.verbose; println("about to call MoutS") end
   MoutS = makeMoutS!(model, inst.safety.S, inst.ffnet, opts)
 
   # Now the LMI
@@ -134,7 +151,6 @@ end
 
 # The interface to call
 function run(inst :: QueryInstance, opts :: DeepSdpOptions)
-  if opts.verbose; println("running deepsdp") end
   total_start_time = time()
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
@@ -149,8 +165,6 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   else
     error("unrecognized query instance: " * string(inst))
   end
-
-  if opts.verbose; println("deepsdp model is set up") end
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)

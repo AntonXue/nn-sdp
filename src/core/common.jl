@@ -2,6 +2,7 @@
 module Common
 
 using ..Header
+using Parameters
 using LinearAlgebra
 using JuMP
 
@@ -117,7 +118,47 @@ function makeShyperplane(normal :: Vector{Float64}, h, ffnet :: FeedForwardNetwo
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return S
 end
+#
+@with_kw struct Xqinfo
+  ffnet :: FeedForwardNetwork
+  ϕout_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  slope_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  tband :: Int; @assert tband >= 0
+end
 
+# Calculate how large λ should be given a tband
+function λlength(qxdim :: Int, tband :: Int)
+  @assert 0 <= tband <= qxdim - 1
+  return sum((qxdim-tband):qxdim)
+end
+
+# Make the diagλ and T matrices
+function makeDiagλandT(qxdim :: Int, λ, tband :: Int)
+  tstart = time()
+  @assert length(λ) == λlength(qxdim, tband)
+  diagλ = λ[1:qxdim]
+
+
+  println("qxdim: " * string(qxdim))
+
+  # Given a pair i,j, calculate its relative index in the λ vector
+  pair2ind(i,j) = sum((qxdim-(j-i)+1):qxdim) + i
+
+  if tband > 0
+    ijs = [(i, j) for i in 1:(qxdim-1) for j in (i+1):qxdim if j-i <= tband]
+    δts = [e(i, qxdim)' - e(j, qxdim)' for (i, j) in ijs]
+    Δ = vcat(δts...)
+    v = vec([λ[pair2ind(i,j)] for (i,j) in ijs])
+    T = Δ' * (v .* Δ)
+  else
+    T = zeros(qxdim, qxdim)
+  end
+
+  println("total time making T: " * string(time() - tstart))
+  return diagλ, T
+end
+
+#=
 # Make a T matrix of a particular size given matrix of variables τ
 function makeT(dim :: Int, τ)
   @assert dim >= 1
@@ -140,10 +181,31 @@ function makeT(dim :: Int, τ)
   println("makeT: F")
   return T
 end
+=#
+
+function makeQrelu(qxdim :: Int, λ, η, ν, xqinfo :: Xqinfo)
+  @assert length(λ) == λlength(qxdim, xqinfo.tband)
+  ε = 1e-6
+  ϕa, ϕb = xqinfo.slope_intv
+  @assert length(ϕa) == length(ϕb)
+  @assert -ε <= minimum(ϕa) && maximum(ϕa) <= 1 + ε
+  @assert -ε <= minimum(ϕb) && maximum(ϕb) <= 1 + ε
+
+  diagλ, T = makeDiagλandT(qxdim, λ, xqinfo.tband)
+  s0, s1 = 0, 1
+  _Q11 = -2 * diagm(ϕa .* ϕb .* diagλ) - 2 * (s0 * s1 * T)
+  _Q12 = diagm((ϕa + ϕb) .* diagλ) + (s0 + s1) * T
+  _Q13 = -(ϕa .* η) - (ϕb.* ν)
+  _Q22 = -2 * T
+  _Q23 = η + ν
+  _Q33 = 0
+  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
+  return Q
+end
 
 # Make Q with help of the ϕ(x) bounds
-function makeQϕout(qxdim :: Int, d, ϕout_intv :: Tuple{Vector{Float64}, Vector{Float64}})
-  ϕmin, ϕmax = ϕout_intv
+function makeQϕout(qxdim :: Int, d, xqinfo :: Xqinfo)
+  ϕmin, ϕmax = xqinfo.ϕout_intv
   @assert all(ϕmin .<= ϕmax)
   @assert -Inf < minimum(ϕmin) && maximum(ϕmax) < Inf
   @assert length(d) == length(ϕmin) == length(ϕmax) == qxdim
@@ -159,48 +221,26 @@ function makeQϕout(qxdim :: Int, d, ϕout_intv :: Tuple{Vector{Float64}, Vector
   return Q
 end
 
-# Make the Q relu, optionally enabling localized slope limits
-function makeQrelu(qxdim :: Int, λ, τ, η, ν, slope_intv :: Tuple{Vector{Float64}, Vector{Float64}})
-  @assert length(λ) == length(η) == length(ν) == qxdim
-  @assert size(τ) == (qxdim, qxdim)
 
-  ε = 1e-6
-  ϕa, ϕb = slope_intv
-  @assert length(ϕa) == length(ϕb)
-  @assert -ε <= minimum(ϕa) && maximum(ϕa) <= 1 + ε
-  @assert -ε <= minimum(ϕb) && maximum(ϕb) <= 1 + ε
-
-  T = makeT(qxdim, τ)
-  s0, s1 = 0, 1
-  _Q11 = -2 * diagm(ϕa .* ϕb .* λ) - 2 * (s0 * s1 * T)
-  _Q12 = diagm((ϕa + ϕb) .* λ) + (s0 + s1) * T
-  _Q13 = -(ϕa .* η) - (ϕb.* ν)
-  _Q22 = -2 * T
-  _Q23 = η + ν
-  _Q33 = 0
-  Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
-  return Q
-end
-
-# Make an Xk, optionally enabling x bounds and slope limits
-function makeXq(k :: Int, b :: Int, vars, ffnet :: FeedForwardNetwork; ϕout_intv = nothing, slope_intv = nothing)
+# Make an Xk, with help from the Xqinfo
+function makeXq(k :: Int, b :: Int, vars, xqinfo :: Xqinfo)
+  ffnet = xqinfo.ffnet
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
   qxdim = sum(ffnet.zdims[k+1:k+b])
 
-  # For the relu network
   if ffnet.type isa ReluNetwork
-    λ_slope, τ_slope, η_slope, ν_slope, d_out = vars
-    @assert length(λ_slope) == length(η_slope) == length(ν_slope) == qxdim
-    @assert size(τ_slope) == (qxdim, qxdim)
+    λ_slope, η_slope, ν_slope, d_out = vars
+    @assert length(λ_slope) == λlength(qxdim, xqinfo.tband)
+    @assert length(η_slope) == length(ν_slope) == qxdim
     @assert length(d_out) == qxdim
 
-    slope_intv = (slope_intv isa Nothing) ? (zeros(qxdim), ones(qxdim)) : slope_intv
-    Q = makeQrelu(qxdim, λ_slope, τ_slope, η_slope, ν_slope, slope_intv)
+    Q = makeQrelu(qxdim, λ_slope, η_slope, ν_slope, xqinfo)
 
     # If the ϕ intervals exist and are not infinite, use them
-    if !(ϕout_intv isa Nothing) && (-Inf < minimum(ϕout_intv[1]) && maximum(ϕout_intv[2]) < Inf)
-      Q = Q + makeQϕout(qxdim, d_out, ϕout_intv)
+    if (!(xqinfo.ϕout_intv isa Nothing)
+        && (-Inf < minimum(xqinfo.ϕout_intv[1]) && maximum(xqinfo.ϕout_intv[2]) < Inf))
+      Q = Q + makeQϕout(qxdim, d_out, xqinfo)
     end
 
   # Other kinds
@@ -254,13 +294,14 @@ function makeXsafe(S, ffnet :: FeedForwardNetwork)
   return R' * S * R
 end
 
-
 # Slowly using up the English alphabet
 export e, E, Ec, Cdims
 export makeAc, makebc, makeBc
-export makeQϕout, makeQrelu
 export makePbox, makePpolytope
 export makeShyperplane
+export λlength
+export makeQϕout, makeQrelu
+export Xqinfo
 export makeXq, makeXin, makeXsafe
 
 end # End module

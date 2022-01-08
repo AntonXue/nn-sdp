@@ -22,16 +22,18 @@ Random.seed!(1234)
 
 # This combination makes a difference for 2-stride and all-stride
 
-# xdims = [2; 3; 4; 5; 4; 3; 2]
+# This pair sees some differences with 1.15^2
+xdims = [2; 3; 4; 5; 4; 3; 2]
+ffnet = randomNetwork(xdims, σ=0.8)
+
 # xdims = [2; 3; 4; 5; 6; 7; 8; 7; 6; 5; 4; 3; 2]
 # xdims = [2; 10; 10; 10; 10; 2]
 # xdims = [2; 20; 20; 20; 20; 20; 20; 2]
-xdims = [2; 50; 50; 50; 50; 50; 2]
+# xdims = [2; 50; 50; 50; 50; 50; 2]
 # xdims = [2; 10; 10; 10; 10; 10; 2]
 # xdims = [2; 20; 20; 20; 20; 20; 2]
 # xdims = [2; 30; 30; 30; 30; 30; 2]
 
-ffnet = randomNetwork(xdims, σ=0.4)
 
 # Plot some trajectories
 
@@ -42,17 +44,22 @@ runAndPlotRandomTrajectories(1000, ffnet, x1min=input.x1min, x1max=input.x1max)
 x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
 # Safety instance
-# safety = safetyNormBound(1, xdims)
-safety = safetyNormBound(100^2, xdims)
+safety = safetyNormBound(1.15^2, xdims)
 safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
-
-
 println("finally aobut to start important stuff after " * string(time() - main_start_time))
+opts0 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=0)
+opts1 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=1)
+opts5 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=5)
+opts10 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=10)
+opts15 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=15)
+optsall = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=nothing)
 
-opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
-
-res = DeepSdp.run(safety_inst, opts)
-println("res is: " * string(res))
+res0 = DeepSdp.run(safety_inst, opts0)
+res1 = DeepSdp.run(safety_inst, opts0)
+res5 = DeepSdp.run(safety_inst, opts5)
+res10 = DeepSdp.run(safety_inst, opts10)
+res15 = DeepSdp.run(safety_inst, opts15)
+resall = DeepSdp.run(safety_inst, optsall)
 
 # Admm Options
 #=
