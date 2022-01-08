@@ -14,8 +14,9 @@ using Mosek
 # Options
 @with_kw struct SplitSdpOptions
   β :: Int = 1
-  x_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  slope_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  tband :: Function # TODO
   verbose :: Bool = false
 end
 
@@ -31,7 +32,7 @@ function makeYs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   for k = 1:num_cliques
     γk = @variable(model, [1:γdims[k]])
     @constraint(model, γk[1:γdims[k]] .>= 0)
-    Yk = makeYk(k, opts.β, γk, ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
+    Yk = makeYk(k, opts.β, γk, ξvardims, inst, x_intvs=opts.x_intvs, slope_intvs=opts.slope_intvs)
     push!(Ys, Yk)
     Yvars[Symbol("γ" * string(k))] = γk
   end

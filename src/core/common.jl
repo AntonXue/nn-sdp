@@ -118,13 +118,6 @@ function makeShyperplane(normal :: Vector{Float64}, h, ffnet :: FeedForwardNetwo
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return S
 end
-#
-@with_kw struct Xqinfo
-  ffnet :: FeedForwardNetwork
-  ϕout_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
-  slope_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
-  tband :: Int; @assert tband >= 0
-end
 
 # Calculate how large λ should be given a tband
 function λlength(qxdim :: Int, tband :: Int)
@@ -134,55 +127,32 @@ end
 
 # Make the diagλ and T matrices
 function makeDiagλandT(qxdim :: Int, λ, tband :: Int)
-  tstart = time()
   @assert length(λ) == λlength(qxdim, tband)
   diagλ = λ[1:qxdim]
-
-
-  println("qxdim: " * string(qxdim))
-
-  # Given a pair i,j, calculate its relative index in the λ vector
-  pair2ind(i,j) = sum((qxdim-(j-i)+1):qxdim) + i
-
   if tband > 0
     ijs = [(i, j) for i in 1:(qxdim-1) for j in (i+1):qxdim if j-i <= tband]
     δts = [e(i, qxdim)' - e(j, qxdim)' for (i, j) in ijs]
     Δ = vcat(δts...)
+
+    # Given a pair i,j, calculate its relative index in the λ vector
+    pair2ind(i,j) = sum((qxdim-(j-i)+1):qxdim) + i
     v = vec([λ[pair2ind(i,j)] for (i,j) in ijs])
     T = Δ' * (v .* Δ)
   else
     T = zeros(qxdim, qxdim)
   end
-
-  println("total time making T: " * string(time() - tstart))
   return diagλ, T
 end
 
-#=
-# Make a T matrix of a particular size given matrix of variables τ
-function makeT(dim :: Int, τ)
-  @assert dim >= 1
-  @assert size(τ) == (dim, dim)
-  ijs = [(i, j) for i in 1:(dim-1) for j in (i+1):dim]
-  δts = [e(i, dim)' - e(j, dim)' for (i, j) in ijs]
-  Δ = vcat(δts...)
-  v = vec([τ[i,j] for (i, j) in ijs])
-
-  tstart = time()
-  T = Δ' * (v .* Δ)
-  println("mult total tme: " * string(time() - tstart))
-
-  #=
-  V = diagm(vec([τ[i,j] for (i, j) in ijs]))
-  println("size Δ: "  * string(size(Δ)))
-  println("size V: "  * string(size(V)))
-  T = Δ' * V * Δ
-  =#
-  println("makeT: F")
-  return T
+# The information for constructing some Xq
+@with_kw struct Xqinfo
+  ffnet :: FeedForwardNetwork
+  ϕout_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  slope_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  tband :: Int; @assert tband >= 0
 end
-=#
 
+# Make the Q for the relu function
 function makeQrelu(qxdim :: Int, λ, η, ν, xqinfo :: Xqinfo)
   @assert length(λ) == λlength(qxdim, xqinfo.tband)
   ε = 1e-6
@@ -220,7 +190,6 @@ function makeQϕout(qxdim :: Int, d, xqinfo :: Xqinfo)
   Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
   return Q
 end
-
 
 # Make an Xk, with help from the Xqinfo
 function makeXq(k :: Int, b :: Int, vars, xqinfo :: Xqinfo)
@@ -299,9 +268,9 @@ export e, E, Ec, Cdims
 export makeAc, makebc, makeBc
 export makePbox, makePpolytope
 export makeShyperplane
+export Xqinfo
 export λlength
 export makeQϕout, makeQrelu
-export Xqinfo
 export makeXq, makeXin, makeXsafe
 
 end # End module

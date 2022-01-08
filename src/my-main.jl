@@ -26,6 +26,11 @@ Random.seed!(1234)
 xdims = [2; 3; 4; 5; 4; 3; 2]
 ffnet = randomNetwork(xdims, σ=0.8)
 
+# This pair sees a difference with 300^2, and when tband = 15
+# xdims = [2; 20; 20; 20; 20; 20; 2]
+# ffnet = randomNetwork(xdims, σ=0.8)
+
+
 # xdims = [2; 3; 4; 5; 6; 7; 8; 7; 6; 5; 4; 3; 2]
 # xdims = [2; 10; 10; 10; 10; 2]
 # xdims = [2; 20; 20; 20; 20; 20; 20; 2]
@@ -44,7 +49,7 @@ runAndPlotRandomTrajectories(1000, ffnet, x1min=input.x1min, x1max=input.x1max)
 x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
 # Safety instance
-safety = safetyNormBound(1.15^2, xdims)
+safety = safetyNormBound(300^2, xdims)
 safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 println("finally aobut to start important stuff after " * string(time() - main_start_time))
 opts0 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=0)
@@ -54,12 +59,31 @@ opts10 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, 
 opts15 = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=15)
 optsall = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=nothing)
 
+#=
+println("solving res0")
 res0 = DeepSdp.run(safety_inst, opts0)
-res1 = DeepSdp.run(safety_inst, opts0)
+println(res0)
+
+println("solving res1")
+res1 = DeepSdp.run(safety_inst, opts1)
+println(res1)
+
+println("solving res5")
 res5 = DeepSdp.run(safety_inst, opts5)
+println(res5)
+
+println("solving res10")
 res10 = DeepSdp.run(safety_inst, opts10)
+println(res10)
+
+println("solving res15")
 res15 = DeepSdp.run(safety_inst, opts15)
+println(res15)
+=#
+
+println("solving resall")
 resall = DeepSdp.run(safety_inst, optsall)
+println(resall)
 
 # Admm Options
 #=

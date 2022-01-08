@@ -52,16 +52,9 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   qxdim = sum(ffnet.zdims[2:end-1])
   if ffnet.type isa ReluNetwork
 
-    # The true band must be in range 0 <= tband <= qxdim - 1, so adjust accordingly
-    if opts.tband isa Nothing
-      tband = qxdim - 1
-    else
-      tband = max(0, min(opts.tband, qxdim-1))
-    end
-
-    println("qxdim, tbnad: " * string((qxdim, tband)))
-
-    if opts.verbose && (tband != opts.tband)
+    # The actual tband must be in range 0 <= tband <= qxdim - 1, so adjust accordingly
+    tband = (opts.tband isa Nothing) ? (qxdim-1) : max(0, min(opts.tband, qxdim-1))
+    if opts.verbose && !(opts.tband isa Nothing) && (tband != opts.tband)
       @warn ("adjusted opts.tband from " * string(opts.tband) * " to " * string(tband))
     end
 
@@ -73,7 +66,6 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
 
     β = ffnet.K - 1
     vars = (λ_slope, η_slope, ν_slope, d_out)
-
     xqinfo = Xqinfo(
       ffnet = ffnet,
       ϕout_intv = selectϕoutIntervals(1, β, opts.x_intvs),
