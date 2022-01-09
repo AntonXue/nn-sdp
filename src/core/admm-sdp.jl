@@ -18,8 +18,9 @@ using MosekTools
   nsd_tol :: Float64 = 1e-4
   β :: Int = 1
   ρ :: Float64 = 1.0
-  x_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  slope_intervals :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  tband_func :: Function = (k, qkxdim) -> qkxdim
   verbose :: Bool = false
 end
 
@@ -58,7 +59,7 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   input = inst.input
   safety = inst.safety
 
-  γdims, ξvardims = makeγdims(opts.β, inst)
+  γdims, ξvardims = makeγdims(opts.β, inst, opts.tband_func)
   ξindim, ξsafedim, ξkdims = ξvardims
   @assert ξsafedim == 0
   @assert length(ξkdims) >= 2
@@ -92,6 +93,14 @@ function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: A
   ffnet = inst.ffnet
   num_cliques = length(γdims)
 
+  yinfo = Yinfo(
+    inst = inst,
+    num_cliques = num_cliques,
+    x_intvs = opts.x_intvs,
+    slope_intvs = opts.slope_intvs,
+    ξvardims = ξvardims,
+    tband_func = opts.tband_func)
+
   # Yss[k] is the non-affine components of Yk, Yaffs[k] is the affine component of Yk
   Yss = Vector{Vector{Matrix{Float64}}}()
   Yaffs = Vector{Matrix{Float64}}()
@@ -100,12 +109,12 @@ function precomputeCache(params :: AdmmParams, inst :: SafetyInstance, opts :: A
     γkdim = γdims[k]
 
     # Need to construct the affine component first
-    Ykaff = makeYk(k, opts.β, zeros(γkdim), ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
+    Ykaff = makeYk(k, opts.β, zeros(γkdim), yinfo)
 
     # Now do the other parts
     Ykparts = Vector{Matrix{Float64}}()
     for i in 1:γkdim
-      tmp = makeYk(k, opts.β, e(i, γkdim), ξvardims, inst, x_intvs=opts.x_intervals, slope_intvs=opts.slope_intervals)
+      tmp = makeYk(k, opts.β, e(i, γkdim), yinfo)
       Yki = tmp - Ykaff
       push!(Ykparts, Yki)
     end

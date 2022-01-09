@@ -16,7 +16,7 @@ using Mosek
   β :: Int = 1
   x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
   slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  tband_func :: Function = (k, qkdim) -> qkdim # By default, have full density
+  tband_func :: Function = (k, qkxdim) -> qkxdim # By default, have full density
   verbose :: Bool = false
 end
 
