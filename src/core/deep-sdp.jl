@@ -49,7 +49,8 @@ end
 
 # Make the MmidQ matrix. Treat this function as though it modifies the model
 function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
-  qxdim = sum(ffnet.zdims[2:end-1])
+  β = ffnet.K - 1
+  qxdim = Qxdim(1, β, ffnet.zdims)
   if ffnet.type isa ReluNetwork
 
     # The actual tband must be in range 0 <= tband <= qxdim - 1, so adjust accordingly
@@ -64,7 +65,6 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
     @variable(model, ν_slope[1:qxdim] >= 0)
     @variable(model, d_out[1:qxdim] >= 0)
 
-    β = ffnet.K - 1
     vars = (λ_slope, η_slope, ν_slope, d_out)
     xqinfo = Xqinfo(
       ffnet = ffnet,

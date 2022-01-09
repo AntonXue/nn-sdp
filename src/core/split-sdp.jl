@@ -16,23 +16,31 @@ using Mosek
   β :: Int = 1
   x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
   slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  tband :: Function # TODO
+  tband_func :: Function = (k, qkdim) -> qkdim # By default, have full density
   verbose :: Bool = false
 end
 
 # Make the Ys
 function makeYs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   # Figure out the relevant γ dimensions
-  γdims, ξvardims = makeγdims(opts.β, inst)
+  γdims, ξvardims = makeγdims(opts.β, inst, opts.tband_func)
   Ys = Vector{Any}()
   Yvars = Dict()
   num_cliques = inst.ffnet.K - opts.β - 1
+
+  yinfo = Yinfo(
+    inst = inst,
+    num_cliques = num_cliques,
+    x_intvs = opts.x_intvs,
+    slope_intvs = opts.slope_intvs,
+    ξvardims = ξvardims,
+    tband_func = opts.tband_func)
 
   # Make each Yk
   for k = 1:num_cliques
     γk = @variable(model, [1:γdims[k]])
     @constraint(model, γk[1:γdims[k]] .>= 0)
-    Yk = makeYk(k, opts.β, γk, ξvardims, inst, x_intvs=opts.x_intvs, slope_intvs=opts.slope_intvs)
+    Yk = makeYk(k, opts.β, γk, yinfo)
     push!(Ys, Yk)
     Yvars[Symbol("γ" * string(k))] = γk
   end
@@ -98,7 +106,15 @@ end
 
 # The interface to call
 function run(inst :: QueryInstance, opts :: SplitSdpOptions)
-  @assert 1 <= opts.β <= inst.ffnet.K - 2
+  # Appropriate number of cliques
+  num_cliques = inst.ffnet.K - opts.β - 1
+  @assert num_cliques >= 1
+
+  # Our tband_func does something reasonable
+  qxdims = [Qxdim(k, opts.β, inst.ffnet.zdims) for k in 1:(num_cliques+1)]
+  @assert all(k -> opts.tband_func(k, qxdims[k]) >= 0, 1:(num_cliques+1))
+
+  # Start stuff
   total_start_time = time()
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,

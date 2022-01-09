@@ -119,9 +119,17 @@ function makeShyperplane(normal :: Vector{Float64}, h, ffnet :: FeedForwardNetwo
   return S
 end
 
+# The input dimension to the kth Q
+function Qxdim(k :: Int, b :: Int, zdims :: Vector{Int})
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= length(zdims) - 1
+  return sum(zdims[k+1:k+b])
+end
+
 # Calculate how large λ should be given a tband
 function λlength(qxdim :: Int, tband :: Int)
-  @assert 0 <= tband <= qxdim - 1
+  # @assert 0 <= tband <= qxdim - 1
+  @assert 0 <= tband
   return sum((qxdim-tband):qxdim)
 end
 
@@ -196,7 +204,7 @@ function makeXq(k :: Int, b :: Int, vars, xqinfo :: Xqinfo)
   ffnet = xqinfo.ffnet
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= ffnet.K
-  qxdim = sum(ffnet.zdims[k+1:k+b])
+  qxdim = Qxdim(k, b, ffnet.zdims)
 
   if ffnet.type isa ReluNetwork
     λ_slope, η_slope, ν_slope, d_out = vars
@@ -269,7 +277,7 @@ export makeAc, makebc, makeBc
 export makePbox, makePpolytope
 export makeShyperplane
 export Xqinfo
-export λlength
+export Qxdim, λlength
 export makeQϕout, makeQrelu
 export makeXq, makeXin, makeXsafe
 
