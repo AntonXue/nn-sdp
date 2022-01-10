@@ -164,7 +164,12 @@ end
 function makeQrelu(qxdim :: Int, λ, η, ν, xqinfo :: Xqinfo)
   @assert length(λ) == λlength(qxdim, xqinfo.tband)
   ε = 1e-6
-  ϕa, ϕb = xqinfo.slope_intv
+
+  if xqinfo.slope_intv isa Nothing
+    @warn("xqinfo.slope isa Nothing. using default values")
+  end
+
+  ϕa, ϕb = (xqinfo.slope_intv isa Nothing) ? (zeros(qxdim), ones(qxdim)) : xqinfo.slope_intv
   @assert length(ϕa) == length(ϕb)
   @assert -ε <= minimum(ϕa) && maximum(ϕa) <= 1 + ε
   @assert -ε <= minimum(ϕb) && maximum(ϕb) <= 1 + ε
@@ -218,6 +223,8 @@ function makeXq(k :: Int, b :: Int, vars, xqinfo :: Xqinfo)
     if (!(xqinfo.ϕout_intv isa Nothing)
         && (-Inf < minimum(xqinfo.ϕout_intv[1]) && maximum(xqinfo.ϕout_intv[2]) < Inf))
       Q = Q + makeQϕout(qxdim, d_out, xqinfo)
+    else
+      @warn("did not supply valid xqinfo.ϕout_intv")
     end
 
   # Other kinds

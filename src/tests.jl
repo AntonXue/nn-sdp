@@ -1,13 +1,15 @@
 module Tests
 
-using ..Header
-using ..Common
-using ..Intervals
-using ..Partitions
-using ..DeepSdp
-using ..SplitSdp
-using ..AdmmSdp
-using ..Utils
+include("core/header.jl"); using .Header
+include("core/common.jl"); using .Common
+include("core/intervals.jl"); using .Intervals
+include("core/partitions.jl"); using .Partitions
+include("core/deep-sdp.jl"); using .DeepSdp
+include("core/split-sdp.jl"); using .SplitSdp
+include("core/admm-sdp.jl"); using .AdmmSdp
+include("parsers/nnet-parser.jl"); using .NNetParser
+include("parsers/vnnlib-parser.jl"); using .VnnlibParser
+include("utils.jl"); using .Utils
 
 using LinearAlgebra
 using Random
@@ -15,19 +17,29 @@ using JuMP
 using Mosek
 using MosekTools
 
-
 # Test that that Z safety construction by Xk, Yk, and Zk are equivalent.
-function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions; verbose=true)
+function _testZk(inst :: QueryInstance, opts :: SplitSdpOptions; verbose=true)
   ffnet = inst.ffnet
   input = inst.input
-  safety = inst.safety
 
-  γdims, ξvardims = makeγdims(opts.β, inst)
+  # The random variables
+  γdims, ξvardims = makeγdims(opts.β, inst, opts.tband_func)
   ξindim, ξsafedim, ξkdims = ξvardims
   
   ξin = abs.(randn(ξindim))
   ξsafe = abs.(randn(ξsafedim))
   ξs = [abs.(randn(ξkdim)) for ξkdim in ξkdims]
+
+  # Slightly different setups depending on instance
+  if inst isa SafetyInstance
+    safety = inst.safety
+    Xsafe = makeSafetyXsafeξ(safety, ffnet)
+  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
+    hplane = inst.reach_set
+    Xsafe = makeHyperplaneReachXsafeξ(ξsafe, hplane, ffnet)
+  else
+    error("unrecognized instance: " * string(inst))
+  end
 
   # Some helpful block index matrices
   E1 = E(1, ffnet.zdims)
@@ -38,10 +50,18 @@ function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions; verbose=t
 
   # Construct the X components
   num_Xs = inst.ffnet.K - opts.β
-  Xks = Vector{Any}()
-  Xs = [makeXqξ(k, opts.β, ξs[k], ffnet) for k in 1:num_Xs]
+  Xs = Vector{Any}()
+  for k = 1:num_Xs
+    qxdim = Qxdim(k, opts.β, ffnet.zdims)
+    xqinfo = Xqinfo(
+      ffnet = inst.ffnet,
+      ϕout_intv = selectϕoutIntervals(k, opts.β, opts.x_intvs),
+      slope_intv = selectSlopeIntervals(k, opts.β, opts.slope_intvs),
+      tband = opts.tband_func(k, qxdim))
+    Xk = makeXqξ(k, opts.β, ξs[k], xqinfo)
+    push!(Xs, Xk)
+  end
   Xin = makeXinξ(ξin, input, ffnet)
-  Xsafe = makeSafetyXsafeξ(safety, ffnet)
 
   ZXs = (Ein' * Xin * Ein) + (Esafe' * Xsafe * Esafe)
   for k in 1:num_Xs
@@ -52,28 +72,37 @@ function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions; verbose=t
 
   # Now construct Z via the Ys
   num_cliques = inst.ffnet.K - opts.β - 1
-  @assert num_cliques > 1
+  @assert num_cliques >= 1
+
+  yinfo = Yinfo(
+    inst = inst,
+    num_cliques = num_cliques,
+    x_intvs = opts.x_intvs,
+    slope_intvs = opts.slope_intvs,
+    ξvardims = ξvardims,
+    tband_func = opts.tband_func)
+
   Ys = Vector{Any}()
   for k = 1:num_cliques
     if num_cliques == 1 && k == 1
       @assert length(ξs) == 2
       γ1 = [ξin; ξsafe; ξs[1]; ξs[2]]
-      Y1 = makeYk(k, opts.β, γ1, ξvardims, inst)
+      Y1 = makeYk(k, opts.β, γ1, yinfo)
       push!(Ys, Y1)
 
     elseif k == 1
       γ1 = [ξin; ξsafe; ξs[1]]
-      Y1 = makeYk(k, opts.β, γ1, ξvardims, inst)
+      Y1 = makeYk(k, opts.β, γ1, yinfo)
       push!(Ys, Y1)
 
     elseif k == num_cliques
       γp = [ξs[end-1]; ξs[end]]
-      Yp = makeYk(k, opts.β, γp, ξvardims, inst)
+      Yp = makeYk(k, opts.β, γp, yinfo)
       push!(Ys, Yp)
 
     else
       γk = ξs[k]
-      Yk = makeYk(k, opts.β, γk, ξvardims, inst)
+      Yk = makeYk(k, opts.β, γk, yinfo)
       push!(Ys, Yk)
     end
   end
@@ -96,97 +125,40 @@ function testSafetyZk(inst :: SafetyInstance, opts :: SplitSdpOptions; verbose=t
   if verbose; println("maxdiff XY: " * string(maxdiffXYs)) end
   if verbose; println("maxdiff YZ: " * string(maxdiffYZs)) end
 
-  @assert maxdiffXYs <= 1e-13 && maxdiffYZs <= 1e-13
+  @assert maxdiffXYs <= 1e-12 && maxdiffYZs <= 1e-12
 end
 
-# Test that that Z reachability construction by Xk, Yk, and Zk are equivalent.
-function testReachZk(inst :: ReachabilityInstance, opts :: SplitSdpOptions; verbose=true)
-  ffnet = inst.ffnet
-  input = inst.input
-  hplane = inst.reach_set
+function testZk(verbose=true)
+  Random.seed!(1234)
+  xdims = [2;3;4;5;6;5;4;3;2]
+  ffnet = randomNetwork(xdims, σ=0.8)
 
-  @assert hplane isa HyperplaneSet
+  xcenter = ones(ffnet.xdims[1])
+  ε = 0.1
+  input = BoxInput(x1min=(xcenter .- ε), x1max=(xcenter .+ ε))
+  x_intvs, ϕintvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
-  γdims, ξvardims = makeγdims(opts.β, inst)
-  ξindim, ξsafedim, ξkdims = ξvardims
-  
-  ξin = abs.(randn(ξindim))
-  ξsafe = abs.(randn(ξsafedim))
-  ξs = [abs.(randn(ξkdim)) for ξkdim in ξkdims]
+  safety = safetyNormBound(20^2, xdims)
+  safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
+  opts1 = SplitSdp.SplitSdpOptions(β=1, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  opts2 = SplitSdp.SplitSdpOptions(β=2, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  opts3 = SplitSdp.SplitSdpOptions(β=3, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
 
-  # Some helpful block index matrices
-  E1 = E(1, ffnet.zdims)
-  EK = E(ffnet.K, ffnet.zdims)
-  Ea = E(ffnet.K+1, ffnet.zdims)
-  Ein = [E1; Ea]
-  Esafe = [E1; EK; Ea]
+  if verbose; println("testing safety instances") end
+  _testZk(safety_inst, opts1, verbose=verbose)
+  _testZk(safety_inst, opts2, verbose=verbose)
+  _testZk(safety_inst, opts3, verbose=verbose)
 
-  # Construct the X components
-  num_Xs = inst.ffnet.K - opts.β
-  Xks = Vector{Any}()
-  Xs = [makeXqξ(k, opts.β, ξs[k], ffnet) for k in 1:num_Xs]
-  Xin = makeXinξ(ξin, input, ffnet)
-  Xsafe = makeHyperplaneReachXsafeξ(ξsafe, hplane, ffnet)
-
-  ZXs = (Ein' * Xin * Ein) + (Esafe' * Xsafe * Esafe)
-  for k in 1:num_Xs
-    Ekβ = E(k, opts.β, inst.ffnet.zdims)
-    EXk = [Ekβ; Ea]
-    ZXs = ZXs + (EXk' * Xs[k] * EXk)
-  end
-
-  # Now construct Z via the Ys
-  num_cliques = inst.ffnet.K - opts.β - 1
-  @assert num_cliques > 1
-  Ys = Vector{Any}()
-  for k = 1:num_cliques
-    if num_cliques == 1 && k == 1
-      @assert length(ξs) == 2
-      γ1 = [ξin; ξsafe; ξs[1]; ξs[2]]
-      Y1 = makeYk(k, opts.β, γ1, ξvardims, inst)
-      push!(Ys, Y1)
-
-    elseif k == 1
-      γ1 = [ξin; ξsafe; ξs[1]]
-      Y1 = makeYk(k, opts.β, γ1, ξvardims, inst)
-      push!(Ys, Y1)
-
-    elseif k == num_cliques
-      γp = [ξs[end-1]; ξs[end]]
-      Yp = makeYk(k, opts.β, γp, ξvardims, inst)
-      push!(Ys, Yp)
-
-    else
-      γk = ξs[k]
-      Yk = makeYk(k, opts.β, γk, ξvardims, inst)
-      push!(Ys, Yk)
-    end
-  end
-
-  ZYs = sum(Ec(k, opts.β, ffnet.zdims)' * Ys[k] * Ec(k, opts.β, ffnet.zdims) for k in 1:num_cliques)
-
-  # Now construct each Zk
-  Ωinvs = makeΩinvs(opts.β, ffnet.zdims)
-  Zs = Vector{Any}()
-  for k = 1:num_cliques
-    Zk = makeZk(k, opts.β, Ys, Ωinvs, ffnet.zdims)
-    push!(Zs, Zk)
-  end
-
-  ZZs = sum(Ec(k, opts.β, ffnet.zdims)' * Zs[k] * Ec(k, opts.β, ffnet.zdims) for k in 1:num_cliques)
-
-  maxdiffXYs = maximum(abs.(ZXs - ZYs))
-  maxdiffYZs = maximum(abs.(ZYs - ZZs))
-
-  if verbose; println("maxdiff XY: " * string(maxdiffXYs)) end
-  if verbose; println("maxdiff YZ: " * string(maxdiffYZs)) end
-
-  @assert maxdiffXYs <= 1e-13 && maxdiffYZs <= 1e-13
+  if verbose; println("testing reachability instances") end
+  hplane = HyperplaneSet(normal=[0.0; 1.0])
+  reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane)
+  _testZk(reach_inst, opts1, verbose=verbose)
+  _testZk(reach_inst, opts2, verbose=verbose)
+  _testZk(reach_inst, opts3, verbose=verbose)
 end
 
 # Test that the P1 and P2 give the expected values for reachability
 function testP1P2reach(verbose=true)
-
   # Don't touch!!
   Random.seed!(12345)
   xdims = [2; 6; 8; 10; 8; 6; 2]
@@ -200,41 +172,41 @@ function testP1P2reach(verbose=true)
   hplane = HyperplaneSet(normal=[0.0; 1.0])
   reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane)
 
-  #=
-  hplane1 = HyperplaneSet(normal=[0.0; 1.0])
-  hplane2 = HyperplaneSet(normal=[1.0; 1.0])
-  hplane3 = HyperplaneSet(normal=[1.0; 0.0])
-  hplane4 = HyperplaneSet(normal=[1.0; -1.0])
-  hplane5 = HyperplaneSet(normal=[0.0; -1.0])
-  hplane6 = HyperplaneSet(normal=[-1.0; -1.0])
-  hplane7 = HyperplaneSet(normal=[-1.0; 0.0])
-  hplane8 = HyperplaneSet(normal=[-1.0; 1.0])
-
-  reach_inst1 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane1)
-  reach_inst2 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane2)
-  reach_inst3 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane3)
-  reach_inst4 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane4)
-  reach_inst5 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane5)
-  reach_inst6 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane6)
-  reach_inst7 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane7)
-  reach_inst8 = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane8)
-  =#
-
   x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
 
-  deep_opts = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=verbose)
-  split_opts1 = SplitSdpOptions(β=1, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=verbose)
-  split_opts2 = SplitSdpOptions(β=2, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=verbose)
-  split_opts3 = SplitSdpOptions(β=3, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=verbose)
-  split_opts4 = SplitSdpOptions(β=4, x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=verbose)
+  deep_opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  split_opts1 = SplitSdpOptions(β=1, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  split_opts2 = SplitSdpOptions(β=2, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  split_opts3 = SplitSdpOptions(β=3, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  split_opts4 = SplitSdpOptions(β=4, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
 
   # Let us just test the hplane1 reachability for simplicity
 
+  println("running DeepSDP")
   deep_soln = DeepSdp.run(reach_inst, deep_opts)
+
+  println("running SplitSdp with β=1")
   split_soln1 = SplitSdp.run(reach_inst, split_opts1)
+
+  println("running SplitSdp with β=2")
   split_soln2 = SplitSdp.run(reach_inst, split_opts2)
+
+  println("running SplitSdp with β=3")
   split_soln3 = SplitSdp.run(reach_inst, split_opts3)
+
+  println("running SplitSdp with β=4")
   split_soln4 = SplitSdp.run(reach_inst, split_opts4)
+
+  @assert string(deep_soln.termination_status) == "OPTIMAL"
+  @assert string(split_soln1.termination_status) == "SLOW_PROGRESS"
+  @assert string(split_soln2.termination_status) == "OPTIMAL"
+  @assert string(split_soln3.termination_status) == "OPTIMAL"
+  @assert string(split_soln4.termination_status) == "OPTIMAL"
+
+  @assert deep_soln.objective_value > 0.036
+  @assert abs(deep_soln.objective_value - split_soln4.objective_value) <= 1e-4
+  @assert split_soln2.objective_value > split_soln3.objective_value > split_soln4.objective_value
+
   return deep_soln, split_soln1, split_soln2, split_soln3, split_soln4
 end
 
@@ -339,7 +311,6 @@ end
 
 # test that the cache is well-formed
 function testAdmmCache(verbose=true)
-
   # Don't touch!!
   Random.seed!(12345)
   xdims = [2; 6; 8; 10; 8; 6; 2]
@@ -355,11 +326,11 @@ function testAdmmCache(verbose=true)
   safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
   # The split stuff
-  split_opts = SplitSdpOptions(β=2, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
+  split_opts = SplitSdpOptions(β=2, verbose=verbose, x_intvs=x_intvs, slope_intvs=slope_intvs)
   split_soln, split_γ = _runSplitCustom(safety_inst, split_opts)
 
   # The admm stuff
-  admm_opts = AdmmSdpOptions(β=2, verbose=verbose, x_intervals=x_intvs, slope_intervals=slope_intvs)
+  admm_opts = AdmmSdpOptions(β=2, verbose=verbose, x_intvs=x_intvs, slope_intvs=slope_intvs)
   admm_params = initParams(safety_inst, admm_opts)
   admm_cache = precomputeCache(admm_params, safety_inst, admm_opts)
   admm_soln, admm_γ = _runWithAdmmCache(admm_params, admm_cache, admm_opts)
