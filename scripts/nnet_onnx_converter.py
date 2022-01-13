@@ -6,7 +6,11 @@ import argparse
 
 # Point Python to the NNet package
 NNET_PATH = "/home/taro/stuff/nv-repos"
-sys.path.append(NNET_PATH)
+try:
+  sys.path.index(NNET_PATH)
+except:
+  sys.path.append(NNET_PATH)
+
 import NNet.converters.nnet2onnx as n2o
 import NNet.converters.onnx2nnet as o2n
 
@@ -15,8 +19,8 @@ def parser():
   parser = argparse.ArgumentParser("Convert between NNet and ONNX files")
   parser.add_argument("--nnet2onnx", action="store_true")
   parser.add_argument("--onnx2nnet", action="store_true")
-  parser.add_argument("-idir", type=str)
-  parser.add_argument("-odir", type=str)
+  parser.add_argument("--idir", type=str)
+  parser.add_argument("--odir", type=str)
   return parser
 
 # Parse input arguments

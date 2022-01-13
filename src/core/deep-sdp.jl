@@ -65,6 +65,8 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
     @variable(model, ν_slope[1:qxdim] >= 0)
     @variable(model, d_out[1:qxdim] >= 0)
 
+    println("λslope length: " * string(λ_slope_length))
+
     vars = (λ_slope, η_slope, ν_slope, d_out)
     xqinfo = Xqinfo(
       ffnet = ffnet,
@@ -95,6 +97,8 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
   # Now the LMI
   Z = MinP + MmidQ + MoutS
   @SDconstraint(model, Z <= 0)
+
+  println("Z size: " * string(size(Z)))
 
   # The time it took to set up the problem
   vars = merge(Pvars, Qvars)

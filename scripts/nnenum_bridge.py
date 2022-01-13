@@ -24,7 +24,6 @@ class NnenumOptions():
     self.timeout = timeout
     self.verbose = verbose
 
-
 # Much of this is adapted from
 # https://github.com/stanleybak/nnenum/blob/2ad47c186f8113e75f16d45db9e314b1a0b72827/src/nnenum/nnenum.py
 def run_nnenum(onnx_filepath : str,
@@ -66,5 +65,6 @@ def run_nnenum(onnx_filepath : str,
     res = nnenum.enumerate_network(init_box, network, spec)
 
     return res
+
 
 

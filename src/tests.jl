@@ -326,18 +326,22 @@ function testAdmmCache(verbose=true)
   safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
 
   # The split stuff
-  split_opts = SplitSdpOptions(β=2, verbose=verbose, x_intvs=x_intvs, slope_intvs=slope_intvs)
+  tband_func = (x, y) -> y
+  split_opts = SplitSdpOptions(β=2, verbose=verbose, x_intvs=x_intvs, slope_intvs=slope_intvs, tband_func=tband_func)
   split_soln, split_γ = _runSplitCustom(safety_inst, split_opts)
 
   # The admm stuff
-  admm_opts = AdmmSdpOptions(β=2, verbose=verbose, x_intvs=x_intvs, slope_intvs=slope_intvs)
+  admm_opts = AdmmSdpOptions(β=2, verbose=verbose, x_intvs=x_intvs, slope_intvs=slope_intvs, tband_func=tband_func)
   admm_params = initParams(safety_inst, admm_opts)
-  admm_cache = precomputeCache(admm_params, safety_inst, admm_opts)
+  admm_cache, _ = precomputeCache(admm_params, safety_inst, admm_opts)
   admm_soln, admm_γ = _runWithAdmmCache(admm_params, admm_cache, admm_opts)
 
   # Tests differences
   maxdiff = maximum(abs.(split_γ - admm_γ))
   if verbose; println("maxdiff: " * string(maxdiff)) end
+
+  @assert norm(split_γ) > 7.5
+  @assert norm(admm_γ) > 7.5
 
   # Return stuff
   return split_soln, admm_soln, admm_cache, split_γ, admm_γ

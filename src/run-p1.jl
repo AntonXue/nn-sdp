@@ -1,5 +1,7 @@
 #
+main_start_time = time()
 
+#
 include("core/header.jl"); using .Header
 include("core/common.jl"); using .Common
 include("core/intervals.jl"); using .Intervals
@@ -10,66 +12,55 @@ include("parsers/nnet-parser.jl"); using .NNetParser
 include("parsers/vnnlib-parser.jl"); using .VnnlibParser
 include("utils.jl"); using .Utils
 
-prop1_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_1.vnnlib"
-prop2_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_2.vnnlib"
-prop3_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_3.vnnlib"
-prop4_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_4.vnnlib"
-prop5_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_5.vnnlib"
-prop6_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_6.vnnlib"
-prop7_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_7.vnnlib"
-prop8_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_8.vnnlib"
-prop9_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_9.vnnlib"
-prop10_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/prop_10.vnnlib"
-prophello_filepath = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/prop/hello.vnnlib"
+using ArgParse
 
-parsed1 = VnnlibParser.read_vnnlib_simple(prop1_filepath, 5, 5)
-parsed2 = VnnlibParser.read_vnnlib_simple(prop2_filepath, 5, 5)
-parsed3 = VnnlibParser.read_vnnlib_simple(prop3_filepath, 5, 5)
-parsed4 = VnnlibParser.read_vnnlib_simple(prop4_filepath, 5, 5)
-parsed5 = VnnlibParser.read_vnnlib_simple(prop5_filepath, 5, 5)
-parsed6 = VnnlibParser.read_vnnlib_simple(prop6_filepath, 5, 5)
-parsed7 = VnnlibParser.read_vnnlib_simple(prop7_filepath, 5, 5)
-parsed8 = VnnlibParser.read_vnnlib_simple(prop8_filepath, 5, 5)
-parsed9 = VnnlibParser.read_vnnlib_simple(prop9_filepath, 5, 5)
-parsed10 = VnnlibParser.read_vnnlib_simple(prop10_filepath, 5, 5)
+println("Finished importing: " * string(time() - main_start_time))
 
-ACAS_1_1 = "/home/taro/stuff/test/nv-tests/benchmarks/acasxu/nnet/ACASXU_run2a_1_1_batch_2000.nnet"
-nnet = NNetParser.NNet(ACAS_1_1)
+#
+argparse_settings = ArgParseSettings()
+@add_arg_table argparse_settings begin
+    "--nnet"
+        help = "the NNet file location"
+        arg_type = String
+    "--prop"
+        help = "the VNNLIB file location"
+        arg_type = String
+    "--indim"
+        arg_type = Int
+        default = 0
+    "--outdim"
+        arg_type = Int
+        default = 0
+end
+
+args = parse_args(ARGS, argparse_settings)
+
+@assert args["indim"] > 0
+@assert args["outdim"] > 0
+
+nnet = NNetParser.NNet(args["nnet"])
+parsed_prop = VnnlibParser.read_vnnlib_simple(args["prop"], args["indim"], args["outdim"])
+
 ffnet = Utils.NNet2FeedForwardNetwork(nnet)
-constrs1 = vnnlib2constraints(parsed1, ffnet)
-constrs2 = vnnlib2constraints(parsed2, ffnet)
-constrs3 = vnnlib2constraints(parsed3, ffnet)
-constrs4 = vnnlib2constraints(parsed4, ffnet)
-constrs5 = vnnlib2constraints(parsed5, ffnet)
-constrs6 = vnnlib2constraints(parsed6, ffnet)
-constrs7 = vnnlib2constraints(parsed7, ffnet)
-constrs8 = vnnlib2constraints(parsed8, ffnet)
-constrs9 = vnnlib2constraints(parsed9, ffnet)
-constrs10 = vnnlib2constraints(parsed10, ffnet)
+disjs = vnnlib2constraints(parsed_prop, ffnet)
 
-# Some interval propagation
-# x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation()
+inst_opt_pairs = Vector{Any}()
 
-# Deep Sdp options
-
-deep_pairs = Vector{Any}()
-
-for c1s in constrs1
-  for c1 in c1s
+for conjs in disjs
+  for c1 in conjs
     input, safety = c1
     inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
     x_intvs, ϕin_intvs, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-    opt = DeepSdpOptions(x_intervals=x_intvs, slope_intervals=slope_intvs, verbose=true)
-    push!(deep_pairs, (inst, opt))
+    opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=true, tband=0)
+    push!(inst_opt_pairs, (inst, opts))
   end
 end
 
-println("here!")
+println("Done generating instances: " * string(time() - main_start_time))
 
-inst = deep_pairs[1][1]
-opts = deep_pairs[1][2]
-
-res = DeepSdp.run(inst, opts)
-
+if length(disjs) == 1 && length(disjs[1]) == 1
+  @assert length(inst_opt_pairs) == 1
+  inst, opt = inst_opt_pairs[1]
+end
 
 
