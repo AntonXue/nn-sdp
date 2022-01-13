@@ -13,19 +13,6 @@ using Plots
 
 pyplot()
 
-# Write some data (hopefully Float64-based) to a file
-function fileWriteFloat64(data, file :: String)
-  open(file, "w") do io
-    writedlm(io, data, ',')
-  end
-end
-
-# Read some Float64-based data from a file
-function fileReadFloat64(file :: String)
-  data = readdlm(file, ',', Float64)
-  return data
-end
-
 # -ones <= x <= ones
 function inputUnitBox(xdims :: Vector{Int64})
   @assert length(xdims) > 1
@@ -34,16 +21,15 @@ function inputUnitBox(xdims :: Vector{Int64})
   return BoxInput(x1min=x1min, x1max=x1max)
 end
 
-# ||f(x)||^2 <= C
-function safetyNormBound(C, xdims :: Vector{Int64})
-  # @assert C > 0
+# a||x||^2 + b||f(x)||^2 <= C
+function outputSafetyNorm2(a :: Float64, b :: Float64, norm2, xdims :: Vector{Int64})
   @assert length(xdims) > 1
-  _S11 = zeros(xdims[1], xdims[1])
+  _S11 = a * I(xdims[1])
   _S12 = zeros(xdims[1], xdims[end])
   _S13 = zeros(xdims[1], 1)
-  _S22 = I(xdims[end])
+  _S22 = b * I(xdims[end])
   _S23 = zeros(xdims[end], 1)
-  _S33 = -C
+  _S33 = -norm2
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return SafetyConstraint(S=S)
 end
@@ -61,7 +47,8 @@ function randomNetwork(xdims :: Vector{Int64}; type :: NetworkType = ReluNetwork
 end
 
 # Run a feedforward net on an initial input and give the output
-function runNetwork(x1, ffnet :: FeedForwardNetwork)
+function runNetwork(x1 :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+  @assert length(x1) == ffnet.xdims[1]
   function ϕ(x)
     if ffnet.type isa ReluNetwork; return max.(x, 0)
     elseif ffnet.type isa TanhNetwork; return tanh.(x)
@@ -81,8 +68,9 @@ function runNetwork(x1, ffnet :: FeedForwardNetwork)
 end
 
 # Generate trajectories from a unit box
-function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; x1min = -ones(ffnet.xdims[1]), x1max=ones(ffnet.xdims[1]))
-  Random.seed!(1234)
+function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max)
+  # Random.seed!(1234) # Let's move the call to this earlier
+  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
   xgaps = x1max - x1min
   box01points = rand(ffnet.xdims[1], N)
   x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
@@ -91,8 +79,9 @@ function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; x1min = -ones
 end
 
 # Plot some data to a file
-function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; imgfile="~/Desktop/hello.png", x1min=-ones(ffnet.xdims[1]), x1max=ones(ffnet.xdims[1]))
+function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max; imgfile="~/Desktop/hello.png")
   # Make sure we can actually plot these in 2D
+  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
   @assert ffnet.xdims[end] == 2
 
   xfs = randomTrajectories(N, ffnet, x1min=x1min, x1max=x1max)
@@ -101,6 +90,7 @@ function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork; img
   
   p = scatter(d1s, d2s, markersize=2, alpha=0.3)
   savefig(p, imgfile)
+  return xfs
 end
 
 # Plot bouding hyperplanes for 2D points
@@ -119,6 +109,7 @@ function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{
     n1, h1 = augs[i]
     n2, h2 = augs[i+1]
     x = [n1'; n2'] \ [h1; h2]
+    # println("pushed: " * string(x))
     push!(verts, x)
   end
 
@@ -126,15 +117,13 @@ function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{
   vys = [v[2] for v in verts]
 
   # Figure out how to plot
-
   xmin, xmax = minimum([xs; vxs]), maximum([xs; vxs])
   ymin, ymax = minimum([ys; vys]), maximum([ys; vys])
-
   xgap = xmax - xmin
   ygap = ymax - ymin
-
   plotxlim = (xmin - 0.4 * xgap, xmax + 0.4 * xgap)
   plotylim = (ymin - 0.4 * ygap, ymax + 0.4 * ygap)
+
   # Begin plotting
   plt = plot()
   plt = plot!(vxs, vys, color=:red)
@@ -184,8 +173,7 @@ function vnnlib2constraints(parsed, ffnet :: FeedForwardNetwork)
 end
 
 #
-export fileWriteFloat64, fileReadFloat64
-export inputUnitBox, safetyNormBound
+export inputUnitBox, outputSafetyNorm2
 export randomNetwork
 export runNetwork, randomTrajectories, runAndPlotRandomTrajectories
 export plotReachPolytope

@@ -65,8 +65,6 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
     @variable(model, ν_slope[1:qxdim] >= 0)
     @variable(model, d_out[1:qxdim] >= 0)
 
-    println("λslope length: " * string(λ_slope_length))
-
     vars = (λ_slope, η_slope, ν_slope, d_out)
     xqinfo = Xqinfo(
       ffnet = ffnet,
@@ -98,12 +96,10 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
   Z = MinP + MmidQ + MoutS
   @SDconstraint(model, Z <= 0)
 
-  println("Z size: " * string(size(Z)))
-
   # The time it took to set up the problem
   vars = merge(Pvars, Qvars)
   setup_time = round(time() - setup_start_time, digits=3)
-  if opts.verbose; println("setup time: " * string(setup_time)) end
+  if opts.verbose; println("\tsetup time: " * string(setup_time)) end
   return model, vars, setup_time
 end
 
@@ -130,7 +126,7 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
   # Calculate setup times and return
   vars = merge(Pvars, Qvars, Svars)
   setup_time = round(time() - setup_start_time, digits=3)
-  if opts.verbose; println("setup time: " * string(setup_time)) end
+  if opts.verbose; println("\tsetup time: " * string(setup_time)) end
   return model, vars, setup_time
 end
 
@@ -139,7 +135,7 @@ function solve!(model, vars, opts :: DeepSdpOptions)
   optimize!(model)
   summary = solution_summary(model)
   solve_time = round(summary.solve_time, digits=3)
-  if opts.verbose; println("solve time: " * string(solve_time)) end
+  if opts.verbose; println("\tsolve time: " * string(solve_time)) end
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
   return summary, values, solve_time
@@ -151,7 +147,8 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-9))
+    "INTPNT_CO_TOL_PFEAS" => 1e-6,
+    "INTPNT_CO_TOL_DFEAS" => 1e-6))
 
   # Delegate the appropriate call depending on our query instance
   if inst isa SafetyInstance
@@ -165,7 +162,7 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = round(time() - total_start_time, digits=3)
-  if opts.verbose; println("total time: " * string(total_time)) end
+  if opts.verbose; println("\ttotal time: " * string(total_time)) end
   return SolutionOutput(
     objective_value = objective_value(model),
     values = values,

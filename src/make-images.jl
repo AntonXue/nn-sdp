@@ -1,5 +1,5 @@
 #
-main_start_time = time()
+start_time = time()
 
 #
 include("core/header.jl"); using .Header
@@ -14,7 +14,7 @@ using JuMP
 using Random
 using ArgParse
 
-println("Done importing stuff: " * string(round(time() - main_start_time, digits=2)))
+println("Done importing stuff: " * string(round(time() - start_time, digits=2)))
 
 # Seed is fixed, but all rand calls should also happen in the same expected sequence
 Random.seed!(1234)
@@ -50,10 +50,10 @@ for nnet_filename in readdir(nnet_dir, join=false)
   image_filepath = joinpath(image_dir, nnet_filename * ".png")
   x1min = ones(nnet.inputSize) .- 1e-2
   x1max = ones(nnet.inputSize) .+ 1e-2
-  runAndPlotRandomTrajectories(10000, ffnet, x1min=x1min, x1max=x1max, imgfile=image_filepath)
+  runAndPlotRandomTrajectories(10000, ffnet, x1min, x1max, imgfile=image_filepath)
   println("\tdone: " * string(round(time() - loop_start_time, digits=2)))
 end
 
-println("end time: " * string(round(time() - main_start_time, digits=2)))
+println("end time: " * string(round(time() - start_time, digits=2)))
 
 
