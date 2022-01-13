@@ -73,4 +73,3 @@ for input_dim, output_dim, layer_dim, num_layers, _, Ws, bs in enumerate_random_
   write_NNet(input_dim, Ws, bs, filepath)
 
 
-

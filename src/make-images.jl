@@ -4,11 +4,6 @@ main_start_time = time()
 #
 include("core/header.jl"); using .Header
 include("core/common.jl"); using .Common
-include("core/intervals.jl"); using .Intervals
-include("core/partitions.jl"); using .Partitions
-include("core/deep-sdp.jl"); using .DeepSdp
-include("core/split-sdp.jl"); using .SplitSdp
-include("core/admm-sdp.jl"); using .AdmmSdp
 include("parsers/nnet-parser.jl"); using .NNetParser
 include("parsers/vnnlib-parser.jl"); using .VnnlibParser
 include("utils.jl"); using .Utils
@@ -25,7 +20,11 @@ println("Done importing stuff: " * string(round(time() - main_start_time, digits
 Random.seed!(1234)
 
 # Argument parsing
-argparse_settings = ArgParseSettings() @add_arg_table argparse_settings begin "--benchdir" help = "The directory of the benchmark"
+argparse_settings = ArgParseSettings()
+@add_arg_table argparse_settings begin
+      "--benchdir"
+      help = "The directory of the benchmark"
+      arg_type = String
 end
 
 args = parse_args(ARGS, argparse_settings)
