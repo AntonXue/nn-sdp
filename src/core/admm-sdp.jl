@@ -297,11 +297,11 @@ function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOption
     dim = Int(round(sqrt(length(zk))))
     tmp = Symmetric(reshape(zk, (dim, dim)))
     if eigmax(tmp) > opts.nsd_tol
-      println("failed check pair (k, nsdtol): " * string((k, eigmax(tmp))))
+      if opts.verbose; println("failed check pair (k, nsdtol): " * string((k, eigmax(tmp)))) end
       return false
     end
   end
-  println("SAT!")
+  if opts.verbose; println("SAT!") end
   return true
 end
 
@@ -364,13 +364,24 @@ end
 # Call this
 function run(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   start_time = time()
-  init_params = initParams(inst, opts)
-  cache, setup_time = precomputeCache(init_params, inst, opts)
+  start_params = initParams(inst, opts)
+  cache, setup_time = precomputeCache(start_params, inst, opts)
 
   final_params, admm_time = admm(start_params, cache, opts)
   total_time = time() - start_time
     
+  
+  status = isγSat(final_params, cache, opts) ? "OPTIMAL" : "INFEASIBLE"
 
+
+  return SolutionOutput(
+    objective_value = 0.0,
+    values = final_params,
+    summary = (),
+    termination_status = status,
+    total_time = total_time,
+    setup_time = setup_time,
+    solve_time = admm_time)
 end
 
 export initParams, precomputeCache

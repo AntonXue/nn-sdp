@@ -5,21 +5,12 @@ module Utils
 using ..Header
 using ..Common
 using ..NNetParser: NNet
-using ..VnnlibParser
 using LinearAlgebra
 using DelimitedFiles
 using Random
 using Plots
 
 pyplot()
-
-# -ones <= x <= ones
-function inputUnitBox(xdims :: Vector{Int64})
-  @assert length(xdims) > 1
-  x1min = -ones(xdims[1])
-  x1max = ones(xdims[1])
-  return BoxInput(x1min=x1min, x1max=x1max)
-end
 
 # a||x||^2 + b||f(x)||^2 <= C
 function outputSafetyNorm2(a :: Float64, b :: Float64, norm2, xdims :: Vector{Int64})
@@ -79,22 +70,22 @@ function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max)
 end
 
 # Plot some data to a file
-function runAndPlotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max; imgfile="~/Desktop/hello.png")
+function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max; saveto="~/Desktop/hello.png")
   # Make sure we can actually plot these in 2D
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
   @assert ffnet.xdims[end] == 2
 
-  xfs = randomTrajectories(N, ffnet, x1min=x1min, x1max=x1max)
+  xfs = randomTrajectories(N, ffnet, x1min, x1max)
   d1s = [xf[1] for xf in xfs]
   d2s = [xf[2] for xf in xfs]
   
   p = scatter(d1s, d2s, markersize=2, alpha=0.3)
-  savefig(p, imgfile)
+  savefig(p, saveto)
   return xfs
 end
 
 # Plot bouding hyperplanes for 2D points
-function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{Tuple{Vector{Float64}, Float64}}; imgfile="~/Desktop/foo.png")
+function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{Tuple{Vector{Float64}, Float64}}; saveto="~/Desktop/foo.png")
   @assert all(z -> z == 2, length.(points))
   @assert length(hplanes) >= 3
   @assert all(hp -> length(hp[1]) == 2 && hp[2] isa Float64, hplanes)
@@ -128,7 +119,7 @@ function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{
   plt = plot()
   plt = plot!(vxs, vys, color=:red)
   plt = scatter!(xs, ys, markersize=4, alpha=0.3, color=:blue, xlim=plotxlim, ylim=plotylim)
-  savefig(plt, imgfile)
+  savefig(plt, saveto)
   return plt
 end
 
@@ -139,45 +130,12 @@ function NNet2FeedForwardNetwork(nnet :: NNet)
   return ffnet
 end
 
-# Returns a DNF in list form of OR{(input1, safety1), ..., (inputN, safetyN)}
-function vnnlib2constraints(parsed, ffnet :: FeedForwardNetwork)
-  disjs = Vector{Vector{Tuple{BoxInput, SafetyConstraint}}}()
-
-  # The raw parsed is a disjunction list of form OR{(input, OR{AND{...}, ..., AND{...}})}
-  for p in parsed
-    # Each p has form (input, OR{AND{...}, ..., AND{...}})
-    xconstrs = p[1]
-    @assert all(xc -> length(xc) == 2, xconstrs)
-    xmin = [xc[1] for xc in xconstrs]
-    xmax = [xc[2] for xc in xconstrs]
-    input = BoxInput(x1min=xmin, x1max=xmax)
-
-    # And the RHS is a DNF, i.e. OR{AND{...}, ..., AND{...}}
-    ydisjs = p[2]
-    for yconj in ydisjs
-      # The constraints on Y are of form Ax <= b
-      # The first of the pair gives the rows of A
-      # The second of the pair gives the rows of b
-      Arows, b = yconj
-      conjs = Vector{Tuple{BoxInput, SafetyConstraint}}()
-      @assert length(Arows) == length(b)
-      for (c, d) in zip(Arows, b)
-        S = makeShyperplane(Vector{Float64}(c), Float64(d), ffnet)
-        safety = SafetyConstraint(S=S)
-        push!(conjs, (input, safety))
-      end
-      push!(disjs, conjs)
-    end
-  end
-  return disjs
-end
-
 #
-export inputUnitBox, outputSafetyNorm2
+export outputSafetyNorm2
 export randomNetwork
-export runNetwork, randomTrajectories, runAndPlotRandomTrajectories
+export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotReachPolytope
-export NNet2FeedForwardNetwork, vnnlib2constraints
+export NNet2FeedForwardNetwork
 
 end # End Module
 

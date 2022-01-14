@@ -18,8 +18,8 @@ import NNet.utils.writeNNet as wn
 np.random.seed(1234)
 INPUT_DIM = 2
 OUTPUT_DIM = 2
-LAYER_DIMS = [5, 10, 15, 20, 25, 30, 35, 40]
-NUM_LAYERS = [5, 10, 15, 20, 25, 30, 35, 40]
+LAYER_DIMS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+NUM_LAYERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40]
 
 # Generate a random network given the number of layers, input, output, and layer dimensions
 def random_params(input_dim, output_dim, layer_dim, num_layers, sigma):
@@ -49,14 +49,14 @@ def write_NNet(input_dim, Ws, bs, filepath):
 # Parser setup
 def parser():
   parser = argparse.ArgumentParser("Generate NNet files")
-  parser.add_argument("--odir", type=str)
+  parser.add_argument("--nnetdir", type=str)
   return parser
 
 args = parser().parse_args()
 
-# Check that odir is not None and in fact exists
-assert args.odir is not None
-assert os.path.isdir(args.odir)
+# Check that nnetdir is not None and in fact exists
+assert args.nnetdir is not None
+assert os.path.isdir(args.nnetdir)
 
 # Generate each
 for input_dim, output_dim, layer_dim, num_layers, _, Ws, bs in enumerate_random_params():
@@ -67,7 +67,7 @@ for input_dim, output_dim, layer_dim, num_layers, _, Ws, bs in enumerate_random_
 
   filename = f"rand-in{idim}-out{odim}-ldim{ldim}-numl{numl}"
   filename = filename + ".nnet"
-  filepath = os.path.join(args.odir, filename)
+  filepath = os.path.join(args.nnetdir, filename)
 
   print(f"writing: " + filepath)
   write_NNet(input_dim, Ws, bs, filepath)

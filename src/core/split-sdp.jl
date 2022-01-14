@@ -68,6 +68,61 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
   return model, Yvars, setup_time
 end
 
+# Do the safety instance
+function setupSafetyNoSplit!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
+  setup_start_time = time()
+  println("\tsetupSafetyNoSplit!")
+
+  # Construct the Ys
+  Ys, Yvars, ξvardims = makeYs!(model, inst, opts)
+  Ωinvs = makeΩinvs(opts.β, inst.ffnet.zdims)
+  num_cliques = inst.ffnet.K - opts.β - 1
+
+  @assert length(Ys) == num_cliques
+  zdims = inst.ffnet.zdims
+  Z = sum(Ec(k, opts.β, zdims)' * Ys[k] * Ec(k, opts.β, zdims) for k in 1:num_cliques)
+  @SDconstraint(model, Z <= 0)
+
+  # Ready to return
+  setup_time = round(time() - setup_start_time, digits=3)
+  if opts.verbose; println("setup time: " * string(setup_time)) end
+  return model, Yvars, setup_time
+end
+
+#
+function setupSafetyZVs!(model, inst :: SafetyInstance, opts :: SplitSdpOptions)
+  setup_start_time = time()
+  println("\tsetupSafetyZVs!")
+
+  # Construct the Ys
+  Ys, Yvars, ξvardims = makeYs!(model, inst, opts)
+  num_cliques = inst.ffnet.K - opts.β - 1
+
+  @assert length(Ys) == num_cliques
+  zdims = inst.ffnet.zdims
+
+  Zs = Vector{Any}()
+  Vs = Vector{Any}()
+  for k = 1:num_cliques
+    Ckdim = size(Ec(k, opts.β, zdims))[1]
+    Vk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
+    Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
+
+    @constraint(model, Vk .== Zk)
+    @SDconstraint(model, Zk <= 0)
+    push!(Vs, Vk)
+    push!(Zs, Zk)
+  end
+
+  Lhs = sum(Ec(k, opts.β, zdims)' * Vs[k] * Ec(k, opts.β, zdims) for k in 1:num_cliques)
+  Rhs = sum(Ec(k, opts.β, zdims)' * Ys[k] * Ec(k, opts.β, zdims) for k in 1:num_cliques)
+  @constraint(model, Lhs .== Rhs)
+
+  setup_time = round(time() - setup_start_time, digits=3)
+  if opts.verbose; println("setup time: " * string(setup_time)) end
+  return model, Yvars, setup_time
+end
+
 # Do the hyperplane reachability instance
 function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts :: SplitSdpOptions)
   setup_start_time = time()
@@ -119,11 +174,15 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
-    "INTPNT_CO_TOL_DFEAS" => 1e-9))
+    "INTPNT_CO_TOL_REL_GAP" => 1e-6,
+    "INTPNT_CO_TOL_PFEAS" => 1e-6,
+    "INTPNT_CO_TOL_DFEAS" => 1e-6))
 
   # Delegate the appropriate call depending on our query instance
   if inst isa SafetyInstance
-    _, vars, setup_time = setupSafety!(model, inst, opts)
+    # _, vars, setup_time = setupSafety!(model, inst, opts)
+    # _, vars, setup_time = setupSafetyNoSplit!(model, inst, opts)
+    _, vars, setup_time = setupSafetyZVs!(model, inst, opts)
   elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
     _, vars, setup_time = setupHyperplaneReachability!(model, inst, opts)
   else
