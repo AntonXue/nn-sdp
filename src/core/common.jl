@@ -6,6 +6,18 @@ using Parameters
 using LinearAlgebra
 using JuMP
 
+# Splice a vector
+function splice(x, sizes :: Vector{Int})
+  @assert all(sizes .>= 0)
+  @assert 1 <= length(x) == sum(sizes)
+  num_sizes = length(sizes)
+  highs = [sum(sizes[1:k]) for k in 1:num_sizes]
+  lows = [1; [1 + highk for highk in highs[1:end-1]]]
+  @assert length(highs) == length(lows)
+  splices = [x[lows[k] : highs[k]] for k in 1:num_sizes]
+  return splices
+end
+
 # The ith basis vector
 function e(i :: Int, dim :: Int)
   @assert 1 <= i <= dim
@@ -84,9 +96,9 @@ function makeBc(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
 end
 
 # P function for a box
-function makePbox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, γ)
-  @assert length(x1min) == length(x1max) == length(γ)
-  Γ = Diagonal(γ)
+function makePbox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ξin)
+  @assert length(x1min) == length(x1max) == length(ξin)
+  Γ = Diagonal(ξin)
   _P11 = -2 * Γ
   _P12 = Γ * (x1min + x1max)
   _P22 = -2 * x1min' * Γ * x1max
@@ -128,7 +140,6 @@ end
 
 # Calculate how large λ should be given a tband
 function λlength(qxdim :: Int, tband :: Int)
-  # @assert 0 <= tband <= qxdim - 1
   @assert 0 <= tband
   return sum((qxdim-tband):qxdim)
 end
@@ -242,15 +253,45 @@ function makeXq(k :: Int, b :: Int, vars, xqinfo :: Xqinfo)
   return R' * Q * R
 end
 
-# γ is a vector
-function makeXin(γ, input :: InputConstraint, ffnet :: FeedForwardNetwork)
+# The version of makeXq that takes a vector ξk
+function makeXqξ(k :: Int, b :: Int, ξk, xqinfo :: Xqinfo)
+  ffnet = xqinfo.ffnet
+  @assert k >= 1 && b >= 1
+  @assert 1 <= k + b <= ffnet.K
+
+  qxdim = Qxdim(k, b, ffnet.zdims)
+  if ffnet.type isa ReluNetwork
+    # Decompose the ξk
+    λ_slope_start = 1
+    λ_slope_final = λlength(qxdim, xqinfo.tband)
+    η_slope_start = λ_slope_final + 1
+    η_slope_final = λ_slope_final + qxdim
+    ν_slope_start = η_slope_final + 1
+    ν_slope_final = η_slope_final + qxdim
+    d_out_start = ν_slope_final + 1
+    d_out_final = ν_slope_final + qxdim
+
+    @assert length(ξk) == d_out_final
+    λ_slope = ξk[λ_slope_start:λ_slope_final]
+    η_slope = ξk[η_slope_start:η_slope_final]
+    ν_slope = ξk[ν_slope_start:ν_slope_final]
+    d_out = ξk[d_out_start:d_out_final]
+    vars = (λ_slope, η_slope, ν_slope, d_out)
+    return makeXq(k, b, vars, xqinfo)
+  else
+    error("unsupported network: " * string(ffnet))
+  end
+end
+
+# ξin is a vector
+function makeXin(ξin, input :: InputConstraint, ffnet :: FeedForwardNetwork)
   d1 = ffnet.xdims[1]
   if input isa BoxInput
-    @assert length(γ) == d1
-    return makePbox(input.x1min, input.x1max, γ)
+    @assert length(ξin) == d1
+    return makePbox(input.x1min, input.x1max, ξin)
   elseif input isa PolytopeInput
-    @assert length(γ) == d1^2
-    Γ = reshape(γ, (d1, d1))
+    @assert length(ξin) == d1^2
+    Γ = reshape(ξin, (d1, d1))
     return makePpolytope(input.H, input.h, Γ)
   else
     error("unsupported input constraints: " * string(input))
@@ -278,7 +319,53 @@ function makeXsafe(S, ffnet :: FeedForwardNetwork)
   return R' * S * R
 end
 
+# Make the dimension of the ξ variables
+function makeξvardims(b :: Int, inst :: QueryInstance, tband_func :: Function)
+  @assert inst isa SafetyInstance || inst isa ReachabilityInstance
+  @assert inst.ffnet.type isa ReluNetwork
+
+  # Set up the ξindim
+  if inst.input isa BoxInput
+    ξindim = inst.ffnet.xdims[1]
+  elseif inst.input isa PolytopeInput
+    ξindim = inst.ffnet.xdims[1]^2
+  else
+    error("unsupported input: " * string(inst.input))
+  end
+
+  # Set up the ξsafedim
+  if inst isa SafetyInstance
+    ξsafedim = 0
+  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
+    ξsafedim = 1
+  else
+    error("unsupported instance: " * string(inst))
+  end
+
+  # Set up the ξkdims
+  zdims = inst.ffnet.zdims
+  num_cliques = length(zdims) - b - 2
+  ξkdims = Vector{Int}()
+  if inst.ffnet.type isa ReluNetwork
+    for k = 1:(num_cliques+1)
+      qxdim = Qxdim(k, b, zdims)
+      tband = tband_func(k, qxdim)
+      λ_slope_length = λlength(qxdim, tband)
+      η_slope_length = qxdim
+      ν_slope_length = qxdim
+      d_out_length = qxdim
+      ξkdim = λ_slope_length + η_slope_length + ν_slope_length + d_out_length
+      push!(ξkdims, ξkdim)
+    end
+  else
+    error("unsupported network: " * string(inst.ffnet))
+  end
+
+  return ξindim, ξsafedim, ξkdims
+end
+
 # Slowly using up the English alphabet
+export splice
 export e, E, Ec, Cdims
 export makeAc, makebc, makeBc
 export makePbox, makePpolytope
@@ -286,7 +373,8 @@ export makeShyperplane
 export Xqinfo
 export Qxdim, λlength
 export makeQϕout, makeQrelu
-export makeXq, makeXin, makeXsafe
+export makeXq, makeXqξ, makeXin, makeXsafe
+export makeξvardims
 
 end # End module
 

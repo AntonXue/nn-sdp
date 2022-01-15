@@ -39,6 +39,8 @@ if !isdir(p2_dir)
 end
 
 REACH_WIDTH_DEPTHS =
+  [ (5, 3); (5, 4) ]
+#=
   [
    (5, 3); (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10);
    (10, 3); (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
@@ -46,6 +48,7 @@ REACH_WIDTH_DEPTHS =
    # (20, 3); (20, 4); (20, 5); (20, 6); (20, 7); (20, 8); (20, 9); (20, 10);
   # (15; 3); (15, 4);
   ]
+=#
 
 
 function runReach()
@@ -123,7 +126,7 @@ end
 
 println("end time: " * string(round(time() - start_time, digits=2)))
 
-# reach_res = runReach()
+reach_res = runReach()
 safety_res = runSafety()
 
 

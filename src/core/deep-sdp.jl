@@ -21,18 +21,18 @@ end
 # Computes the MinP matrix. Treat this function as though it modifies the model
 function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
   if input isa BoxInput
-    @variable(model, γ[1:ffnet.xdims[1]] >= 0)
+    @variable(model, ξin[1:ffnet.xdims[1]] >= 0)
   elseif input isa PolytopeInput
-    @variable(model, γ[1:ffnet.xdims[1]^2] >= 0)
+    @variable(model, ξin[1:ffnet.xdims[1]^2] >= 0)
   else
     error("unsupported input constraints: " * string(input))
   end
   E1 = E(1, ffnet.zdims)
   Ea = E(ffnet.K+1, ffnet.zdims)
   Ein = [E1; Ea]
-  Xin = makeXin(γ, input, ffnet)
+  Xin = makeXin(ξin, input, ffnet)
   MinP = Ein' * Xin * Ein
-  Pvars = Dict(:γ => γ)
+  Pvars = Dict(:ξin => ξin)
   return MinP, Pvars
 end
 

@@ -18,6 +18,50 @@ function splice(x, sizes :: Vector{Int})
   return splices
 end
 
+function makeξdims(b :: Int, inst :: QueryInstance, tband_func :: Function)
+  @assert inst isa SafetyInstance || inst isa ReachabilityInstance
+  @assert inst.ffnet.type isa ReluNetwork
+
+  # Set up the ξindim
+  if inst.input isa BoxInput
+    ξindim = inst.ffnet.xdims[1]
+  elseif inst.input isa PolytopeInput
+    ξindim = inst.ffnet.xdims[1]^2
+  else
+    error("unsupported input: " * string(inst.input))
+  end
+
+  # Set up the ξsafedim
+  if inst isa SafetyInstance
+    ξsafedim = 0
+  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
+    ξsafedim = 1
+  else
+    error("unsupported instance: " * string(inst))
+  end
+
+  # Set up the ξkdims
+  zdims = inst.ffnet.zdims
+  num_cliques = length(zdims) - b - 2
+  ξkdims = Vector{Int}()
+  if inst.ffnet.type isa ReluNetwork
+    for k = 1:(num_cliques+1)
+      qxdim = Qxdim(k, b, zdims)
+      tband = tband_func(k, qxdim)
+      λ_slope_length = λlength(qxdim, tband)
+      η_slope_length = qxdim
+      ν_slope_length = qxdim
+      d_out_length = qxdim
+      ξkdim = λ_slope_length + η_slope_length + ν_slope_length + d_out_length
+      push!(ξkdims, ξkdim)
+    end
+  else
+    error("unsupported network: " * string(inst.ffnet))
+  end
+
+  return ξindim, ξsafedim, ξkdims
+end
+
 # Calculate the dimensions of the ξk variables
 function makeξvardims(b :: Int, zdims :: Vector{Int}, tband_func :: Function; ξindim :: Int = 0, ξsafedim :: Int = 0)
   @assert ξindim >= 1 && ξsafedim >= 0
@@ -399,6 +443,7 @@ end
 
 #
 export splice, spliceγ1
+export makeξdims
 export makeξvardims, makeγdims
 export Hinds, H, indexedH, indexedHt
 export makeXqξ, makeXinξ, makeSafetyXsafeξ, makeHyperplaneReachXsafeξ
