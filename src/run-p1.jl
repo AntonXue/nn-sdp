@@ -40,9 +40,8 @@ end
 
 REACH_WIDTH_DEPTHS =
   [
-   (5, 3); (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10);
+   (5, 3); (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10); (5, 15); (5, 20);
    (10, 3); (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
-    # (15; 3); (15, 4);
   ]
 
 function runReach()
@@ -101,7 +100,7 @@ function runSafety()
 
     # Safety stuff
     image_filepath = joinpath(p1_dir, nnet_filename * ".png")
-    norm2 = 1e6
+    norm2 = 10.0
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
     soln_time = round(soln.total_time, digits=3)
     push!(results, (layer_dim, num_layers, soln_time, string(soln.termination_status)))

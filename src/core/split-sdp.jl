@@ -3,7 +3,6 @@ module SplitSdp
 
 using ..Header
 using ..Common
-# using ..Partitions
 using ..Intervals
 using Parameters
 using LinearAlgebra

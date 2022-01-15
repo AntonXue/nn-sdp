@@ -152,14 +152,14 @@ function worstCasePropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}
   end
 
   # Each x[1], x[2], ..., x[K], x[K+1] of the network
-  x_intvs = Vector{Any}()
+  x_intvs = Vector{Tuple{Vector{Float64}, Vector{Float64}}}()
   push!(x_intvs, (x1min, x1max))
 
   # The inputs to the activation functions; should be K-1 of them
-  ϕin_intvs = Vector{Any}()
+  ϕin_intvs = Vector{Tuple{Vector{Float64}, Vector{Float64}}}()
 
   # All the slope bounds; should be K-1 of them
-  slope_intvs = Vector{Any}()
+  slope_intvs = Vector{Tuple{Vector{Float64}, Vector{Float64}}}()
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)

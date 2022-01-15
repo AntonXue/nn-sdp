@@ -39,19 +39,16 @@ if !isdir(p2_dir)
 end
 
 REACH_WIDTH_DEPTHS =
-  [ (5, 3); (5, 4) ]
-#=
   [
-   (5, 3); (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10);
-   (10, 3); (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
+   (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10); (5, 15); (5, 20);
+   (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
    # (15, 3); (15, 4); (15, 5); (15, 6); (15, 7); (15, 8); (15, 9); (15, 10);
    # (20, 3); (20, 4); (20, 5); (20, 6); (20, 7); (20, 8); (20, 9); (20, 10);
   # (15; 3); (15, 4);
   ]
-=#
 
 
-function runReach()
+function runReach(β :: Int)
   results = Vector{Any}()
   for (layer_dim, num_layers) in REACH_WIDTH_DEPTHS
     nnet_filename = "rand-in2-out2-ldim" * string(layer_dim) * "-numl" * string(num_layers) * ".nnet"
@@ -63,7 +60,7 @@ function runReach()
     x1min = ones(2) .- 1e-2
     x1max = ones(2) .+ 1e-2
     input = BoxInput(x1min=x1min, x1max=x1max)
-    ffnet, opts = loadP2(nnet_filepath, input, 1)
+    ffnet, opts = loadP2(nnet_filepath, input, β)
 
     # Print the interval propagation bounds, for comparison
     ymin, ymax = opts.x_intvs[end]
@@ -71,7 +68,7 @@ function runReach()
     println("\ty2: " * string((ymin[2], ymax[2])))
 
     # Safety stuff
-    aug_nnet_filename = "β" * string(1) * "_" * nnet_filename
+    aug_nnet_filename = "β" * string(β) * "_" * nnet_filename
     image_filepath = joinpath(p2_dir, aug_nnet_filename * ".png")
     hplanes, poly_time = solveReachPolytope(ffnet, input, opts, 6, image_filepath)
     xfs = randomTrajectories(10000, ffnet, input.x1min, input.x1max)
@@ -112,7 +109,7 @@ function runSafety()
 
     # Safety stuff
     image_filepath = joinpath(p2_dir, nnet_filename * ".png")
-    norm2 = 10.0
+    norm2 = 5.0
     # norm2 = 1e6
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
     soln_time = round(soln.total_time, digits=3)
@@ -126,8 +123,9 @@ end
 
 println("end time: " * string(round(time() - start_time, digits=2)))
 
-reach_res = runReach()
-safety_res = runSafety()
+reach_res1 = runReach(1)
+reach_res2 = runReach(2)
+# safety_res = runSafety()
 
 
 

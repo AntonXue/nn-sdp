@@ -84,7 +84,18 @@ end
 println("end time: " * string(round(time() - start_time, digits=2)))
 
 # reach_res = runReach()
-safety_res = runSafety()
+# safety_res = runSafety()
 
+nnet_filepath = joinpath(nnet_dir, "rand-in2-out2-ldim5-numl7.nnet")
+x1min = ones(2) .- 1e-2
+x1max = ones(2) .+ 1e-2
+input = BoxInput(x1min=x1min, x1max=x1max)
+ffnet, opts = loadP3(nnet_filepath, input, 1)
+safety = outputSafetyNorm2(1.0, 1.0, 500, ffnet.xdims)
+inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
+
+params = AdmmSdp.initParams(inst, opts)
+
+cache = AdmmSdp.precompute(inst, params, opts)
 
 

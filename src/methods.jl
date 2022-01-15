@@ -95,7 +95,6 @@ function loadP3(nnet_filepath :: String, input :: BoxInput, β :: Int)
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  # x_intvs, _, slope_intvs = randomizedPropagation(input.x1min, input.x1max, ffnet, 100000)
   opts = AdmmSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
   return ffnet, opts
 end
