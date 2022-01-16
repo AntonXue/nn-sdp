@@ -19,30 +19,30 @@ using Mosek
   verbose :: Bool = false
 end
 
-# Make the Xin, Xsafe, and Xk
+# Make the Xin, Xout, and Xk
 function makeXs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   @assert inst isa SafetyInstance || (inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet)
 
   # Calculate variable dimensions
-  ξvardims = makeξvardims(opts.β, inst, opts.tband_func)
-  ξindim, ξsafedim, ξkdims = ξvardims
+  γvardims = makeγvardims(opts.β, inst, opts.tband_func)
+  γindim, γoutdim, γkdims = γvardims
   Xvars = Dict()
 
   # Xin
-  ξin = @variable(model, [1:ξindim])
-  @constraint(model, ξin .>= 0)
-  Xin = makeXin(ξin, inst.input, inst.ffnet)
-  Xvars[:ξin] = ξin
+  γin = @variable(model, [1:γindim])
+  @constraint(model, γin .>= 0)
+  Xin = makeXin(γin, inst.input, inst.ffnet)
+  Xvars[:γin] = γin
 
-  # Xsafe
+  # Xout
   if inst isa SafetyInstance
-    Xsafe = makeXsafe(inst.safety.S, inst.ffnet)
+    Xout = makeXout(inst.safety.S, inst.ffnet)
   elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
-    ξsafe = @variable(model)
-    @constraint(model, ξsafe >= 0)
-    S = makeShyperplane(inst.reach_set.normal, ξsafe, inst.ffnet)
-    Xsafe = makeXsafe(S, inst.ffnet)
-    Xvars[:ξsafe] = ξsafe
+    γout = @variable(model)
+    @constraint(model, γout >= 0)
+    S = makeShyperplane(inst.reach_set.normal, γout, inst.ffnet)
+    Xout = makeXout(S, inst.ffnet)
+    Xvars[:γout] = γout
   else
     error("unrecognized instance: " * string(inst))
   end
@@ -51,20 +51,20 @@ function makeXs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   Xs = Vector{Any}()
   num_cliques = inst.ffnet.K - opts.β - 1
   for k = 1:(num_cliques+1)
-    ξk = @variable(model, [1:ξkdims[k]])
-    @constraint(model, ξk .>= 0)
+    γk = @variable(model, [1:γkdims[k]])
+    @constraint(model, γk .>= 0)
     qxdim = Qxdim(k, opts.β, inst.ffnet.zdims)
     xqinfo = Xqinfo(
       ffnet = inst.ffnet,
       ϕout_intv = selectϕoutIntervals(k, opts.β, opts.x_intvs),
       slope_intv = selectSlopeIntervals(k, opts.β, opts.slope_intvs),
       tband = opts.tband_func(k, qxdim))
-    Xk = makeXqξ(k, opts.β, ξk, xqinfo)
-    Xvars[Symbol("ξ" * string(k))] = ξk
+    Xk = makeXqγ(k, opts.β, γk, xqinfo)
+    Xvars[Symbol("γ" * string(k))] = γk
     push!(Xs, Xk)
   end
 
-  return (Xin, Xsafe, Xs), Xvars, ξvardims
+  return (Xin, Xout, Xs), Xvars, γvardims
 end
 
 # Since the safety and verification problem many similarities, use a generic set up function 
@@ -78,13 +78,13 @@ function setup!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
   EK = E(inst.ffnet.K, zdims)
   Ea = E(inst.ffnet.K+1, zdims)
   Ein = [E1; Ea]
-  Esafe = [E1; EK; Ea]
+  Eout = [E1; EK; Ea]
 
-  (Xin, Xsafe, Xs), Xvars, ξvardims = makeXs!(model, inst, opts)
+  (Xin, Xout, Xs), Xvars, γvardims = makeXs!(model, inst, opts)
   num_cliques = inst.ffnet.K - opts.β - 1
   @assert length(Xs) == num_cliques + 1
 
-  Zβ = (Ein' * Xin * Ein) + (Esafe' * Xsafe * Esafe)
+  Zβ = (Ein' * Xin * Ein) + (Eout' * Xout * Eout)
   for k in 1:(num_cliques+1)
     Ekβ = E(k, opts.β, zdims)
     EXk = [Ekβ; Ea]
@@ -106,7 +106,7 @@ function setup!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
 
   # If we have a hyperplane reachability instance, additionally have an objective
   if inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
-    @objective(model, Min, Xvars[:ξsafe])
+    @objective(model, Min, Xvars[:γout])
   end
 
   setup_time = round(time() - setup_start_time, digits=3)
