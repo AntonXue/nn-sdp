@@ -32,10 +32,10 @@ end
   λs :: Vector{Vector{Float64}}
 
   # Some auxiliary stuff that we keep around too
-  ξindim :: Int
-  ξsafedim :: Int
-  ξkdims :: Vector{Int}
-  num_cliques :: Int = length(ξkdims) - 1
+  γindim :: Int
+  γoutdim :: Int
+  γkdims :: Vector{Int}
+  num_cliques :: Int = length(γkdims) - 1
   @assert num_cliques >= 1
 end
 
@@ -43,6 +43,7 @@ end
 @with_kw struct AdmmCache
   J :: Matrix{Float64}
   zaff :: Vector{Float64}; @assert size(J)[1] == length(zaff)
+  Hs :: Vector{Matrix{Float64}}
 end
 
 # Admm step status
@@ -55,25 +56,27 @@ function initParams(inst :: QueryInstance, opts :: AdmmSdpOptions)
   ffnet = inst.ffnet
   input = inst.input
 
-  ξvardims = makeξvardims(opts.β, inst, opts.tband_func)
-  ξindim, ξsafedim, ξkdims = ξvardims
-  @assert length(ξkdims) >= 2
+  γvardims = makeγvardims(opts.β, inst, opts.tband_func)
+  γindim, γoutdim, γkdims = γvardims
+  @assert length(γkdims) >= 2
 
   # Initialize the iteration variables
-  γ = zeros(ξindim + ξsafedim + sum(ξkdims))
+  γ = zeros(γindim + γoutdim + sum(γkdims))
 
   num_cliques = ffnet.K - opts.β - 1
   vdims = [size(Ec(k, opts.β, ffnet.zdims))[1] for k in 1:num_cliques]
   vs = [zeros(vdims[k]^2) for k in 1:num_cliques]
   zs = [zeros(vdims[k]^2) for k in 1:num_cliques]
   λs = [zeros(vdims[k]^2) for k in 1:num_cliques]
-  params = AdmmParams(γ=γ, vs=vs, zs=zs, λs=λs, ξindim=ξindim, ξsafedim=ξsafedim, ξkdims=ξkdims)
+  params = AdmmParams(γ=γ, vs=vs, zs=zs, λs=λs, γindim=γindim, γoutdim=γoutdim, γkdims=γkdims)
   return params
 end
 
 # Cache precomputation
 function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdpOptions)
   @assert inst.ffnet.type isa ReluNetwork
+
+  cache_start_time = time()
 
   input = inst.input
   ffnet = inst.ffnet
@@ -87,7 +90,7 @@ function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdp
   EK = E(ffnet.K, zdims)
   Ea = E(ffnet.K+1, zdims)
   Ein = [E1; Ea]
-  Esafe = [E1; EK; Ea]
+  Eout = [E1; EK; Ea]
 
   # Relevant xqinfos
   xqinfos = Vector{Xqinfo}()
@@ -102,13 +105,13 @@ function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdp
   end
 
   # Compute the J, but first we need to compute the affine components
-  xinaff = vec(Ein' * makeXin(zeros(params.ξindim), input, ffnet) * Ein)
+  xinaff = vec(Ein' * makeXin(zeros(params.γindim), input, ffnet) * Ein)
 
   if inst isa SafetyInstance
-    xsafeaff = vec(Esafe' * makeXsafe(inst.safety.S, ffnet) * Esafe)
+    xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
   elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
     S0 = makeShyperplane(inst.reach_set.normal, 0, ffnet)
-    xsafeaff = vec(Esafe' * makeXsafe(S0, ffnet) * Esafe)
+    xoutaff = vec(Eout' * makeXout(S0, ffnet) * Eout)
   else
     error("unsupported instance: " * string(inst))
   end
@@ -117,41 +120,47 @@ function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdp
   for k = 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
     qxdim = Qxdim(k, opts.β, zdims)
-    xkaff = vec(EXk' * makeXqξ(k, opts.β, zeros(params.ξkdims[k]), xqinfos[k]) * EXk)
+    xkaff = vec(EXk' * makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]) * EXk)
     push!(xkaffs, xkaff)
   end
 
-  zaff = xinaff + xsafeaff + sum(xkaffs)
+  zaff = xinaff + xoutaff + sum(xkaffs)
 
   # Now that we have computed the affine components, can begin actually computing J
   Jparts = Vector{Any}()
 
   # ... first computing Xin
-  for i in 1:params.ξindim
-    xini = vec(Ein' * makeXin(e(i, params.ξindim), input, ffnet) * Ein) - xinaff
+  for i in 1:params.γindim
+    xini = vec(Ein' * makeXin(e(i, params.γindim), input, ffnet) * Ein) - xinaff
     push!(Jparts, xini)
   end
 
-  # ... then doing the Xsafe, but currently only applies if we're a reach instance
+  # ... then doing the Xout, but currently only applies if we're a reach instance
   if inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
     S1 = makeShyperplane(inst.reach_set.normal, 1, ffnet)
-    xsafe1 = vec(Esafe' * makeXsafe(S1, ffnet) * Esafe) - xsafeaff
-    push!(Jparts, xsafe1)
+    xout1 = vec(Eout' * makeXout(S1, ffnet) * Eout) - xoutaff
+    push!(Jparts, xout1)
   end
 
   # ... and finally the Xks
   for k in 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
-    for i in 1:params.ξkdims[k]
-      xki = vec(EXk' * makeXqξ(k, opts.β, e(i, params.ξkdims[k]), xqinfos[k]) * EXk) - xkaffs[k]
+    for i in 1:params.γkdims[k]
+      xki = vec(EXk' * makeXqγ(k, opts.β, e(i, params.γkdims[k]), xqinfos[k]) * EXk) - xkaffs[k]
       push!(Jparts, xki)
     end
   end
 
+  # Now finish J
   J = hcat(Jparts...)
 
-  cache = AdmmCache(J=J, zaff=zaff)
-  return cache
+  # Some computation for the H matrices
+  Hs = [kron(Ec(k, opts.β, zdims), Ec(k, opts.β, zdims)) for k in 1:num_cliques]
+
+  cache_time = time() - cache_start_time
+
+  cache = AdmmCache(J=J, zaff=zaff, Hs=Hs)
+  return cache, cache_time
 end
 
 # Caching process to be run before the ADMM iterations
@@ -175,96 +184,106 @@ function projectNsd(vk :: Vector{Float64})
 end
 
 #
-function stepγ(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  # tmp = [H(k, opts.β, params.γdims)' * (params.ωs[k] + (params.μs[k] / opts.ρ)) for k in 1:params.num_cliques]
-  tmp = [indexedHt(k, opts.β, params.γdims, params.ωs[k] + (params.μs[k] / opts.ρ)) for k in 1:params.num_cliques]
-  tmp = sum(tmp)
-  tmp = cache.Dinv .* tmp
-  return projectΓ(tmp)
-end
+function stepXsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_PFEAS" => 1e-6,
+    "INTPNT_CO_TOL_DFEAS" => 1e-6))
 
-#
-function stepvk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  tmp = makezk(k, params.ωs[k], cache)
-  tmp = tmp - (params.λs[k] / opts.ρ)
-  return projectNsd(tmp)
-end
+  # Set up γ
+  γdim = params.γindim + params.γoutdim + sum(params.γkdims)
+  var_γ = @variable(model, [1:γdim])
+  @constraint(model, var_γ .>= 0)
 
-#
-function stepωk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  tmp = cache.Js[k]' * params.vs[k]
-  # tmp = tmp + H(k, opts.β, params.γdims) * params.γ
-  tmp = tmp + indexedH(k, opts.β, params.γdims, params.γ)
-  tmp = tmp + (cache.Js[k]' * params.λs[k] - params.μs[k]) / opts.ρ
-  tmp = tmp - cache.Jtzaffs[k]
-  tmp = cache.I_JtJ_invs[k] * tmp
-  return tmp
-end
+  # Set up vs
+  num_cliques = params.num_cliques
+  var_vs = Vector{Any}()
+  for k in 1:num_cliques
+    var_vk = @variable(model, [1:length(params.vs[k])])
+    push!(var_vs, var_vk)
+  end
 
-#
-function stepλk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  tmp = params.vs[k] - makezk(k, params.ωs[k], cache)
-  tmp = params.λs[k] + opts.ρ * tmp
-  return tmp
-end
+  # The equality constraint
+  Rhs = sum(cache.Hs[k]' * var_vs[k] for k in 1:num_cliques)
+  @constraint(model, makezβ(params, cache, opts) .== Rhs)
 
-#
-function stepμk(k :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  # tmp = params.ωs[k] - H(k, opts.β, params.γdims) * params.γ
-  tmp = params.ωs[k] - indexedH(k, opts.β, params.γdims, params.γ)
-  tmp = params.μs[k] + opts.ρ * tmp
-  return tmp
-end
+  # The objective, but we need to pose it as a second order cone problem
+  norms = @variable(model, [1:num_cliques])
+  for k in 1:num_cliques
+    termk = params.zs[k] - var_vs[k] + (params.λs[k] / opts.ρ)
+    @constraint(model, [norms[k]; termk] in SecondOrderCone())
+  end
 
-# X = {γ, v1, ..., vp}
-function stepX(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  new_γ = stepγ(params, cache, opts)
-  new_vs = Vector([stepvk(k, params, cache, opts) for k in 1:params.num_cliques])
+  # When the safety instance, the objective is just the penalty term
+  if inst isa SafetyInstance
+    J = sum(norms[k]^2 for k in 1:num_cliques)
+  # But when we are a hyperplane reachability set, also the γout is to be considered
+  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
+    # The γ[params.γindim+1] stores the γout
+    J = var_γ[params.γindim+1] + sum(norms[k]^2 for k in 1:num_cliques)
+  else
+  end
+
+  @objective(model, Min, J)
+
+  # Solve and return
+  optimize!(model)
+  new_γ = value.(var_γ)
+  new_vs = [value.(var_vs[k]) for k in 1:num_cliques]
   return new_γ, new_vs
 end
 
+#
+function stepYsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  model = Model(optimizer_with_attributes(
+    Mosek.Optimizer,
+    "QUIET" => true,
+    "INTPNT_CO_TOL_PFEAS" => 1e-6,
+    "INTPNT_CO_TOL_DFEAS" => 1e-6))
 
-# Y = {ω1, ..., ωk}
-function stepY(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  new_ωs = Vector([stepωk(k, params, cache, opts) for k in 1:params.num_cliques])
-  return new_ωs
+  num_cliques= params.num_cliques
+  var_Zs = Vector{Any}()
+  for k in 1:num_cliques
+    zkdim = Int(round(sqrt(length(params.zs[k]))))
+    var_Zk = @variable(model, [1:zkdim, 1:zkdim], Symmetric)
+    @SDconstraint(model, var_Zk <= 0)
+    push!(var_Zs, var_Zk)
+  end
+
+  # The norms
+  norms = @variable(model, [1:num_cliques])
+  for k in 1:num_cliques
+    termk = vec(var_Zs[k]) - params.vs[k] + (params.λs[k] / opts.ρ)
+    @constraint(model, [norms[k]; termk] in SecondOrderCone())
+  end
+
+  # The objective
+  J = sum(norms[k]^2 for k in 1:num_cliques)
+
+  # Solve and return
+  optimize!(model)
+  new_zs = [vec(value.(var_Zs[k])) for k in 1:num_cliques]
+  return new_zs
 end
 
-
-# Z = {λ1, ..., λp, μ1, ..., μp}
-function stepZ(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  new_λs = Vector([stepλk(k, params, cache, opts) for k in 1:params.num_cliques])
-  new_μs = Vector([stepμk(k, params, cache, opts) for k in 1:params.num_cliques])
-  return new_λs, new_μs
-end
-
-# Residual values
-function primalResidual(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  vz_diffs = [params.vs[k] - makezk(k, params.ωs[k], cache) for k in 1:params.num_cliques]
-  # ωγ_diffs = [params.ωs[k] - H(k, opts.β, params.γdims) * params.γ for k in 1:params.num_cliques]
-  ωγ_diffs = [params.ωs[k] - indexedH(k, opts.β, params.γdims, params.γ) for k in 1:params.num_cliques]
-  vz_norm2 = sum(norm(vz_diffs[k])^2 for k in 1:params.num_cliques)
-  ωγ_norm2 = sum(norm(ωγ_diffs[k])^2 for k in 1:params.num_cliques)
-  norm2 = vz_norm2 + ωγ_norm2
-  return vz_diffs, ωγ_diffs, norm2
+#
+function stepZ(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  new_λs = [params.λs[k] + opts.ρ * (params.zs[k] - params.vs[k]) for k in 1:params.num_cliques]
+  return new_λs
 end
 
 #
 function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  # for k in 1:params.num_cliques
-  for k in reverse(1:params.num_cliques)
-    # ωk = H(k, opts.β, params.γdims) * params.γ
-    ωk = indexedH(k, opts.β, params.γdims, params.γ)
-    zk = makezk(k, ωk, cache)
-    dim = Int(round(sqrt(length(zk))))
-    tmp = Symmetric(reshape(zk, (dim, dim)))
-    if eigmax(tmp) > opts.nsd_tol
-      if opts.verbose; println("failed check pair (k, nsdtol): " * string((k, eigmax(tmp)))) end
-      return false
-    end
+  zβ = makezβ(params, cache, opts)
+  zβdim = Int(round(sqrt(length(zβ))))
+  Zβ = reshape(zβ, (zβdim, zβdim))
+  if eigmax(Zβ) > opts.nsd_tol
+    if opts.verbose; println("SAT!") end
+    return true
+  else
+    return false
   end
-  if opts.verbose; println("SAT!") end
-  return true
 end
 
 #
@@ -276,7 +295,7 @@ function shouldStop(t :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: 
 end
 
 #
-function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+function admm(inst :: QueryInstance, _params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   iters_run = 0
   total_time = 0
   iter_params = deepcopy(_params)
@@ -286,27 +305,26 @@ function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
 
     # X stuff
     x_start_time = time()
-    new_γ, new_vs = stepX(iter_params, cache, opts)
+    # new_γ, new_vs = stepX(iter_params, cache, opts)
+    new_γ, new_vs = stepXsolver(inst, iter_params, cache, opts)
     iter_params.γ = new_γ
     iter_params.vs = new_vs
     x_time = time() - x_start_time
 
     # Y stuff
     y_start_time = time()
-    new_ωs = stepY(iter_params, cache, opts)
-    iter_params.ωs = new_ωs
+    # new_zs = stepY(iter_params, cache, opts)
+    new_zs = stepYsolver(inst, iter_params, cache, opts)
+    iter_params.zs = new_zs
     y_time = time() - y_start_time
 
     # Z stuff
     z_start_time = time()
-    new_λs, new_μs = stepZ(iter_params, cache, opts)
+    new_λs = stepZ(inst, iter_params, cache, opts)
     iter_params.λs = new_λs
-    iter_params.μs = new_μs
     z_time = time() - z_start_time
 
     # Primal residual
-    _, _, presidual = primalResidual(iter_params, cache, opts)
-
     # Coalesce time statistics
     step_time = time() - step_start_time
     total_time = total_time + step_time
@@ -314,7 +332,6 @@ function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
 
     if opts.verbose
       println("step[" * string(t) * "/" * string(opts.max_iters) * "] times: " * string(all_times))
-      println("\tprimal residual: " * string(presidual))
     end
 
     if shouldStop(t, iter_params, cache, opts); break end
@@ -327,13 +344,12 @@ end
 function run(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   start_time = time()
   start_params = initParams(inst, opts)
-  cache, setup_time = precomputeCache(start_params, inst, opts)
+  cache, setup_time = precompute(inst, start_params, opts)
 
-  final_params, admm_time = admm(start_params, cache, opts)
+  final_params, admm_time = admm(inst, start_params, cache, opts)
   total_time = time() - start_time
-    
   
-  status = isγSat(final_params, cache, opts) ? "OPTIMAL" : "INFEASIBLE"
+  status = isγSat(final_params, cache, opts) ? "OPTIMAL" : "SLOW_PROGRESS"
 
 
   return SolutionOutput(

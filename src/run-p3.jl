@@ -40,9 +40,8 @@ end
 
 REACH_WIDTH_DEPTHS =
   [
-  # (5, 3); (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10);
-  # (10, 3); (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
-  (10, 20); (10, 25); (10, 30); (10, 35); (10, 40);
+  (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10); (5, 15); (5, 20);
+  (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
   # (15; 3); (15, 4);
   ]
 
@@ -72,7 +71,7 @@ function runSafety()
 
     # Safety stuff
     image_filepath = joinpath(p2_dir, nnet_filename * ".png")
-    norm2 = 1e9
+    norm2 = 5
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
     soln_time = round.((soln.setup_time, soln.solve_time, soln.total_time), digits=2)
     push!(results, (layer_dim, num_layers, soln_time, string(soln.termination_status)))
@@ -84,8 +83,9 @@ end
 println("end time: " * string(round(time() - start_time, digits=2)))
 
 # reach_res = runReach()
-# safety_res = runSafety()
+safety_res = runSafety()
 
+#=
 nnet_filepath = joinpath(nnet_dir, "rand-in2-out2-ldim5-numl7.nnet")
 x1min = ones(2) .- 1e-2
 x1max = ones(2) .+ 1e-2
@@ -93,9 +93,9 @@ input = BoxInput(x1min=x1min, x1max=x1max)
 ffnet, opts = loadP3(nnet_filepath, input, 1)
 safety = outputSafetyNorm2(1.0, 1.0, 500, ffnet.xdims)
 inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
-
 params = AdmmSdp.initParams(inst, opts)
-
 cache = AdmmSdp.precompute(inst, params, opts)
 
+res = AdmmSdp.run(inst, opts)
+=#
 

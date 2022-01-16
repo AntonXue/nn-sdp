@@ -123,9 +123,9 @@ end
 
 println("end time: " * string(round(time() - start_time, digits=2)))
 
-reach_res1 = runReach(1)
-reach_res2 = runReach(2)
-# safety_res = runSafety()
+# reach_res1 = runReach(1)
+# reach_res2 = runReach(2)
+safety_res = runSafety()
 
 
 
