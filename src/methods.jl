@@ -73,29 +73,29 @@ function solveSafetyNorm2(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, 
 end
 
 # Load up a P1 instance
-function loadP1(nnet_filepath :: String, input :: BoxInput)
+function loadP1(nnet_filepath :: String, input :: BoxInput; verbose=false)
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
+  opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
   return ffnet, opts
 end
 
 # Load a P2 instance
-function loadP2(nnet_filepath :: String, input :: BoxInput, β :: Int)
+function loadP2(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=false)
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = SplitSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
+  opts = SplitSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
   return ffnet, opts
 end
 
 # Load a P3 instance
-function loadP3(nnet_filepath :: String, input :: BoxInput, β :: Int)
+function loadP3(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=false)
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = AdmmSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
+  opts = AdmmSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
   return ffnet, opts
 end
 

@@ -44,15 +44,33 @@ end
   J :: Matrix{Float64}
   zaff :: Vector{Float64}; @assert size(J)[1] == length(zaff)
   Hs :: Vector{Matrix{Float64}}
+  pinv_D_ρJJt :: Symmetric{Float64, Matrix{Float64}}
 end
 
-# Admm step status
+# Status of ADMM
+abstract type AdmmStatus end
+struct StillRunning <: AdmmStatus end
+struct FoundγSat <: AdmmStatus end
+struct MaxIters <: AdmmStatus end
+@with_kw struct SmallError <: AdmmStatus
+  ε :: Float64
+end
+
+# Admm summary
 @with_kw struct AdmmSummary
-  test :: Int
+  steps_taken :: Int
+  termination_status :: AdmmStatus
+  stepping_time :: Float64
+  total_X_time :: Float64
+  total_Y_time :: Float64
+  total_Z_time :: Float64
+  avg_X_time :: Float64
+  avg_Y_time :: Float64
+  avg_Z_time :: Float64
 end
 
 # Initialize zero-valued parameters of the appropriate size
-function initParams(inst :: QueryInstance, opts :: AdmmSdpOptions)
+function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   ffnet = inst.ffnet
   input = inst.input
 
@@ -73,7 +91,7 @@ function initParams(inst :: QueryInstance, opts :: AdmmSdpOptions)
 end
 
 # Cache precomputation
-function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdpOptions)
+function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSdpOptions)
   @assert inst.ffnet.type isa ReluNetwork
 
   cache_start_time = time()
@@ -106,15 +124,7 @@ function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdp
 
   # Compute the J, but first we need to compute the affine components
   xinaff = vec(Ein' * makeXin(zeros(params.γindim), input, ffnet) * Ein)
-
-  if inst isa SafetyInstance
-    xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
-  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
-    S0 = makeShyperplane(inst.reach_set.normal, 0, ffnet)
-    xoutaff = vec(Eout' * makeXout(S0, ffnet) * Eout)
-  else
-    error("unsupported instance: " * string(inst))
-  end
+  xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
 
   xkaffs = Vector{Vector{Float64}}()
   for k = 1:(num_cliques+1)
@@ -135,13 +145,6 @@ function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdp
     push!(Jparts, xini)
   end
 
-  # ... then doing the Xout, but currently only applies if we're a reach instance
-  if inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
-    S1 = makeShyperplane(inst.reach_set.normal, 1, ffnet)
-    xout1 = vec(Eout' * makeXout(S1, ffnet) * Eout) - xoutaff
-    push!(Jparts, xout1)
-  end
-
   # ... and finally the Xks
   for k in 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
@@ -157,9 +160,15 @@ function precompute(inst :: QueryInstance, params :: AdmmParams, opts :: AdmmSdp
   # Some computation for the H matrices
   Hs = [kron(Ec(k, opts.β, zdims), Ec(k, opts.β, zdims)) for k in 1:num_cliques]
 
-  cache_time = time() - cache_start_time
+  # The KKT system's inverse
+  D = sum(Hs[k]' * Hs[k] for k in 1:num_cliques)
+  D = diagm(diag(D))
 
-  cache = AdmmCache(J=J, zaff=zaff, Hs=Hs)
+  D_ρJJt = D + (opts.ρ * J * J')
+  pinv_D_ρJJt = Symmetric(pinv(D_ρJJt))
+
+  cache_time = time() - cache_start_time
+  cache = AdmmCache(J=J, zaff=zaff, Hs=Hs, pinv_D_ρJJt=pinv_D_ρJJt)
   return cache, cache_time
 end
 
@@ -174,17 +183,17 @@ function projectNonnegative(γ :: Vector{Float64})
 end
 
 # Project a vector onto the negative semidefinite cone
-function projectNsd(vk :: Vector{Float64})
-  dim = Int(round(sqrt(length(vk)))) # :)
-  @assert length(vk) == dim * dim
-  tmp = Symmetric(reshape(vk, (dim, dim)))
+function projectNsd(xk :: Vector{Float64})
+  dim = Int(round(sqrt(length(xk)))) # :)
+  @assert length(xk) == dim * dim
+  tmp = Symmetric(reshape(xk, (dim, dim)))
   eig = eigen(tmp)
   tmp = Symmetric(eig.vectors * Diagonal(min.(eig.values, 0)) * eig.vectors')
   return tmp[:]
 end
 
 #
-function stepXsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+function stepXsolver(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
@@ -214,18 +223,12 @@ function stepXsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmC
     termk = params.zs[k] - var_vs[k] + (params.λs[k] / opts.ρ)
     @constraint(model, [norms[k]; termk] in SecondOrderCone())
   end
+  
+  γnorm = @variable(model)
+  @constraint(model, [γnorm; var_γ] in SecondOrderCone())
 
-  # When the safety instance, the objective is just the penalty term
-  if inst isa SafetyInstance
-    J = sum(norms[k]^2 for k in 1:num_cliques)
-  # But when we are a hyperplane reachability set, also the γout is to be considered
-  elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
-    # The γ[params.γindim+1] stores the γout
-    J = var_γ[params.γindim+1] + sum(norms[k]^2 for k in 1:num_cliques)
-  else
-  end
-
-  @objective(model, Min, J)
+  obj = γnorm^2 + sum(norms[k]^2 for k in 1:num_cliques)
+  @objective(model, Min, obj)
 
   # Solve and return
   optimize!(model)
@@ -235,7 +238,17 @@ function stepXsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmC
 end
 
 #
-function stepYsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+function stepX(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  num_cliques = params.num_cliques
+  R = -cache.zaff + sum(cache.Hs[k]' * (params.zs[k] + (params.λs[k] / opts.ρ)) for k in 1:num_cliques)
+  new_x = -cache.pinv_D_ρJJt * R
+  new_γ = projectNonnegative(-opts.ρ * cache.J' * new_x)
+  new_vs = [params.zs[k] + (params.λs[k] / opts.ρ) + cache.Hs[k] * new_x for k in 1:num_cliques]
+  return new_γ, new_vs
+end
+
+#
+function stepYsolver(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
@@ -268,7 +281,14 @@ function stepYsolver(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmC
 end
 
 #
-function stepZ(inst :: QueryInstance, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+function stepY(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+  tmps = [params.vs[k] - (params.λs[k] / opts.ρ) for k in 1:params.num_cliques]
+  new_zs = projectNsd.(tmps)
+  return new_zs
+end
+
+#
+function stepZ(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   new_λs = [params.λs[k] + opts.ρ * (params.zs[k] - params.vs[k]) for k in 1:params.num_cliques]
   return new_λs
 end
@@ -286,58 +306,81 @@ function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOption
   end
 end
 
-#
-function shouldStop(t :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
+function checkStatus(t :: Int, params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   if t > opts.begin_check_at_iter && mod(t, opts.check_every_k_iters) == 0
-    if isγSat(params, cache, opts); return true end
+    if isγSat(params, cache, opts); return FoundγSat() end
   end
-  return false
+  return StillRunning()
 end
 
 #
-function admm(inst :: QueryInstance, _params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
-  iters_run = 0
-  total_time = 0
+function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   iter_params = deepcopy(_params)
+
+  steps_taken = 0
+  term_status = MaxIters()
+  total_step_time = 0
+  total_X_time = 0.0
+  total_Y_time = 0.0
+  total_Z_time = 0.0
 
   for t = 1:opts.max_iters
     step_start_time = time()
 
     # X stuff
     x_start_time = time()
-    # new_γ, new_vs = stepX(iter_params, cache, opts)
-    new_γ, new_vs = stepXsolver(inst, iter_params, cache, opts)
+    new_γ, new_vs = stepX(iter_params, cache, opts)
+    # new_γ, new_vs = stepXsolver(iter_params, cache, opts)
     iter_params.γ = new_γ
     iter_params.vs = new_vs
-    x_time = time() - x_start_time
+    X_time = time() - x_start_time
+    total_X_time += X_time
 
     # Y stuff
     y_start_time = time()
-    # new_zs = stepY(iter_params, cache, opts)
-    new_zs = stepYsolver(inst, iter_params, cache, opts)
+    new_zs = stepY(iter_params, cache, opts)
+    # new_zs = stepYsolver(iter_params, cache, opts)
     iter_params.zs = new_zs
-    y_time = time() - y_start_time
+    Y_time = time() - y_start_time
+    total_Y_time += Y_time 
 
     # Z stuff
     z_start_time = time()
-    new_λs = stepZ(inst, iter_params, cache, opts)
+    new_λs = stepZ(iter_params, cache, opts)
     iter_params.λs = new_λs
-    z_time = time() - z_start_time
+    Z_time = time() - z_start_time
+    total_Z_time += Z_time
 
     # Primal residual
     # Coalesce time statistics
     step_time = time() - step_start_time
-    total_time = total_time + step_time
-    all_times = round.((x_time, y_time, z_time, step_time, total_time), digits=3)
+    total_step_time = total_step_time + step_time
+    all_times = round.((X_time, Y_time, Z_time, step_time, total_step_time), digits=3)
 
     if opts.verbose
-      println("step[" * string(t) * "/" * string(opts.max_iters) * "] times: " * string(all_times))
+      println("\tstep[" * string(t) * "/" * string(opts.max_iters) * "] times: " * string(all_times))
     end
 
-    if shouldStop(t, iter_params, cache, opts); break end
+    steps_taken += 1
+
+    status = checkStatus(t, iter_params, cache, opts)
+    if status isa FoundγSat
+      term_status = status
+      break
+    end
   end
 
-  return iter_params, total_time
+  summary = AdmmSummary(
+    steps_taken = steps_taken,
+    termination_status = term_status,
+    stepping_time = total_step_time,
+    total_X_time = total_X_time,
+    total_Y_time = total_Y_time,
+    total_Z_time = total_Z_time,
+    avg_X_time = total_X_time / steps_taken,
+    avg_Y_time = total_Y_time / steps_taken,
+    avg_Z_time = total_Z_time / steps_taken)
+  return iter_params, summary
 end
 
 # Call this
@@ -346,20 +389,17 @@ function run(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   start_params = initParams(inst, opts)
   cache, setup_time = precompute(inst, start_params, opts)
 
-  final_params, admm_time = admm(inst, start_params, cache, opts)
+  final_params, summary = admm(start_params, cache, opts)
   total_time = time() - start_time
   
-  status = isγSat(final_params, cache, opts) ? "OPTIMAL" : "SLOW_PROGRESS"
-
-
   return SolutionOutput(
     objective_value = 0.0,
     values = final_params,
-    summary = (),
-    termination_status = status,
+    summary = summary,
+    termination_status = summary.termination_status,
     total_time = total_time,
     setup_time = setup_time,
-    solve_time = admm_time)
+    solve_time = summary.stepping_time)
 end
 
 export initParams, precomputeCache

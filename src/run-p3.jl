@@ -71,7 +71,7 @@ function runSafety()
 
     # Safety stuff
     image_filepath = joinpath(p2_dir, nnet_filename * ".png")
-    norm2 = 5
+    norm2 = 1e6
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
     soln_time = round.((soln.setup_time, soln.solve_time, soln.total_time), digits=2)
     push!(results, (layer_dim, num_layers, soln_time, string(soln.termination_status)))
@@ -86,16 +86,20 @@ println("end time: " * string(round(time() - start_time, digits=2)))
 safety_res = runSafety()
 
 #=
-nnet_filepath = joinpath(nnet_dir, "rand-in2-out2-ldim5-numl7.nnet")
+nnet_filepath = joinpath(nnet_dir, "rand-in2-out2-ldim5-numl5.nnet")
 x1min = ones(2) .- 1e-2
 x1max = ones(2) .+ 1e-2
 input = BoxInput(x1min=x1min, x1max=x1max)
-ffnet, opts = loadP3(nnet_filepath, input, 1)
+ffnet, opts = loadP3(nnet_filepath, input, 1; verbose=false)
+zdims = ffnet.zdims
 safety = outputSafetyNorm2(1.0, 1.0, 500, ffnet.xdims)
 inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
-params = AdmmSdp.initParams(inst, opts)
-cache = AdmmSdp.precompute(inst, params, opts)
+start_params = AdmmSdp.initParams(inst, opts)
+cache, _ = AdmmSdp.precompute(inst, start_params, opts)
 
-res = AdmmSdp.run(inst, opts)
+final_params, summary = AdmmSdp.admm(start_params, cache, opts)
+# res = AdmmSdp.run(inst, opts)
 =#
+
+
 
