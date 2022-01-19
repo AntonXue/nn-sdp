@@ -9,6 +9,7 @@ using LinearAlgebra
 using JuMP
 using MosekTools
 using Mosek
+using Printf
 
 # Configuration options
 @with_kw struct DeepSdpOptions
@@ -25,7 +26,7 @@ function makeMinP!(model, input :: InputConstraint, ffnet :: FeedForwardNetwork,
   elseif input isa PolytopeInput
     @variable(model, γin[1:ffnet.xdims[1]^2] >= 0)
   else
-    error("unsupported input constraints: " * string(input))
+    error(@sprintf("unsupported input constraints: %s", input))
   end
   E1 = E(1, ffnet.zdims)
   Ea = E(ffnet.K+1, ffnet.zdims)
@@ -79,7 +80,7 @@ function makeMmidQ!(model, ffnet :: FeedForwardNetwork, opts :: DeepSdpOptions)
                   :d_out => d_out)
     return MmidQ, Qvars
   else
-    error("unsupported network: " * string(ffnet))
+    error(@sprintf("unsupported network: %s", ffnet))
   end
 end
 
@@ -98,8 +99,8 @@ function setupSafety!(model, inst :: SafetyInstance, opts :: DeepSdpOptions)
 
   # The time it took to set up the problem
   vars = merge(Pvars, Qvars)
-  setup_time = round(time() - setup_start_time, digits=3)
-  if opts.verbose; println("\tsetup time: " * string(setup_time)) end
+  setup_time = time() - setup_start_time
+  if opts.verbose; @printf("\tsetup time: %.3f\n", setup_time) end
   return model, vars, setup_time
 end
 
@@ -125,8 +126,8 @@ function setupHyperplaneReachability!(model, inst :: ReachabilityInstance, opts 
 
   # Calculate setup times and return
   vars = merge(Pvars, Qvars, Svars)
-  setup_time = round(time() - setup_start_time, digits=3)
-  if opts.verbose; println("\tsetup time: " * string(setup_time)) end
+  setup_time = time() - setup_start_time
+  if opts.verbose; @printf("\tsetup time: %.3f\n", setup_time) end
   return model, vars, setup_time
 end
 
@@ -134,8 +135,8 @@ end
 function solve!(model, vars, opts :: DeepSdpOptions)
   optimize!(model)
   summary = solution_summary(model)
-  solve_time = round(summary.solve_time, digits=3)
-  if opts.verbose; println("\tsolve time: " * string(solve_time)) end
+  solve_time = summary.solve_time
+  if opts.verbose; @printf("\t solve time: %.3f\n", solve_time) end
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
   return summary, values, solve_time
@@ -156,13 +157,13 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
   elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
     _, vars, setup_time = setupHyperplaneReachability!(model, inst, opts)
   else
-    error("unrecognized query instance: " * string(inst))
+    error(@sprintf("unrecognized query instance: %s", inst))
   end
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
-  total_time = round(time() - total_start_time, digits=3)
-  if opts.verbose; println("\ttotal time: " * string(total_time)) end
+  total_time = time() - total_start_time
+  if opts.verbose; @printf("\ttotal time: %.3f\n", total_time) end
   return SolutionOutput(
     objective_value = objective_value(model),
     values = values,

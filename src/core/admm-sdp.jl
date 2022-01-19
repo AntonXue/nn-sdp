@@ -3,12 +3,13 @@ module AdmmSdp
 using ..Header
 using ..Common
 using ..Intervals
-# using ..Partitions
 using Parameters
 using LinearAlgebra
 using JuMP
 using Mosek
 using MosekTools
+using Printf
+
 
 # The options for ADMM
 @with_kw struct AdmmSdpOptions
@@ -90,6 +91,47 @@ function initParams(inst :: SafetyInstance, opts :: AdmmSdpOptions)
   return params
 end
 
+# Supposed to do a fast Ec' * X * Ec computation.
+# Takes a 2-block square matrix X and splats it into a square Z matrix
+# Assumes that:
+# size(X11) == (d1, d1), size(X12) == (d1, d2), size(X21) == (d2, d1), size(X22) == (d2, d2)
+# i1 and i2 denote the respective insertion indices in Z
+function _expand2(X, (d1, i1), (d2, i2), Zdim :: Int)
+  @assert d1 >= 1 && d2 >= 1   # Sane dimensions
+  @assert i1 >= 1 && i2 >= 2   # Sane insertions
+  @assert i1 + d1 <= i2        # X11 will be inserted before X12
+  @assert i2 + d2 - 1 <= Zdim  # Don't overrun the end
+
+  X11 = X[1:d1, 1:d1]
+  X12 = X[1:d1, (d1+1):end]
+  X21 = X[(d1+1):end, 1:d1]
+  X22 = X[(d1+1):end, (d1+1):end]
+
+  Z = zeros(Zdim, Zdim)
+  Z[i1:(i1+d1-1), i1:(i1+d1-1)] = X11
+  Z[i1:(i1+d1-1), i2:(i2+d2-1)] = X12
+  Z[i2:(i2+d2-1), i1:(i1+d1-1)] = X21
+  Z[i2:(i2+d2-1), i2:(i2+d2-1)] = X22
+  return Z
+end
+
+function _fastEintXEin(X, zdims :: Vector{Int}, Zdim :: Int)
+  return _expand2(X, (zdims[1], 1), (1, Zdim), Zdim)
+end
+
+function _fastEouttXEout(X, zdims :: Vector{Int}, Zdim :: Int)
+  d2 = zdims[end-1] + 1
+  return _expand2(X, (zdims[1], 1), (d2, Zdim-d2+1), Zdim)
+end
+
+function _fastEXktXEXk(k :: Int, X, zdims :: Vector{Int}, Zdim :: Int)
+  d = size(X)[1]
+  d2 = 1
+  d1 = d - d2
+  i1 = sum(zdims[1:k-1]) + 1
+  return _expand2(X, (d1, i1), (d2, Zdim-d2+1), Zdim)
+end
+
 # Cache precomputation
 function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSdpOptions)
   @assert inst.ffnet.type isa ReluNetwork
@@ -99,6 +141,7 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   input = inst.input
   ffnet = inst.ffnet
   zdims = ffnet.zdims
+  Zdim = sum(zdims)
 
   num_cliques = ffnet.K - opts.β - 1
   @assert num_cliques >= 1
@@ -123,14 +166,18 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   end
 
   # Compute the J, but first we need to compute the affine components
-  xinaff = vec(Ein' * makeXin(zeros(params.γindim), input, ffnet) * Ein)
-  xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
+  # xinaff = vec(Ein' * makeXin(zeros(params.γindim), input, ffnet) * Ein)
+  xinaff = vec(_fastEintXEin(makeXin(zeros(params.γindim), input, ffnet), zdims, Zdim))
+
+  # xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
+  xoutaff = vec(_fastEouttXEout(makeXout(inst.safety.S, ffnet), zdims, Zdim))
 
   xkaffs = Vector{Vector{Float64}}()
   for k = 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
     qxdim = Qxdim(k, opts.β, zdims)
-    xkaff = vec(EXk' * makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]) * EXk)
+    # xkaff = vec(EXk' * makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]) * EXk)
+    xkaff = vec(_fastEXktXEXk(k, makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]), zdims, Zdim))
     push!(xkaffs, xkaff)
   end
 
@@ -141,7 +188,8 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
 
   # ... first computing Xin
   for i in 1:params.γindim
-    xini = vec(Ein' * makeXin(e(i, params.γindim), input, ffnet) * Ein) - xinaff
+    # xini = vec(Ein' * makeXin(e(i, params.γindim), input, ffnet) * Ein) - xinaff
+    xini = vec(_fastEintXEin(makeXin(e(i, params.γindim), input, ffnet), zdims, Zdim)) - xinaff
     push!(Jparts, xini)
   end
 
@@ -149,7 +197,8 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   for k in 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
     for i in 1:params.γkdims[k]
-      xki = vec(EXk' * makeXqγ(k, opts.β, e(i, params.γkdims[k]), xqinfos[k]) * EXk) - xkaffs[k]
+      # xki = vec(EXk' * makeXqγ(k, opts.β, e(i, params.γkdims[k]), xqinfos[k]) * EXk) - xkaffs[k]
+      xki = vec(_fastEXktXEXk(k, makeXqγ(k, opts.β, e(i, params.γkdims[k]), xqinfos[k]), zdims, Zdim)) - xkaffs[k]
       push!(Jparts, xki)
     end
   end
@@ -299,7 +348,7 @@ function isγSat(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOption
   zβdim = Int(round(sqrt(length(zβ))))
   Zβ = reshape(zβ, (zβdim, zβdim))
   if eigmax(Zβ) > opts.nsd_tol
-    if opts.verbose; println("SAT!") end
+    if opts.verbose; @printf("SAT!\n") end
     return true
   else
     return false
@@ -355,10 +404,10 @@ function admm(_params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
     # Coalesce time statistics
     step_time = time() - step_start_time
     total_step_time = total_step_time + step_time
-    all_times = round.((X_time, Y_time, Z_time, step_time, total_step_time), digits=3)
+    times_str = @sprintf("(%.3f, %.3f, %.3f, %.3f, %.3f)", X_time, Y_time, Z_time, step_time, total_step_time)
 
     if opts.verbose
-      println("\tstep[" * string(t) * "/" * string(opts.max_iters) * "] times: " * string(all_times))
+        @printf("\tstep[%d/%d] times: %s\n", t, opts.max_iters, times_str)
     end
 
     steps_taken += 1

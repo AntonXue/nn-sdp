@@ -4,7 +4,6 @@ module Methods
 using ..Header
 using ..Common
 using ..Intervals
-using ..Partitions
 using ..DeepSdp
 using ..SplitSdp
 using ..AdmmSdp

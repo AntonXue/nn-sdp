@@ -9,6 +9,7 @@ using LinearAlgebra
 using JuMP
 using MosekTools
 using Mosek
+using Printf
 
 # Options
 @with_kw struct SplitSdpOptions
@@ -44,7 +45,7 @@ function makeXs!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
     Xout = makeXout(S, inst.ffnet)
     Xvars[:γout] = γout
   else
-    error("unrecognized instance: " * string(inst))
+    error(@sprintf("unrecognized instance: %s", inst))
   end
 
   # The Xks
@@ -109,8 +110,8 @@ function setup!(model, inst :: QueryInstance, opts :: SplitSdpOptions)
     @objective(model, Min, Xvars[:γout])
   end
 
-  setup_time = round(time() - setup_start_time, digits=3)
-  if opts.verbose; println("setup time: " * string(setup_time)) end
+  setup_time = time() - setup_start_time
+  if opts.verbose; @printf("setup time: %.3f\n", setup_time) end
   return model, Xvars, setup_time
 end
 
@@ -118,8 +119,8 @@ end
 function solve!(model, vars, opts :: SplitSdpOptions)
   optimize!(model)
   summary = solution_summary(model)
-  solve_time = round(summary.solve_time, digits=3)
-  if opts.verbose; println("solve time: " * string(solve_time)) end
+  solve_time = summary.solve_time
+  if opts.verbose; @printf("solve time: %.3f\n", solve_time) end
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
   return summary, values, solve_time
@@ -149,8 +150,8 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
-  total_time = round(time() - total_start_time, digits=3)
-  if opts.verbose; println("total time: " * string(total_time)) end
+  total_time = time() - total_start_time
+  if opts.verbose; @printf("total time: %.3f\n", total_time) end
   return SolutionOutput(
     objective_value = objective_value(model),
     values = values,

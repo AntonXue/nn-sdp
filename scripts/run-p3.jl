@@ -1,16 +1,14 @@
 #
 start_time = time()
-include("core/header.jl"); using .Header
-include("core/common.jl"); using .Common
-include("core/intervals.jl"); using .Intervals
-include("core/partitions.jl"); using .Partitions
-include("core/deep-sdp.jl"); using .DeepSdp
-include("core/split-sdp.jl"); using .SplitSdp
-include("core/admm-sdp.jl"); using .AdmmSdp
-include("parsers/nnet-parser.jl"); using .NNetParser
-include("utils.jl"); using .Utils
-
-include("methods.jl"); using .Methods
+include("../src/core/header.jl"); using .Header
+include("../src/core/common.jl"); using .Common
+include("../src/core/intervals.jl"); using .Intervals
+include("../src/core/deep-sdp.jl"); using .DeepSdp
+include("../src/core/split-sdp.jl"); using .SplitSdp
+include("../src/core/admm-sdp.jl"); using .AdmmSdp
+include("../src/parsers/nnet-parser.jl"); using .NNetParser
+include("../src/utils.jl"); using .Utils
+include("../src/methods.jl"); using .Methods
 
 using LinearAlgebra
 using ArgParse
@@ -61,7 +59,7 @@ function runSafety()
     input = BoxInput(x1min=x1min, x1max=x1max)
 
     # num_layers is K
-    β = min(2, num_layers - 2)
+    β = min(1, num_layers - 2)
     ffnet, opts = loadP3(nnet_filepath, input, β)
 
     # Print the interval propagation bounds, for comparison

@@ -14,6 +14,7 @@ using Random
 using JuMP
 using Mosek
 using MosekTools
+using Printf
 
 # Set up vec(Z) in two different ways and see if things make sense
 function testAdmmCache(verbose=true)
@@ -41,7 +42,9 @@ function testAdmmCache(verbose=true)
 
   admm_opts = AdmmSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs)
   admm_params = AdmmSdp.initParams(inst, admm_opts)
-  admm_cache, _ = AdmmSdp.precompute(inst, admm_params, admm_opts)
+  admm_cache, cache_time = AdmmSdp.precompute(inst, admm_params, admm_opts)
+
+  @printf("addm cache time: %.3f\n", cache_time)
 
   # Make some random variables for the safety problem
   β = admm_opts.β
@@ -73,7 +76,7 @@ function testAdmmCache(verbose=true)
   p2 = vec(p2)
   
   maxdiff = maximum(abs.(p2 - p3))
-  println("safety maxdiff: " * string(maxdiff))
+  @printf("safety maxdiff: %.3f\n", maxdiff)
   @assert maxdiff <= 1e-13
 
   return p2, p3

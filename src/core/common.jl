@@ -5,6 +5,7 @@ using ..Header
 using Parameters
 using LinearAlgebra
 using JuMP
+using Printf
 
 # Splice a vector
 function splice(x, sizes :: Vector{Int})
@@ -240,7 +241,7 @@ function makeXq(k :: Int, b :: Int, vars, xqinfo :: Xqinfo)
 
   # Other kinds
   else
-    error("unsupported network: " * string(ffnet.type))
+    error(@sprintf("unsupported network: %s", ffnet.type))
   end
 
   _R11 = makeAc(k, b, ffnet)
@@ -279,7 +280,7 @@ function makeXqγ(k :: Int, b :: Int, γk, xqinfo :: Xqinfo)
     vars = (λ_slope, η_slope, ν_slope, d_out)
     return makeXq(k, b, vars, xqinfo)
   else
-    error("unsupported network: " * string(ffnet))
+    error(@sprintf("unsupported network: %s", ffnet))
   end
 end
 
@@ -294,7 +295,7 @@ function makeXin(γin, input :: InputConstraint, ffnet :: FeedForwardNetwork)
     Γ = reshape(γin, (d1, d1))
     return makePpolytope(input.H, input.h, Γ)
   else
-    error("unsupported input constraints: " * string(input))
+    error(@sprintf("unsupported input constraints: %s", input))
   end
 end
 
@@ -330,7 +331,7 @@ function makeγvardims(b :: Int, inst :: QueryInstance, tband_func :: Function)
   elseif inst.input isa PolytopeInput
     γindim = inst.ffnet.xdims[1]^2
   else
-    error("unsupported input: " * string(inst.input))
+    error(@sprintf("unsupported input: %s", inst.input))
   end
 
   # Set up the γoutdim
@@ -339,7 +340,7 @@ function makeγvardims(b :: Int, inst :: QueryInstance, tband_func :: Function)
   elseif inst isa ReachabilityInstance && inst.reach_set isa HyperplaneSet
     γoutdim = 1
   else
-    error("unsupported instance: " * string(inst))
+    error(@sprintf("unsupported instance: %s", inst))
   end
 
   # Set up the γkdims
@@ -358,7 +359,7 @@ function makeγvardims(b :: Int, inst :: QueryInstance, tband_func :: Function)
       push!(γkdims, γkdim)
     end
   else
-    error("unsupported network: " * string(inst.ffnet))
+    error(@sprintf("unsupported network: %s", inst.ffnet))
   end
 
   return γindim, γoutdim, γkdims

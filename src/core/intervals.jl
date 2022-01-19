@@ -4,6 +4,7 @@ module Intervals
 
 using ..Header
 using ..Common
+using Printf
 
 # Calculate slope bounds for the input interval [ymin, ymax]
 # Calculate slopes for when 
@@ -33,7 +34,7 @@ function slopeBounds(ymin :: Vector{Float64}, ymax :: Vector{Float64}, ffnet :: 
     end
     return ϕa, ϕb
   else
-    error("unsupported network: " * string(ffnet))
+    error(@sprintf("unsupported network: %s", ffnet))
   end
 end
 
@@ -99,7 +100,7 @@ function randomizedPropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64
   function ϕ(x)
     if ffnet.type isa ReluNetwork; return max.(x, 0)
     elseif ffnet.type isa TanhNetwork; return tanh.(x)
-    else; error("unsupported network: " * string(ffnet))
+    else; error(@sprintf("unsupported network: %s", ffnet))
     end
   end
 
@@ -147,7 +148,7 @@ function worstCasePropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}
   function ϕ(x)
     if ffnet.type isa ReluNetwork; return max.(x, 0)
     elseif ffnet.type isa TanhNetwork; return tanh.(x)
-    else; error("unsupported network: " * string(ffnet))
+    else; error(@sprintf("unsupported network: %s", ffnet))
     end
   end
 

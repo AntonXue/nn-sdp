@@ -2,12 +2,12 @@
 start_time = time()
 
 #
-include("core/header.jl"); using .Header
-include("core/common.jl"); using .Common
-include("parsers/nnet-parser.jl"); using .NNetParser
-include("parsers/vnnlib-parser.jl"); using .VnnlibParser
-include("utils.jl"); using .Utils
-include("tests.jl"); using .Tests
+include("../src/core/header.jl"); using .Header
+include("../src/core/common.jl"); using .Common
+include("../src/parsers/nnet-parser.jl"); using .NNetParser
+include("../src/parsers/vnnlib-parser.jl"); using .VnnlibParser
+include("../src/utils.jl"); using .Utils
+include("../src/tests.jl"); using .Tests
 
 using LinearAlgebra
 using JuMP
