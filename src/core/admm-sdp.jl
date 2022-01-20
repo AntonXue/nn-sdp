@@ -150,6 +150,7 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   ffnet = inst.ffnet
   zdims = ffnet.zdims
   Zdim = sum(zdims)
+  γdim = params.γindim + sum(params.γkdims)
 
   num_cliques = ffnet.K - opts.β - 1
   @assert num_cliques >= 1
@@ -174,81 +175,57 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   end
 
   # Compute the J, but first we need to compute the affine components
-  # xinaff = vec(Ein' * makeXin(zeros(params.γindim), input, ffnet) * Ein)
   xinaff = vec(_fastEintXEin(makeXin(zeros(params.γindim), input, ffnet), zdims, Zdim))
-
-  # xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
   xoutaff = vec(_fastEouttXEout(makeXout(inst.safety.S, ffnet), zdims, Zdim))
 
-  xkaff_start_time = time()
   xkaffs = Vector{Vector{Float64}}()
   for k = 1:(num_cliques+1)
-    EXk = [E(k, opts.β, zdims); Ea]
-    qxdim = Qxdim(k, opts.β, zdims)
-    # xkaff = vec(EXk' * makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]) * EXk)
     xkaff = vec(_fastEXktXEXk(k, makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]), zdims, Zdim))
     push!(xkaffs, xkaff)
   end
-  xkaff_time = time() - xkaff_start_time
-  # @printf("xkaff time: %.3f\n", xkaff_time)
 
   zaff = xinaff + xoutaff + sum(xkaffs)
 
   # Now that we have computed the affine components, can begin actually computing J
-  Jparts = Vector{Any}()
+  J = zeros(Zdim^2, γdim)
+  next_J_col = 1
 
   # ... first computing Xin
   for i in 1:params.γindim
-    # xini = vec(Ein' * makeXin(e(i, params.γindim), input, ffnet) * Ein) - xinaff
     xini = vec(_fastEintXEin(makeXin(e(i, params.γindim), input, ffnet), zdims, Zdim)) - xinaff
-    push!(Jparts, xini)
+    J[:,next_J_col] = xini
+    next_J_col += 1
   end
 
-  xkother_start_time = time()
-  # ... and finally the Xks
+  # Now do the other Xks
   for k in 1:(num_cliques+1)
-    EXk = [E(k, opts.β, zdims); Ea]
     for i in 1:params.γkdims[k]
-      # xki = vec(EXk' * makeXqγ(k, opts.β, e(i, params.γkdims[k]), xqinfos[k]) * EXk) - xkaffs[k]
       xki = vec(_fastEXktXEXk(k, makeXqγ(k, opts.β, e(i, params.γkdims[k]), xqinfos[k]), zdims, Zdim)) - xkaffs[k]
-      push!(Jparts, xki)
+      J[:,next_J_col] = xki
+      next_J_col += 1
     end
   end
-  xkother_time = time() - xkother_start_time
-  # @printf("xkother time: %.3f\n", xkother_time)
-
-  # Now finish J
-  J = hcat(Jparts...)
 
   # Some computation for the H matrices
+  Hs_start_time = time()
   Hs = [kron(Ec(k, opts.β, zdims), Ec(k, opts.β, zdims)) for k in 1:num_cliques]
   Hs_hots = [Int.(Hs[k]' * ones(size(Hs[k])[1])) for k in 1:params.num_cliques]
+  @printf("\tHs time: %.3f\n", Hs_start_time)
 
-  # The KKT system's inverse
-  # D = sum(Hs[k]' * Hs[k] for k in 1:num_cliques)
-  # D = Diagonal(diag(D))
+
+  DJJt_start_time = time()
   D = Diagonal(sum(Hs_hots))
   DJJt = D + (opts.ρ * J * J')
   DJJt_reg = Symmetric(DJJt + opts.cholesky_reg_ε * I)
+  @printf("\tDJJt time: %.3f\n", time() - DJJt_start_time)
 
   chol_start_time = time()
   chol = cholesky(DJJt_reg)
-  chol_time = time() - chol_start_time
-  @printf("\tcholesky time: %.3f\n", chol_time)
+  @printf("\tcholesky time: %.3f\n", time() - chol_start_time)
 
+  diagL_start_time = time()
   diagL_zeros = (diag(chol.L) .<= 2 * sqrt(opts.cholesky_reg_ε))
-
-  # @printf("diaglZeros hsa type: %s\n", typeof(diagL_zeros))
-
-  # Ddim = size(D_ρJJt)[1]
-  # @printf("trying to invert size %d with type %s\n", Ddim, typeof(D_ρJJt))
-  
-  #=
-  pinv_start_time = time()
-  pinv_D_ρJJt = Symmetric(pinv(D_ρJJt))
-  pinv_time = time() - pinv_start_time
-  @printf("pinv time: %.3f\n", pinv_time)
-  =#
+  @printf("\tdiagL time: %.3f\n", time() - diagL_start_time)
 
   cache_time = time() - cache_start_time
   cache = AdmmCache(J=J, zaff=zaff, Hs=Hs, Hs_hots=Hs_hots, chol=chol, diagL_zeros=diagL_zeros)
