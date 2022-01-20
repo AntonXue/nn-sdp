@@ -17,6 +17,7 @@ using Printf
   x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
   slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
   tband_func :: Function = (k, qxdim) -> qxdim # By default, have full density
+  max_solve_time :: Float64 = 60.0
   verbose :: Bool = false
 end
 
@@ -141,6 +142,7 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
   model = Model(optimizer_with_attributes(
     Mosek.Optimizer,
     "QUIET" => true,
+    "MSK_DPAR_OPTIMIZER_MAX_TIME" => opts.max_solve_time,
     "INTPNT_CO_TOL_REL_GAP" => 1e-6,
     "INTPNT_CO_TOL_PFEAS" => 1e-6,
     "INTPNT_CO_TOL_DFEAS" => 1e-6))

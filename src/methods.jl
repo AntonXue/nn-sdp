@@ -6,16 +6,31 @@ using ..Common
 using ..Intervals
 using ..DeepSdp
 using ..SplitSdp
-using ..AdmmSdp
 using ..NNetParser
 using ..Utils
 
 using LinearAlgebra
+using Printf
+
+
+# Safety
+function solveSafetyL2gain(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, L2gain :: Float64; verbose :: Bool = false)
+  @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
+  @assert L2gain > 1e-4 # Not a trivial gain
+  safety = L2gainSafety(L2gain, ffnet.xdims)
+  safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
+  if opts isa DeepSdpOptions
+    soln = DeepSdp.run(safety_inst, opts)
+  else
+    soln = SplitSdp.run(safety_inst, opts)
+  end
+  return soln
+end
 
 # Reachability
 function solveReach(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, normal :: Vector{Float64})
   @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
-  @assert length(normal) == ffnet.xdims[end] == 2
+  @assert length(normal) == ffnet.xdims[end] == 2 # 2D visualization
   hplane = HyperplaneSet(normal=normal)
   reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane)
   if opts isa DeepSdpOptions
@@ -27,46 +42,55 @@ function solveReach(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, normal
 end
 
 # Solve for a polytope
-function solveReachPolytope(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, num_hplanes :: Int, saveto :: String; verbose :: Bool = true)
+function solveReachPolytope(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, num_hplanes :: Int, saveto :: String; verbose :: Bool = false)
   @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
   start_time = time()
   hplanes = Vector{Tuple{Vector{Float64}, Float64}}()
   for i in 1:num_hplanes
-    if verbose; println("\tsetting p " * string(i) * "/" * string(num_hplanes) * "") end
-
     # Set up the hyperplane normal
     θ = ((i-1) / num_hplanes) * 2 * π
     normal = [cos(θ); sin(θ)]
-    if verbose; println("\t\tnormal: " * string(normal)) end
+    if verbose; @printf("\tpoly [%d/%d] with normal θ=%.3f\n", i, num_hplanes, θ) end
 
     # Run the query
     soln = solveReach(ffnet, input, opts, normal)
-    if verbose; println("\t\tobjval: " * string(soln.objective_value)) end
-    if verbose; println("\t\tstatus: " * string(soln.termination_status)) end
-    if verbose; println("\t\tsolv t: " * string(soln.solve_time)) end
-
+    if verbose
+      @printf("\t\tsolve time: %.3f, \t objval: %.4f (%s)\n",
+              soln.solve_time, soln.objective_value, soln.termination_status)
+    end
     push!(hplanes, (normal, soln.objective_value))
   end
 
   poly_time = time() - start_time
-  if verbose; println("\tdone t: " * string(round(poly_time, digits=2))) end
+  if verbose; @printf("\ttotal time: %.3f\n", poly_time) end
   return hplanes, poly_time
 end
 
-# Safety
-function solveSafetyNorm2(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, norm2 :: Float64; verbose :: Bool = true)
-  @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions) || (opts isa AdmmSdpOptions)
-  @assert norm2 > 1e-4
-  safety = outputSafetyNorm2(1.0, 1.0, norm2, ffnet.xdims)
-  safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
-  if opts isa DeepSdpOptions
-    soln = DeepSdp.run(safety_inst, opts)
-  elseif opts isa SplitSdpOptions
-    soln = SplitSdp.run(safety_inst, opts)
-  else
-    soln = AdmmSdp.run(safety_inst, opts)
-  end
-  return soln
+# Warm up stuff
+function warmup(;verbose=false)
+  warmup_start_time = time()
+  xdims = [2;3;3;3;3;3;3;2]
+  ffnet = randomNetwork(xdims)
+  x1min = ones(2) .- 1e-2
+  x1max = ones(2) .+ 1e-2
+  input = BoxInput(x1min=x1min, x1max=x1max)
+  L2gain = 100.0
+  normal = [1.0; 1.0]
+
+  x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
+  deep_opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
+  split_opts = SplitSdpOptions(β=1, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
+
+  # Warm up safety first
+  deep_safety_soln = solveSafetyL2gain(ffnet, input, deep_opts, L2gain, verbose=false)
+  split_safety_soln = solveSafetyL2gain(ffnet, input, split_opts, L2gain, verbose=false)
+
+  # Then warmup reachability
+  deep_reach_soln = solveReach(ffnet, input, deep_opts, normal)
+  split_reach_soln = solveReach(ffnet, input, split_opts, normal)
+
+  warmup_time = time() - warmup_start_time
+  if verbose; @printf("warmup time: %.3f\n", warmup_time) end
 end
 
 # Load up a P1 instance
@@ -87,18 +111,11 @@ function loadP2(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=f
   return ffnet, opts
 end
 
-# Load a P3 instance
-function loadP3(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=false)
-  nnet = NNetParser.NNet(nnet_filepath)
-  ffnet = Utils.NNet2FeedForwardNetwork(nnet)
-  x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = AdmmSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose, tband_func=(x,y)->2)
-  return ffnet, opts
-end
-
 #
+export solveSafetyL2gain
 export solveReach, solveReachPolytope
-export solveSafetyNorm2
-export loadP1, loadP2, loadP3
+export warmup
+export loadP1, loadP2
 
 end
+

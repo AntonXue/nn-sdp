@@ -12,17 +12,28 @@ using Plots
 
 pyplot()
 
-# a||x||^2 + b||f(x)||^2 <= C
-function outputSafetyNorm2(a :: Float64, b :: Float64, norm2, xdims :: Vector{Int64})
+# A general form of quadratic safety
+# a||x||^2 + b||f(x)||^2 + c <= 0
+function quadraticSafety(a, b, c, xdims :: Vector{Int64})
   @assert length(xdims) > 1
   _S11 = a * I(xdims[1])
   _S12 = zeros(xdims[1], xdims[end])
   _S13 = zeros(xdims[1], 1)
   _S22 = b * I(xdims[end])
   _S23 = zeros(xdims[end], 1)
-  _S33 = -norm2
+  _S33 = c
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return SafetyConstraint(S=S)
+end
+
+# ||f(x)||^2 <= L ||x||^2
+function L2gainSafety(L2gain :: Number, xdims :: Vector{Int64})
+  return quadraticSafety(-L2gain, 1.0, 0.0, xdims)
+end
+
+# ||f(x)||^2 <= C
+function outputNorm2Safety(norm2 :: Number, xdims :: Vector{Int64})
+  return quadraticSafety(0.0, 1.0, -norm2)
 end
 
 # Generate a random network given the desired dimensions at each layer
@@ -131,7 +142,7 @@ function NNet2FeedForwardNetwork(nnet :: NNet)
 end
 
 #
-export outputSafetyNorm2
+export quadraticSafety, L2gainSafety, outputNorm2Safety
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotReachPolytope
