@@ -17,6 +17,8 @@ using Printf
   begin_check_at_iter :: Int = 5
   check_every_k_iters :: Int = 2
   nsd_tol :: Float64 = 1e-4
+  cholesky_reg_ε :: Float64 = 1e-2
+
   β :: Int = 1
   ρ :: Float64 = 1.0
   x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
@@ -45,7 +47,13 @@ end
   J :: Matrix{Float64}
   zaff :: Vector{Float64}; @assert size(J)[1] == length(zaff)
   Hs :: Vector{Matrix{Float64}}
-  pinv_D_ρJJt :: Symmetric{Float64, Matrix{Float64}}
+  Hs_hots :: Vector{Vector{Int}}
+
+  # The cholesky factorization of (D + ρJJ') + εI
+  chol :: Cholesky{Float64, Matrix{Float64}}
+
+  # The entries corresponding to the regularization term
+  diagL_zeros :: BitArray{1}
 end
 
 # Status of ADMM
@@ -102,16 +110,12 @@ function _expand2(X, (d1, i1), (d2, i2), Zdim :: Int)
   @assert i1 + d1 <= i2        # X11 will be inserted before X12
   @assert i2 + d2 - 1 <= Zdim  # Don't overrun the end
 
-  X11 = X[1:d1, 1:d1]
-  X12 = X[1:d1, (d1+1):end]
-  X21 = X[(d1+1):end, 1:d1]
-  X22 = X[(d1+1):end, (d1+1):end]
-
+  Xdim = size(X)[1]
   Z = zeros(Zdim, Zdim)
-  Z[i1:(i1+d1-1), i1:(i1+d1-1)] = X11
-  Z[i1:(i1+d1-1), i2:(i2+d2-1)] = X12
-  Z[i2:(i2+d2-1), i1:(i1+d1-1)] = X21
-  Z[i2:(i2+d2-1), i2:(i2+d2-1)] = X22
+  Z[i1:(i1+d1-1), i1:(i1+d1-1)] = view(X, 1:d1, 1:d1)
+  Z[i1:(i1+d1-1), i2:(i2+d2-1)] = view(X, 1:d1, (d1+1):Xdim)
+  Z[i2:(i2+d2-1), i1:(i1+d1-1)] = view(X, (d1+1):Xdim, 1:d1)
+  Z[i2:(i2+d2-1), i2:(i2+d2-1)] = view(X, (d1+1):Xdim, (d1+1):Xdim)
   return Z
 end
 
@@ -130,6 +134,10 @@ function _fastEXktXEXk(k :: Int, X, zdims :: Vector{Int}, Zdim :: Int)
   d1 = d - d2
   i1 = sum(zdims[1:k-1]) + 1
   return _expand2(X, (d1, i1), (d2, Zdim-d2+1), Zdim)
+end
+
+function _fastH(Hs_hot, x)
+  return x[Hs_hot == 1]
 end
 
 # Cache precomputation
@@ -172,6 +180,7 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   # xoutaff = vec(Eout' * makeXout(inst.safety.S, ffnet) * Eout)
   xoutaff = vec(_fastEouttXEout(makeXout(inst.safety.S, ffnet), zdims, Zdim))
 
+  xkaff_start_time = time()
   xkaffs = Vector{Vector{Float64}}()
   for k = 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
@@ -180,6 +189,8 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
     xkaff = vec(_fastEXktXEXk(k, makeXqγ(k, opts.β, zeros(params.γkdims[k]), xqinfos[k]), zdims, Zdim))
     push!(xkaffs, xkaff)
   end
+  xkaff_time = time() - xkaff_start_time
+  # @printf("xkaff time: %.3f\n", xkaff_time)
 
   zaff = xinaff + xoutaff + sum(xkaffs)
 
@@ -193,6 +204,7 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
     push!(Jparts, xini)
   end
 
+  xkother_start_time = time()
   # ... and finally the Xks
   for k in 1:(num_cliques+1)
     EXk = [E(k, opts.β, zdims); Ea]
@@ -202,22 +214,44 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
       push!(Jparts, xki)
     end
   end
+  xkother_time = time() - xkother_start_time
+  # @printf("xkother time: %.3f\n", xkother_time)
 
   # Now finish J
   J = hcat(Jparts...)
 
   # Some computation for the H matrices
   Hs = [kron(Ec(k, opts.β, zdims), Ec(k, opts.β, zdims)) for k in 1:num_cliques]
+  Hs_hots = [Int.(Hs[k]' * ones(size(Hs[k])[1])) for k in 1:params.num_cliques]
 
   # The KKT system's inverse
-  D = sum(Hs[k]' * Hs[k] for k in 1:num_cliques)
-  D = diagm(diag(D))
+  # D = sum(Hs[k]' * Hs[k] for k in 1:num_cliques)
+  # D = Diagonal(diag(D))
+  D = Diagonal(sum(Hs_hots))
+  DJJt = D + (opts.ρ * J * J')
+  DJJt_reg = Symmetric(DJJt + opts.cholesky_reg_ε * I)
 
-  D_ρJJt = D + (opts.ρ * J * J')
+  chol_start_time = time()
+  chol = cholesky(DJJt_reg)
+  chol_time = time() - chol_start_time
+  @printf("\tcholesky time: %.3f\n", chol_time)
+
+  diagL_zeros = (diag(chol.L) .<= 2 * sqrt(opts.cholesky_reg_ε))
+
+  # @printf("diaglZeros hsa type: %s\n", typeof(diagL_zeros))
+
+  # Ddim = size(D_ρJJt)[1]
+  # @printf("trying to invert size %d with type %s\n", Ddim, typeof(D_ρJJt))
+  
+  #=
+  pinv_start_time = time()
   pinv_D_ρJJt = Symmetric(pinv(D_ρJJt))
+  pinv_time = time() - pinv_start_time
+  @printf("pinv time: %.3f\n", pinv_time)
+  =#
 
   cache_time = time() - cache_start_time
-  cache = AdmmCache(J=J, zaff=zaff, Hs=Hs, pinv_D_ρJJt=pinv_D_ρJJt)
+  cache = AdmmCache(J=J, zaff=zaff, Hs=Hs, Hs_hots=Hs_hots, chol=chol, diagL_zeros=diagL_zeros)
   return cache, cache_time
 end
 
@@ -289,8 +323,17 @@ end
 #
 function stepX(params :: AdmmParams, cache :: AdmmCache, opts :: AdmmSdpOptions)
   num_cliques = params.num_cliques
-  R = -cache.zaff + sum(cache.Hs[k]' * (params.zs[k] + (params.λs[k] / opts.ρ)) for k in 1:num_cliques)
-  new_x = -cache.pinv_D_ρJJt * R
+  b = -cache.zaff + sum(cache.Hs[k]' * (params.zs[k] + (params.λs[k] / opts.ρ)) for k in 1:num_cliques)
+
+  tmp = b
+  tmp[cache.diagL_zeros] .= 0
+  tmp = cache.chol.L \ tmp
+  tmp[cache.diagL_zeros] .= 0
+  tmp = cache.chol.L' \ tmp
+  tmp[cache.diagL_zeros] .= 0
+  new_x = tmp
+
+  # new_x = -cache.pinv_D_ρJJt * b
   new_γ = projectNonnegative(-opts.ρ * cache.J' * new_x)
   new_vs = [params.zs[k] + (params.λs[k] / opts.ρ) + cache.Hs[k] * new_x for k in 1:num_cliques]
   return new_γ, new_vs

@@ -97,7 +97,7 @@ function runSafety()
     input = BoxInput(x1min=x1min, x1max=x1max)
 
     # num_layers is K
-    β = min(2, num_layers - 2)
+    β = min(1, num_layers - 2)
     ffnet, opts = loadP2(nnet_filepath, input, β)
 
     # Print the interval propagation bounds, for comparison
@@ -107,7 +107,7 @@ function runSafety()
 
     # Safety stuff
     image_filepath = joinpath(p2_dir, nnet_filename * ".png")
-    norm2 = 5.0
+    norm2 = 1e6
     # norm2 = 1e6
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
     soln_time = round(soln.total_time, digits=3)
