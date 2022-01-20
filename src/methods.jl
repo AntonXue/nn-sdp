@@ -65,8 +65,6 @@ function solveSafetyNorm2(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, 
     soln = SplitSdp.run(safety_inst, opts)
   else
     soln = AdmmSdp.run(safety_inst, opts)
-    println("\ttimes: " * string(round.((soln.setup_time, soln.solve_time, soln.total_time), digits=2)))
-    println("\tstatus: " * string(soln.termination_status))
   end
   return soln
 end
@@ -94,7 +92,7 @@ function loadP3(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=f
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = AdmmSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  opts = AdmmSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose, tband_func=(x,y)->2)
   return ffnet, opts
 end
 

@@ -13,7 +13,7 @@ using Printf
 
 # The options for ADMM
 @with_kw struct AdmmSdpOptions
-  max_iters :: Int = 200
+  max_iters :: Int = 100
   begin_check_at_iter :: Int = 5
   check_every_k_iters :: Int = 2
   nsd_tol :: Float64 = 1e-4
@@ -210,22 +210,22 @@ function precompute(inst :: SafetyInstance, params :: AdmmParams, opts :: AdmmSd
   Hs_start_time = time()
   Hs = [kron(Ec(k, opts.β, zdims), Ec(k, opts.β, zdims)) for k in 1:num_cliques]
   Hs_hots = [Int.(Hs[k]' * ones(size(Hs[k])[1])) for k in 1:params.num_cliques]
-  @printf("\tHs time: %.3f\n", Hs_start_time)
+  # @printf("\tHs time: %.3f\n", Hs_start_time)
 
 
   DJJt_start_time = time()
   D = Diagonal(sum(Hs_hots))
   DJJt = D + (opts.ρ * J * J')
   DJJt_reg = Symmetric(DJJt + opts.cholesky_reg_ε * I)
-  @printf("\tDJJt time: %.3f\n", time() - DJJt_start_time)
+  # @printf("\tDJJt time: %.3f\n", time() - DJJt_start_time)
 
   chol_start_time = time()
   chol = cholesky(DJJt_reg)
-  @printf("\tcholesky time: %.3f\n", time() - chol_start_time)
+  # @printf("\tcholesky time: %.3f\n", time() - chol_start_time)
 
   diagL_start_time = time()
   diagL_zeros = (diag(chol.L) .<= 2 * sqrt(opts.cholesky_reg_ε))
-  @printf("\tdiagL time: %.3f\n", time() - diagL_start_time)
+  # @printf("\tdiagL time: %.3f\n", time() - diagL_start_time)
 
   cache_time = time() - cache_start_time
   cache = AdmmCache(J=J, zaff=zaff, Hs=Hs, Hs_hots=Hs_hots, chol=chol, diagL_zeros=diagL_zeros)

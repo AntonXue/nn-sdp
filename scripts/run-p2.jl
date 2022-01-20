@@ -12,6 +12,7 @@ include("../src/methods.jl"); using .Methods
 
 using LinearAlgebra
 using ArgParse
+using Printf
 
 println("Imports done: " * string(round(time() - start_time, digits=2)))
 
@@ -36,15 +37,10 @@ if !isdir(p2_dir)
   mkdir(p2_dir)
 end
 
-REACH_WIDTH_DEPTHS =
-  [
-   (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10); (5, 15); (5, 20);
-   (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
-   # (15, 3); (15, 4); (15, 5); (15, 6); (15, 7); (15, 8); (15, 9); (15, 10);
-   # (20, 3); (20, 4); (20, 5); (20, 6); (20, 7); (20, 8); (20, 9); (20, 10);
-  # (15; 3); (15, 4);
-  ]
+WIDTHS = [5, 10, 15, 20]
+DEPTHS = [5, 10, 15, 20, 25, 30, 35, 40]
 
+REACH_WIDTH_DEPTHS = [(w, d) for w in WIDTHS for d in DEPTHS]
 
 function runReach(β :: Int)
   results = Vector{Any}()
@@ -62,8 +58,8 @@ function runReach(β :: Int)
 
     # Print the interval propagation bounds, for comparison
     ymin, ymax = opts.x_intvs[end]
-    println("\ty1: " * string((ymin[1], ymax[1])))
-    println("\ty2: " * string((ymin[2], ymax[2])))
+    # println("\ty1: " * string((ymin[1], ymax[1])))
+    # println("\ty2: " * string((ymin[2], ymax[2])))
 
     # Safety stuff
     aug_nnet_filename = "β" * string(β) * "_" * nnet_filename
@@ -88,7 +84,7 @@ function runSafety()
   for (layer_dim, num_layers) in REACH_WIDTH_DEPTHS
     nnet_filename = "rand-in2-out2-ldim" * string(layer_dim) * "-numl" * string(num_layers) * ".nnet"
     nnet_filepath = joinpath(nnet_dir, nnet_filename)
-    println("processing NNet: " * nnet_filepath)
+    @printf("processing NNet: %s\n", nnet_filepath)
     @assert isfile(nnet_filepath)
 
     # Load the thing
@@ -102,8 +98,8 @@ function runSafety()
 
     # Print the interval propagation bounds, for comparison
     ymin, ymax = opts.x_intvs[end]
-    println("\ty1: " * string((ymin[1], ymax[1])))
-    println("\ty2: " * string((ymin[2], ymax[2])))
+    # println("\ty1: " * string((ymin[1], ymax[1])))
+    # println("\ty2: " * string((ymin[2], ymax[2])))
 
     # Safety stuff
     image_filepath = joinpath(p2_dir, nnet_filename * ".png")
@@ -111,8 +107,7 @@ function runSafety()
     # norm2 = 1e6
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
     soln_time = round(soln.total_time, digits=3)
-    println("\tstatus: " * string(soln.termination_status))
-    println("\ttime: " * string(soln.total_time))
+    @printf("\tstatus: %s \t (%d,%d) \ttime: %.3f\n", soln.termination_status, layer_dim, num_layers, soln.total_time)
     push!(results, (layer_dim, num_layers, soln_time, string(soln.termination_status)))
   end
   return results

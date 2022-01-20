@@ -37,13 +37,10 @@ if !isdir(p2_dir)
   mkdir(p2_dir)
 end
 
-REACH_WIDTH_DEPTHS =
-  [
-  (5, 4); (5, 5); (5, 6); (5, 7); (5, 8); (5, 9); (5, 10); (5, 15); (5, 20);
-  (10, 4); (10, 5); (10, 6); (10, 7); (10, 8); (10, 9); (10, 10);
-  # (15; 3); (15, 4);
-  ]
+WIDTHS = [5, 10, 15, 20]
+DEPTHS = [5, 10, 15, 20, 25, 30, 35, 40]
 
+REACH_WIDTH_DEPTHS = [(w, d) for w in WIDTHS for d in DEPTHS]
 
 function runSafety()
   results = Vector{Any}()
@@ -65,13 +62,15 @@ function runSafety()
 
     # Print the interval propagation bounds, for comparison
     ymin, ymax = opts.x_intvs[end]
-    @printf("\ty1: (%.3f, %.3f)\n", ymin[1], ymax[1])
-    @printf("\ty2: (%.3f, %.3f)\n", ymin[2], ymax[2])
+    # @printf("\ty1: (%.3f, %.3f)\n", ymin[1], ymax[1])
+    # @printf("\ty2: (%.3f, %.3f)\n", ymin[2], ymax[2])
 
     # Safety stuff
     image_filepath = joinpath(p2_dir, nnet_filename * ".png")
     norm2 = 1e6
     soln = solveSafetyNorm2(ffnet, input, opts, norm2)
+    time_str = @sprintf("(%.3f, %.3f, %.3f)", soln.setup_time, soln.solve_time, soln.total_time)
+    @printf("\tstatus: %s \t (%d, %d) \ttimes: %s\n", soln.termination_status, layer_dim, num_layers, time_str)
     soln_time = round.((soln.setup_time, soln.solve_time, soln.total_time), digits=2)
     push!(results, (layer_dim, num_layers, soln_time, string(soln.termination_status)))
   end
