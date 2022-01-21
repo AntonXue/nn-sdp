@@ -8,7 +8,7 @@ using JuMP
 using Printf
 
 # Splice a vector
-function splice(x, sizes :: Vector{Int})
+function splice(x, sizes :: VecInt)
   @assert all(sizes .>= 0)
   @assert 1 <= length(x) == sum(sizes)
   num_sizes = length(sizes)
@@ -28,7 +28,7 @@ function e(i :: Int, dim :: Int)
 end
 
 # The ith block index matrix
-function E(i :: Int, dims :: Vector{Int})
+function E(i :: Int, dims :: VecInt)
   @assert 1 <= i <= length(dims)
   width = sum(dims)
   low = sum(dims[1:i-1]) + 1
@@ -39,7 +39,7 @@ function E(i :: Int, dims :: Vector{Int})
 end
 
 # The block index matrix that is [E(k, dims), ..., E(k+b, dims)]
-function E(k :: Int, b :: Int, dims :: Vector{Int})
+function E(k :: Int, b :: Int, dims :: VecInt)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(dims)
   Eks = [E(k+j, dims) for j in 0:b]
@@ -49,7 +49,7 @@ end
 # The clique Ck = {x[k], ..., x[k+b], x[K], x[aff]}
 # For these cliques we enforce b >= 1
 # Each clique has minimum size
-function Ec(k :: Int, b :: Int, zdims :: Vector{Int})
+function Ec(k :: Int, b :: Int, zdims :: VecInt)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(zdims) - 2 # So to exclude K and affine
   @assert zdims[end] == 1 # Affine component
@@ -60,7 +60,7 @@ function Ec(k :: Int, b :: Int, zdims :: Vector{Int})
 end
 
 # The dimension components of a clique
-function Cdims(k :: Int, b :: Int, zdims :: Vector{Int})
+function Cdims(k :: Int, b :: Int, zdims :: VecInt)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(zdims) - 2 # So to exclude K and affine
   @assert zdims[end] == 1
@@ -97,7 +97,7 @@ function makeBc(k :: Int, b :: Int, ffnet :: FeedForwardNetwork)
 end
 
 # P function for a box
-function makePbox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, γin)
+function makePbox(x1min :: VecF64, x1max :: VecF64, γin)
   @assert length(x1min) == length(x1max) == length(γin)
   Γ = Diagonal(γin)
   _P11 = -2 * Γ
@@ -108,7 +108,7 @@ function makePbox(x1min :: Vector{Float64}, x1max :: Vector{Float64}, γin)
 end
 
 # P function for a polytope
-function makePpolytope(H :: Matrix{Float64}, h :: Vector{Float64}, Γ)
+function makePpolytope(H :: Matrix{Float64}, h :: VecF64, Γ)
   @assert size(H)[1] == length(h)
   _P11 = H' * Γ * H
   _P12 = -H' * Γ * h
@@ -118,7 +118,7 @@ function makePpolytope(H :: Matrix{Float64}, h :: Vector{Float64}, Γ)
 end
 
 # Bounding hyperplane such that normal' * f(x) <= h, for variable h
-function makeShyperplane(normal :: Vector{Float64}, h, ffnet :: FeedForwardNetwork)
+function makeShyperplane(normal :: VecF64, h, ffnet :: FeedForwardNetwork)
   d1 = ffnet.xdims[1]
   dK1 = ffnet.xdims[end]
   @assert length(normal) == dK1
@@ -133,7 +133,7 @@ function makeShyperplane(normal :: Vector{Float64}, h, ffnet :: FeedForwardNetwo
 end
 
 # The input dimension to the kth Q
-function Qxdim(k :: Int, b :: Int, zdims :: Vector{Int})
+function Qxdim(k :: Int, b :: Int, zdims :: VecInt)
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(zdims) - 1
   return sum(zdims[k+1:k+b])
@@ -167,8 +167,8 @@ end
 # The information for constructing some Xq
 @with_kw struct Xqinfo
   ffnet :: FeedForwardNetwork
-  ϕout_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
-  slope_intv :: Union{Nothing, Tuple{Vector{Float64}, Vector{Float64}}} = nothing
+  ϕout_intv :: Union{Nothing, PairVecF64} = nothing
+  slope_intv :: Union{Nothing, PairVecF64} = nothing
   tband :: Int; @assert tband >= 0
 end
 
@@ -346,7 +346,7 @@ function makeγvardims(b :: Int, inst :: QueryInstance, tband_func :: Function)
   # Set up the γkdims
   zdims = inst.ffnet.zdims
   num_cliques = length(zdims) - b - 2
-  γkdims = Vector{Int}()
+  γkdims = VecInt()
   if inst.ffnet.type isa ReluNetwork
     for k = 1:(num_cliques+1)
       qxdim = Qxdim(k, b, zdims)

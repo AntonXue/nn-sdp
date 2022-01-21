@@ -14,28 +14,40 @@ using ArgParse
 using Printf
 
 #
-argparse_settings = ArgParseSettings()
-@add_arg_table argparse_settings begin
+function parseArgs()
+  argparse_settings = ArgParseSettings()
+  @add_arg_table argparse_settings begin
+    "--deepsdp"
+      action = :store_true
+    "--splitsdp"
+      action = :store_true
     "--benchdir"
-        help = "the NNet file location"
-        arg_type = String
+      help = "the NNet file location"
+      arg_type = String
+      required = true
+    "--tband"
+      arg_type = Int
+  end
+  return parse_args(ARGS, argparse_settings)
 end
 
-args = parse_args(ARGS, argparse_settings)
+args = parseArgs()
+
+# Exactly one must hold
+@assert (args["deepsdp"] || args["splitsdp"]) && !(args["deepsdp"] && args["splitsdp"])
 
 # Make sure the relevant directories exist
-nnet_dir = joinpath(args["benchdir"], "nnet")
-p2_dir = joinpath(args["benchdir"], "p2")
-@assert isdir(args["benchdir"]) && isdir(nnet_dir)
-if !isdir(p2_dir); mkdir(p2_dir) end
+NNET_DIR = joinpath(args["benchdir"], "nnet")
+METHOD_DIR = joinpath(args["benchdir"], (args["deepsdp"] ? "deepsdp" : "splitsdp"))
+@assert isdir(args["benchdir"]) && isdir(NNET_DIR)
+if !isdir(METHOD_DIR); mkdir(METHOD_DIR) end
 
 # The different batches
-DEPTHS = [5, 10, 15, 20, 25, 30]
+DEPTHS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+BATCH_W5 = ("W5", [(5, d) for d in DEPTHS])
 BATCH_W10 = ("W10", [(10, d) for d in DEPTHS])
+BATCH_W15 = ("W15", [(15, d) for d in DEPTHS])
 BATCH_W20 = ("W20", [(20, d) for d in DEPTHS])
-BATCH_W30 = ("W30", [(30, d) for d in DEPTHS])
-BATCH_W40 = ("W40", [(40, d) for d in DEPTHS])
-BATCH_W40 = ("W50", [(50, d) for d in DEPTHS])
 
 #
 function runSafety(batch, β :: Int, N :: Int)
@@ -44,7 +56,7 @@ function runSafety(batch, β :: Int, N :: Int)
   
   for (ldim, numl) in batch_items
     nnet_filename = @sprintf("rand-in2-out2-ldim%d-numl%d.nnet", ldim, numl)
-    nnet_filepath = joinpath(nnet_dir, nnet_filename)
+    nnet_filepath = joinpath(NNET_DIR, nnet_filename)
     @printf("processing NNet: %s\n", nnet_filepath)
     @assert isfile(nnet_filepath)
 
@@ -53,12 +65,24 @@ function runSafety(batch, β :: Int, N :: Int)
     x1max = ones(2) .+ 1e-2
     input = BoxInput(x1min=x1min, x1max=x1max)
     β = min(β, numl - 2)
-    ffnet, opts = loadP2(nnet_filepath, input, β)
+
+    # Load the appropriate P1 or P2
+    if args["deepsdp"]
+      tband = args["tband"]
+      ffnet, opts = loadP1(nnet_filepath, input, tband=tband)
+    else
+      tband = args["tband"]
+      tband_func = (tband isa Nothing) ? nothing : (x,y) -> tband
+      ffnet, opts = loadP2(nnet_filepath, input, β, tband_func=tband_func)
+    end
 
     # Safety stuff
-    L2gain = 10.0 # Or something smarter
+    # L2gain = 2 * sqrt(ldim * numl) # Or something smarter
+    L2gain = 1e6
+    @printf("\tL2gain: %.3f\n", L2gain)
     iter_results = Vector{Any}()
     for i in 1:N
+      # Do the solve
       soln = solveSafetyL2gain(ffnet, input, opts, L2gain, verbose=true)
       solve_time = soln.solve_time
       term_status = soln.termination_status
@@ -67,16 +91,18 @@ function runSafety(batch, β :: Int, N :: Int)
       push!(iter_results, (solve_time, term_status))
 
       # Break after push so we do store a result
-      if string(term_status) == "TIME_LIMIT"; break end
+      status_str = string(term_status)
+      if status_str == "TIME_LIMIT" || status_str == "SLOW_PROGRESS"; break end
     end
-    avg_solve_time = sum([ir[1] for ir in iter_results]) / (1.0 * N)
-    @printf("\t\t\t\t\t   avg time: %.3f\n", avg_solve_time)
-    @printf("\n")
     push!(results, (ldim, numl, iter_results))
+
+    # Compute a statistic to print
+    avg_solve_time = sum([ir[1] for ir in iter_results]) / (1.0 * N)
+    @printf("\t\t\t\t\t   avg time: %.3f\n\n", avg_solve_time)
   end
 
   # Save the results for this batch
-  saveto_filepath = joinpath(p2_dir, @sprintf("P2-%s-beta%d-runs.txt", batch_id, β))
+  saveto_filepath = joinpath(METHOD_DIR, @sprintf("P2-%s-beta%d-runs.txt", batch_id, β))
   @printf("saving to %s\n", saveto_filepath)
   open(saveto_filepath, "w") do file
     for (ldim, numl, iter_results) in results
@@ -96,7 +122,7 @@ function runReach(batch, β :: Int)
   results = Vector{Any}()
   for (ldim, numl) in REACH_WIDTH_DEPTHS
     nnet_filename = @sprintf("rand-in2-out2-ldim%d-numl%d.nnet", ldim, numl)
-    nnet_filepath = joinpath(nnet_dir, nnet_filename)
+    nnet_filepath = joinpath(NNET_DIR, nnet_filename)
     println("processing NNet: " * nnet_filepath)
     @assert isfile(nnet_filepath)
 
@@ -104,17 +130,22 @@ function runReach(batch, β :: Int)
     x1min = ones(2) .- 1e-2
     x1max = ones(2) .+ 1e-2
     input = BoxInput(x1min=x1min, x1max=x1max)
-    ffnet, opts = loadP2(nnet_filepath, input, β)
+
+    # Load the appropriate P1 or P2
+    if args["deepsdp"]
+      ffnet, opts = loadP1(nnet_filepath, input)
+    else
+      ffnet, opts = loadP2(nnet_filepath, input, β)
+    end
 
     # Safety stuff
     aug_nnet_filename = "β" * string(β) * "_" * nnet_filename
-    image_filepath = joinpath(p2_dir, aug_nnet_filename * ".png")
+    image_filepath = joinpath(METHOD_DIR, aug_nnet_filename * ".png")
     hplanes, poly_time = solveReachPolytope(ffnet, input, opts, 6, image_filepath)
     xfs = randomTrajectories(10000, ffnet, input.x1min, input.x1max)
     plotReachPolytope(xfs, hplanes, saveto=image_filepath)
 
     # TODO: write to a text file, probably
-
     push!(results, (ldim, numl, poly_time))
     println("")
   end
@@ -127,7 +158,7 @@ println("end time: " * string(round(time() - start_time, digits=2)))
 # reach_res2 = runReach(2)
 
 warmup(verbose=true)
-safety_res_10 = runSafety(BATCH_W10, 1, 2)
+# safety_res_W10_b1 = runSafety(BATCH_W10, 1, 2)
 # safety_res_20 = runSafety(BATCH_W20, 1, 3)
 
 

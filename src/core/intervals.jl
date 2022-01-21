@@ -8,7 +8,7 @@ using Printf
 
 # Calculate slope bounds for the input interval [ymin, ymax]
 # Calculate slopes for when 
-function slopeBounds(ymin :: Vector{Float64}, ymax :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+function slopeBounds(ymin :: VecF64, ymax :: VecF64, ffnet :: FeedForwardNetwork)
   @assert length(ymin) == length(ymax)
   ε = 1e-4
   if ffnet.type isa ReluNetwork
@@ -40,7 +40,7 @@ end
 
 # Given k, b, ϕin_intvs, find the y[k], ..., x[k+b-1]
 # We should have length(ϕin_intvs) == K - 1
-function _selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+function _selectϕinIntervals(k :: Int, b :: Int, ϕin_intvs :: Vector{PairVecF64})
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(ϕin_intvs) + 1 # K
   ymin = vcat([yi[1] for yi in ϕin_intvs[k:k+b-1]]...)
@@ -58,7 +58,7 @@ end
 
 # Given k, b, x_intvs, find the x[k+1], ..., x[k+b]
 # We should have length(x_intvs) == length(zdims) == K + 1
-function _selectϕoutIntervals(k :: Int, b :: Int, x_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+function _selectϕoutIntervals(k :: Int, b :: Int, x_intvs :: Vector{PairVecF64})
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(x_intvs) - 1 # K
   ϕmin = vcat([xi[1] for xi in x_intvs[k+1:k+b]]...)
@@ -76,7 +76,7 @@ end
 
 # Given k, b, slope_intvs, find the ones at ϕ[k], ..., ϕ[k+b-1]
 # We should have length(slope_intvs) == K - 1
-function _selectSlopeIntervals(k :: Int, b :: Int, slope_intvs :: Vector{Tuple{Vector{Float64}, Vector{Float64}}})
+function _selectSlopeIntervals(k :: Int, b :: Int, slope_intvs :: Vector{PairVecF64})
   @assert k >= 1 && b >= 1
   @assert 1 <= k + b <= length(slope_intvs) + 1 # K
   ϕa = vcat([si[1] for si in slope_intvs[k:k+b-1]]...)
@@ -93,7 +93,7 @@ function selectSlopeIntervals(k :: Int, b :: Int, slope_intvs)
 end
 
 # Randomized propagation
-function randomizedPropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet :: FeedForwardNetwork, N :: Int)
+function randomizedPropagation(x1min :: VecF64, x1max :: VecF64, ffnet :: FeedForwardNetwork, N :: Int)
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The activation function
@@ -141,7 +141,7 @@ function randomizedPropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64
 end
 
 # Worst case propagation of a box
-function worstCasePropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+function worstCasePropagation(x1min :: VecF64, x1max :: VecF64, ffnet :: FeedForwardNetwork)
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The activation function
@@ -153,14 +153,14 @@ function worstCasePropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}
   end
 
   # Each x[1], x[2], ..., x[K], x[K+1] of the network
-  x_intvs = Vector{Tuple{Vector{Float64}, Vector{Float64}}}()
+  x_intvs = Vector{PairVecF64}()
   push!(x_intvs, (x1min, x1max))
 
   # The inputs to the activation functions; should be K-1 of them
-  ϕin_intvs = Vector{Tuple{Vector{Float64}, Vector{Float64}}}()
+  ϕin_intvs = Vector{PairVecF64}()
 
   # All the slope bounds; should be K-1 of them
-  slope_intvs = Vector{Tuple{Vector{Float64}, Vector{Float64}}}()
+  slope_intvs = Vector{PairVecF64}()
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)
@@ -183,6 +183,7 @@ function worstCasePropagation(x1min :: Vector{Float64}, x1max :: Vector{Float64}
   return x_intvs, ϕin_intvs, slope_intvs
 end
 
+export PairVecF64
 export selectϕinIntervals, selectϕoutIntervals, selectSlopeIntervals
 export randomizedPropagation, worstCasePropagation
 

@@ -12,7 +12,6 @@ using ..Utils
 using LinearAlgebra
 using Printf
 
-
 # Safety
 function solveSafetyL2gain(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, L2gain :: Float64; verbose :: Bool = false)
   @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
@@ -28,7 +27,7 @@ function solveSafetyL2gain(ffnet :: FeedForwardNetwork, input :: BoxInput, opts,
 end
 
 # Reachability
-function solveReach(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, normal :: Vector{Float64})
+function solveReach(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, normal :: VecF64)
   @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
   @assert length(normal) == ffnet.xdims[end] == 2 # 2D visualization
   hplane = HyperplaneSet(normal=normal)
@@ -42,10 +41,10 @@ function solveReach(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, normal
 end
 
 # Solve for a polytope
-function solveReachPolytope(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, num_hplanes :: Int, saveto :: String; verbose :: Bool = false)
+function solveReachPolytope(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, num_hplanes :: Int; verbose :: Bool = false)
   @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
   start_time = time()
-  hplanes = Vector{Tuple{Vector{Float64}, Float64}}()
+  hplanes = Vector{Tuple{VecF64, Float64}}()
   for i in 1:num_hplanes
     # Set up the hyperplane normal
     θ = ((i-1) / num_hplanes) * 2 * π
@@ -63,7 +62,7 @@ function solveReachPolytope(ffnet :: FeedForwardNetwork, input :: BoxInput, opts
 
   poly_time = time() - start_time
   if verbose; @printf("\ttotal time: %.3f\n", poly_time) end
-  return hplanes, poly_time
+  return hplanes
 end
 
 # Warm up stuff
@@ -94,7 +93,7 @@ function warmup(;verbose=false)
 end
 
 # Load up a P1 instance
-function loadP1(nnet_filepath :: String, input :: BoxInput; verbose=false)
+function loadP1(nnet_filepath :: String, input :: BoxInput; verbose=false, tband = nothing)
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
@@ -103,11 +102,19 @@ function loadP1(nnet_filepath :: String, input :: BoxInput; verbose=false)
 end
 
 # Load a P2 instance
-function loadP2(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=false)
+function loadP2(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=false, tband_func = nothing)
   nnet = NNetParser.NNet(nnet_filepath)
   ffnet = Utils.NNet2FeedForwardNetwork(nnet)
   x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = SplitSdpOptions(β=β, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
+  if tband_func isa Nothing
+    tband_func = (k, qxdim) -> qxdim
+  end
+  opts = SplitSdpOptions(
+          β = β,
+          x_intvs = x_intvs,
+          slope_intvs = slope_intvs,
+          tband_func = tband_func,
+          verbose = verbose)
   return ffnet, opts
 end
 

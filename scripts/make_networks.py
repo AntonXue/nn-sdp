@@ -18,8 +18,8 @@ import NNet.utils.writeNNet as wn
 np.random.seed(1234)
 INPUT_DIM = 2
 OUTPUT_DIM = 2
-LAYER_DIMS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
-NUM_LAYERS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 40]
+LAYER_DIMS = [5, 10, 15, 20]
+NUM_LAYERS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 
 # Generate a random network given the number of layers, input, output, and layer dimensions
 def random_params(input_dim, output_dim, layer_dim, num_layers, sigma):

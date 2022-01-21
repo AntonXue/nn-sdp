@@ -14,10 +14,10 @@ using Printf
 # Options
 @with_kw struct SplitSdpOptions
   β :: Int = 1
-  x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  x_intvs :: Union{Nothing, Vector{PairVecF64}} = nothing
+  slope_intvs :: Union{Nothing, Vector{PairVecF64}} = nothing
   tband_func :: Function = (k, qxdim) -> qxdim # By default, have full density
-  max_solve_time :: Float64 = 60.0
+  max_solve_time :: Float64 = 300.0
   verbose :: Bool = false
 end
 
@@ -143,9 +143,9 @@ function run(inst :: QueryInstance, opts :: SplitSdpOptions)
     Mosek.Optimizer,
     "QUIET" => true,
     "MSK_DPAR_OPTIMIZER_MAX_TIME" => opts.max_solve_time,
-    "INTPNT_CO_TOL_REL_GAP" => 1e-6,
-    "INTPNT_CO_TOL_PFEAS" => 1e-6,
-    "INTPNT_CO_TOL_DFEAS" => 1e-6))
+    "INTPNT_CO_TOL_REL_GAP" => 1e-3,
+    "INTPNT_CO_TOL_PFEAS" => 1e-3,
+    "INTPNT_CO_TOL_DFEAS" => 1e-3))
 
   # Call the setup
   _, vars, setup_time = setup!(model, inst, opts)

@@ -3,6 +3,11 @@ module Header
 
 using Parameters
 
+const VecInt = Vector{Int}
+const VecF64 = Vector{Float64}
+const PairVecF64 = Tuple{VecF64, VecF64}
+const MatF64 = Matrix{Float64}
+
 # Different types of networks
 abstract type NetworkType end
 struct ReluNetwork <: NetworkType end
@@ -17,13 +22,13 @@ abstract type NeuralNetwork end
   type :: NetworkType
 
   # The state vector dimension at start of each layer
-  xdims :: Vector{Int}
+  xdims :: VecInt
   @assert length(xdims) >= 3
 
-  zdims :: Vector{Int} = [xdims[1:end-1]; 1]
+  zdims :: VecInt = [xdims[1:end-1]; 1]
 
   # Each M[K] == [Wk bk]
-  Ms :: Vector{Matrix{Float64}}
+  Ms :: Vector{MatF64}
   K :: Int = length(Ms)
   @assert length(xdims) == K + 1
 
@@ -36,22 +41,22 @@ abstract type InputConstraint end
 
 # The set where {x : x1min <= x <= x1max}
 @with_kw struct BoxInput <: InputConstraint
-  x1min :: Vector{Float64}
-  x1max :: Vector{Float64}
+  x1min :: VecF64
+  x1max :: VecF64
   @assert length(x1min) == length(x1max)
 end
 
 # The set where {x : Hx <= h}
 @with_kw struct PolytopeInput <: InputConstraint
-  H :: Matrix{Float64}
-  h :: Vector{Float64}
+  H :: MatF64
+  h :: VecF64
   @assert size(H)[1] == length(h)
 end
 
 # Safety constraints
 # The set {x : [x; f(x); 1]' * S * [x; f(x); 1] <= 0
 @with_kw struct SafetyConstraint
-  S :: Matrix{Float64}
+  S :: MatF64
 end
 
 # Reachability Constraints
@@ -59,7 +64,7 @@ abstract type ReachableSet end
 
 # Given a hyperplane normals such that each normalk' * x <= hk
 @with_kw struct HyperplaneSet <: ReachableSet
-  normal :: Vector{Float64}
+  normal :: VecF64
   @assert length(normal) >= 1
 end
 
@@ -92,10 +97,12 @@ end
 end
 
 #
+export VecInt, VecF64, PairVecF64, MatF64
 export NetworkType, ReluNetwork, TanhNetwork
 export NeuralNetwork, FeedForwardNetwork
 export InputConstraint, BoxInput, PolytopeInput
-export SafetyConstraint, ReachabilityConstraint, HyperplaneSet
+export SafetyConstraint, ReachabilityConstraint
+export HyperplaneSet
 export QueryInstance, SafetyInstance, ReachabilityInstance
 export SolutionOutput
 

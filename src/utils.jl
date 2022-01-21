@@ -9,12 +9,13 @@ using LinearAlgebra
 using DelimitedFiles
 using Random
 using Plots
+using Printf
 
 pyplot()
 
 # A general form of quadratic safety
 # a||x||^2 + b||f(x)||^2 + c <= 0
-function quadraticSafety(a, b, c, xdims :: Vector{Int64})
+function quadraticSafety(a, b, c, xdims :: VecInt)
   @assert length(xdims) > 1
   _S11 = a * I(xdims[1])
   _S12 = zeros(xdims[1], xdims[end])
@@ -27,17 +28,17 @@ function quadraticSafety(a, b, c, xdims :: Vector{Int64})
 end
 
 # ||f(x)||^2 <= L ||x||^2
-function L2gainSafety(L2gain :: Number, xdims :: Vector{Int64})
+function L2gainSafety(L2gain, xdims :: VecInt)
   return quadraticSafety(-L2gain, 1.0, 0.0, xdims)
 end
 
 # ||f(x)||^2 <= C
-function outputNorm2Safety(norm2 :: Number, xdims :: Vector{Int64})
+function outputNorm2Safety(norm2, xdims :: VecInt)
   return quadraticSafety(0.0, 1.0, -norm2)
 end
 
 # Generate a random network given the desired dimensions at each layer
-function randomNetwork(xdims :: Vector{Int64}; type :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
+function randomNetwork(xdims :: VecInt; type :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
   @assert length(xdims) > 1
   Ms = Vector{Any}()
   for k = 1:length(xdims) - 1
@@ -49,7 +50,7 @@ function randomNetwork(xdims :: Vector{Int64}; type :: NetworkType = ReluNetwork
 end
 
 # Run a feedforward net on an initial input and give the output
-function runNetwork(x1 :: Vector{Float64}, ffnet :: FeedForwardNetwork)
+function runNetwork(x1 :: VecF64, ffnet :: FeedForwardNetwork)
   @assert length(x1) == ffnet.xdims[1]
   function ϕ(x)
     if ffnet.type isa ReluNetwork; return max.(x, 0)
@@ -95,41 +96,65 @@ function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1
   return xfs
 end
 
-# Plot bouding hyperplanes for 2D points
-function plotReachPolytope(points :: Vector{Vector{Float64}}, hplanes :: Vector{Tuple{Vector{Float64}, Float64}}; saveto="~/Desktop/foo.png")
-  @assert all(z -> z == 2, length.(points))
-  @assert length(hplanes) >= 3
-  @assert all(hp -> length(hp[1]) == 2 && hp[2] isa Float64, hplanes)
+# Find the vertices of a bunch of hyperplanes
+const Hplane = Tuple{VecF64, Float64}
+const Polytope = Vector{Hplane}
 
-  xs = [p[1] for p in points]
-  ys = [p[2] for p in points]
-
+function polytopeVertices(polytope :: Polytope)
+  hplanes = polytope
   augs = [hplanes; hplanes[1]; hplanes[2]]
-
-  verts = Vector{Any}()
+  verts = Vector{VecF64}()
   for i in 1:(length(augs)-1)
     n1, h1 = augs[i]
     n2, h2 = augs[i+1]
     x = [n1'; n2'] \ [h1; h2]
-    # println("pushed: " * string(x))
     push!(verts, x)
   end
-
   vxs = [v[1] for v in verts]
   vys = [v[2] for v in verts]
+  return vxs, vys
+end
 
-  # Figure out how to plot
-  xmin, xmax = minimum([xs; vxs]), maximum([xs; vxs])
-  ymin, ymax = minimum([ys; vys]), maximum([ys; vys])
+function plotBoundingPolytopes(points :: Vector{VecF64}, labeled_polys :: Vector{Tuple{String, Polytope}}; saveto="~/Desktop/foo.png")
+  @assert all(z -> z == 2, length.(points))
+  @assert all(lbp -> length(lbp[2]) >= 3, labeled_polys)
+
+  # The points
+  xs = [p[1] for p in points]
+  ys = [p[2] for p in points]
+
+  # The vertices of each poly
+  labeled_polyverts = [(label, polytopeVertices(poly)) for (label, poly) in labeled_polys]
+
+  for (label, (vxs, vys)) in labeled_polyverts
+    @printf("label: %s\n", label)
+    println(round.([vxs vys], digits=2))
+    println("")
+  end
+
+  # Figure out the extreme points to set the plot dimensions
+  lpvxs = vcat([pvs[1] for (_, pvs) in labeled_polyverts]...)
+  lpvys = vcat([pvs[2] for (_, pvs) in labeled_polyverts]...)
+
+  xmin, xmax = minimum([xs; lpvxs]), maximum([xs; lpvxs])
+  ymin, ymax = minimum([ys; lpvys]), maximum([ys; lpvys])
   xgap = xmax - xmin
   ygap = ymax - ymin
-  plotxlim = (xmin - 0.4 * xgap, xmax + 0.4 * xgap)
-  plotylim = (ymin - 0.4 * ygap, ymax + 0.4 * ygap)
+  plotxlim = (xmin - 0.3 * xgap, xmax + 0.3 * xgap)
+  plotylim = (ymin - 0.3 * ygap, ymax + 0.3 * ygap)
 
-  # Begin plotting
+  # Plot stuff
+  cur_colors = theme_palette(:auto)
   plt = plot()
-  plt = plot!(vxs, vys, color=:red)
-  plt = scatter!(xs, ys, markersize=4, alpha=0.3, color=:blue, xlim=plotxlim, ylim=plotylim)
+  for (i, (lbl, (vxs, vys))) in enumerate(labeled_polyverts)
+    plt = plot!(vxs, vys, color=cur_colors[i], label=lbl)
+  end
+
+  plt = scatter!(xs, ys, markersize=4, alpha=0.3, color=:blue,
+                xlim=plotxlim, ylim=plotylim, label="",
+                legendfont=font(12),
+                xtickfont=font(10),
+                ytickfont=font(10))
   savefig(plt, saveto)
   return plt
 end
@@ -145,7 +170,7 @@ end
 export quadraticSafety, L2gainSafety, outputNorm2Safety
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
-export plotReachPolytope
+export plotBoundingPolytopes
 export NNet2FeedForwardNetwork
 
 end # End Module

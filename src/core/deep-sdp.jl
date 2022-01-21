@@ -13,10 +13,10 @@ using Printf
 
 # Configuration options
 @with_kw struct DeepSdpOptions
-  x_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
-  slope_intvs :: Union{Nothing, Vector{Tuple{Vector{Float64}, Vector{Float64}}}} = nothing
+  x_intvs :: Union{Nothing, Vector{PairVecF64}} = nothing
+  slope_intvs :: Union{Nothing, Vector{PairVecF64}} = nothing
   tband :: Union{Nothing, Int} = nothing
-  max_solve_time :: Float64 = 60.0
+  max_solve_time :: Float64 = 300.0
   verbose :: Bool = false
 end
 
@@ -150,9 +150,9 @@ function run(inst :: QueryInstance, opts :: DeepSdpOptions)
     Mosek.Optimizer,
     "QUIET" => true,
     "MSK_DPAR_OPTIMIZER_MAX_TIME" => opts.max_solve_time,
-    "INTPNT_CO_TOL_REL_GAP" => 1e-6,
-    "INTPNT_CO_TOL_PFEAS" => 1e-6,
-    "INTPNT_CO_TOL_DFEAS" => 1e-6))
+    "INTPNT_CO_TOL_REL_GAP" => 1e-3,
+    "INTPNT_CO_TOL_PFEAS" => 1e-3,
+    "INTPNT_CO_TOL_DFEAS" => 1e-3))
 
   # Delegate the appropriate call depending on our query instance
   if inst isa SafetyInstance
