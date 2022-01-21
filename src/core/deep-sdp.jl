@@ -16,7 +16,7 @@ using Printf
   x_intvs :: Union{Nothing, Vector{PairVecF64}} = nothing
   slope_intvs :: Union{Nothing, Vector{PairVecF64}} = nothing
   tband :: Union{Nothing, Int} = nothing
-  max_solve_time :: Float64 = 300.0
+  max_solve_time :: Float64 = 180.0
   verbose :: Bool = false
 end
 

@@ -49,10 +49,14 @@ BATCH_W10 = ("W10", [(10, d) for d in DEPTHS])
 BATCH_W15 = ("W15", [(15, d) for d in DEPTHS])
 BATCH_W20 = ("W20", [(20, d) for d in DEPTHS])
 
+MAX_TIMEOUTS = 2
+
 #
 function runSafety(batch, β :: Int, N :: Int)
   batch_id, batch_items = batch
   results = Vector{Any}()
+
+  timeouts_hit = 0
   
   for (ldim, numl) in batch_items
     nnet_filename = @sprintf("rand-in2-out2-ldim%d-numl%d.nnet", ldim, numl)
@@ -77,8 +81,8 @@ function runSafety(batch, β :: Int, N :: Int)
     end
 
     # Safety stuff
-    # L2gain = 2 * sqrt(ldim * numl) # Or something smarter
-    L2gain = 1e6
+    L2gain = sqrt(ldim * numl) # Or something smarter
+    # L2gain = 1e6
     @printf("\tL2gain: %.3f\n", L2gain)
     iter_results = Vector{Any}()
     for i in 1:N
@@ -92,13 +96,22 @@ function runSafety(batch, β :: Int, N :: Int)
 
       # Break after push so we do store a result
       status_str = string(term_status)
-      if status_str == "TIME_LIMIT" || status_str == "SLOW_PROGRESS"; break end
+      if status_str == "SLOW_PROGRESS"; break end
+
+      if status_str == "TIME_LIMIT"
+        timeouts_hit += 1
+        break
+      end
     end
     push!(results, (ldim, numl, iter_results))
 
     # Compute a statistic to print
     avg_solve_time = sum([ir[1] for ir in iter_results]) / (1.0 * N)
     @printf("\t\t\t\t\t   avg time: %.3f\n\n", avg_solve_time)
+
+    if timeouts_hit >= MAX_TIMEOUTS
+      break
+    end
   end
 
   # Save the results for this batch
