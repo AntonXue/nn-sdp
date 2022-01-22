@@ -48,11 +48,12 @@ BATCH_W5 = ("W5", [(5, d) for d in DEPTHS])
 BATCH_W10 = ("W10", [(10, d) for d in DEPTHS])
 BATCH_W15 = ("W15", [(15, d) for d in DEPTHS])
 BATCH_W20 = ("W20", [(20, d) for d in DEPTHS])
+BATCH_TEST = ("TEST", [(5, 5), (5, 10), (10, 5)])
 
 MAX_TIMEOUTS = 2
 
 #
-function runSafety(batch, β :: Int, N :: Int)
+function runSafety(batch, N :: Int; β = nothing)
   batch_id, batch_items = batch
   results = Vector{Any}()
 
@@ -68,7 +69,6 @@ function runSafety(batch, β :: Int, N :: Int)
     x1min = ones(2) .- 1e-2
     x1max = ones(2) .+ 1e-2
     input = BoxInput(x1min=x1min, x1max=x1max)
-    β = min(β, numl - 2)
 
     # Load the appropriate P1 or P2
     if args["deepsdp"]
@@ -77,6 +77,7 @@ function runSafety(batch, β :: Int, N :: Int)
     else
       tband = args["tband"]
       tband_func = (tband isa Nothing) ? nothing : (x,y) -> tband
+      β = min(β, numl - 2)
       ffnet, opts = loadP2(nnet_filepath, input, β, tband_func=tband_func)
     end
 
@@ -115,7 +116,11 @@ function runSafety(batch, β :: Int, N :: Int)
   end
 
   # Save the results for this batch
-  saveto_filepath = joinpath(METHOD_DIR, @sprintf("P2-%s-beta%d-runs.txt", batch_id, β))
+  if args["deepsdp"]
+    saveto_filepath = joinpath(METHOD_DIR, @sprintf("P1-%s-runs.txt", batch_id))
+  else
+    saveto_filepath = joinpath(METHOD_DIR, @sprintf("P2-%s-beta%d-runs.txt", batch_id, β))
+  end
   @printf("saving to %s\n", saveto_filepath)
   open(saveto_filepath, "w") do file
     for (ldim, numl, iter_results) in results
@@ -127,40 +132,6 @@ function runSafety(batch, β :: Int, N :: Int)
       write(file, @sprintf("\tavg time:   %.3f\n", avg_time))
       write(file, "\n")
     end
-  end
-  return results
-end
-
-function runReach(batch, β :: Int)
-  results = Vector{Any}()
-  for (ldim, numl) in REACH_WIDTH_DEPTHS
-    nnet_filename = @sprintf("rand-in2-out2-ldim%d-numl%d.nnet", ldim, numl)
-    nnet_filepath = joinpath(NNET_DIR, nnet_filename)
-    println("processing NNet: " * nnet_filepath)
-    @assert isfile(nnet_filepath)
-
-    # Load the thing
-    x1min = ones(2) .- 1e-2
-    x1max = ones(2) .+ 1e-2
-    input = BoxInput(x1min=x1min, x1max=x1max)
-
-    # Load the appropriate P1 or P2
-    if args["deepsdp"]
-      ffnet, opts = loadP1(nnet_filepath, input)
-    else
-      ffnet, opts = loadP2(nnet_filepath, input, β)
-    end
-
-    # Safety stuff
-    aug_nnet_filename = "β" * string(β) * "_" * nnet_filename
-    image_filepath = joinpath(METHOD_DIR, aug_nnet_filename * ".png")
-    hplanes, poly_time = solveReachPolytope(ffnet, input, opts, 6, image_filepath)
-    xfs = randomTrajectories(10000, ffnet, input.x1min, input.x1max)
-    plotReachPolytope(xfs, hplanes, saveto=image_filepath)
-
-    # TODO: write to a text file, probably
-    push!(results, (ldim, numl, poly_time))
-    println("")
   end
   return results
 end
