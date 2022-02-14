@@ -1,0 +1,60 @@
+W 5, D 5
+	solve time: 0.151 	 OPTIMAL
+	solve time: 0.144 	 OPTIMAL
+	solve time: 0.124 	 OPTIMAL
+	avg time:   0.140
+
+W 5, D 10
+	solve time: 0.543 	 OPTIMAL
+	solve time: 0.462 	 OPTIMAL
+	solve time: 0.498 	 OPTIMAL
+	avg time:   0.501
+
+W 5, D 15
+	solve time: 0.941 	 OPTIMAL
+	solve time: 0.838 	 OPTIMAL
+	solve time: 0.785 	 OPTIMAL
+	avg time:   0.855
+
+W 5, D 20
+	solve time: 1.388 	 OPTIMAL
+	solve time: 1.359 	 OPTIMAL
+	solve time: 1.372 	 OPTIMAL
+	avg time:   1.373
+
+W 5, D 25
+	solve time: 1.523 	 OPTIMAL
+	solve time: 1.502 	 OPTIMAL
+	solve time: 1.462 	 OPTIMAL
+	avg time:   1.496
+
+W 5, D 30
+	solve time: 1.767 	 OPTIMAL
+	solve time: 1.600 	 OPTIMAL
+	solve time: 1.522 	 OPTIMAL
+	avg time:   1.630
+
+W 5, D 35
+	solve time: 1.934 	 OPTIMAL
+	solve time: 2.059 	 OPTIMAL
+	solve time: 2.062 	 OPTIMAL
+	avg time:   2.018
+
+W 5, D 40
+	solve time: 2.259 	 OPTIMAL
+	solve time: 2.462 	 OPTIMAL
+	solve time: 2.477 	 OPTIMAL
+	avg time:   2.399
+
+W 5, D 45
+	solve time: 2.533 	 OPTIMAL
+	solve time: 2.411 	 OPTIMAL
+	solve time: 2.768 	 OPTIMAL
+	avg time:   2.571
+
+W 5, D 50
+	solve time: 3.671 	 OPTIMAL
+	solve time: 3.303 	 OPTIMAL
+	solve time: 3.701 	 OPTIMAL
+	avg time:   3.558
+

@@ -1,0 +1,14 @@
+W 5, D 5
+	solve time: 0.077 	 OPTIMAL
+	solve time: 0.066 	 OPTIMAL
+	avg time:   0.071
+
+W 5, D 10
+	solve time: 0.174 	 OPTIMAL
+	solve time: 0.169 	 OPTIMAL
+	avg time:   0.172
+
+W 10, D 5
+	solve time: 1.720 	 SLOW_PROGRESS
+	avg time:   1.720
+

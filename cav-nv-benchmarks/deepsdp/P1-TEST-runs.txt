@@ -1,0 +1,15 @@
+W 5, D 5
+	solve time: 0.058 	 OPTIMAL
+	solve time: 0.058 	 OPTIMAL
+	avg time:   0.058
+
+W 5, D 10
+	solve time: 0.520 	 OPTIMAL
+	solve time: 0.521 	 OPTIMAL
+	avg time:   0.520
+
+W 10, D 5
+	solve time: 1.194 	 INFEASIBLE
+	solve time: 1.214 	 INFEASIBLE
+	avg time:   1.204
+

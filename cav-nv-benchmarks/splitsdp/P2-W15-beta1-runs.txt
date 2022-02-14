@@ -1,0 +1,34 @@
+W 15, D 5
+	solve time: 1.783 	 OPTIMAL
+	solve time: 1.828 	 OPTIMAL
+	avg time:   1.805
+
+W 15, D 10
+	solve time: 8.264 	 OPTIMAL
+	solve time: 8.215 	 OPTIMAL
+	avg time:   8.239
+
+W 15, D 15
+	solve time: 48.776 	 SLOW_PROGRESS
+	avg time:   48.776
+
+W 15, D 20
+	solve time: 64.621 	 SLOW_PROGRESS
+	avg time:   64.621
+
+W 15, D 25
+	solve time: 120.566 	 SLOW_PROGRESS
+	avg time:   120.566
+
+W 15, D 30
+	solve time: 158.808 	 SLOW_PROGRESS
+	avg time:   158.808
+
+W 15, D 35
+	solve time: 183.378 	 TIME_LIMIT
+	avg time:   183.378
+
+W 15, D 40
+	solve time: 184.110 	 TIME_LIMIT
+	avg time:   184.110
+

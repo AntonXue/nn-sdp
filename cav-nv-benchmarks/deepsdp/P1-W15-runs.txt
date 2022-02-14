@@ -1,0 +1,20 @@
+W 15, D 5
+	solve time: 1.538 	 OPTIMAL
+	solve time: 1.586 	 OPTIMAL
+	solve time: 1.600 	 OPTIMAL
+	avg time:   1.575
+
+W 15, D 10
+	solve time: 91.403 	 OPTIMAL
+	solve time: 91.109 	 OPTIMAL
+	solve time: 91.133 	 OPTIMAL
+	avg time:   91.215
+
+W 15, D 15
+	solve time: 208.375 	 TIME_LIMIT
+	avg time:   208.375
+
+W 15, D 20
+	solve time: 311.824 	 TIME_LIMIT
+	avg time:   311.824
+

@@ -2,14 +2,15 @@
 # Should only be used within main.jl or a similar file
 module Utils
 
-using ..Header
-using ..Common
-using ..NNetParser: NNet
 using LinearAlgebra
 using DelimitedFiles
 using Random
 using Plots
 using Printf
+
+using ..MyLinearAlgebra
+using ..MyNeuralNetwork
+using ..NNetParser: NNet
 
 pyplot()
 
@@ -38,56 +39,46 @@ function outputNorm2Safety(norm2, xdims :: VecInt)
 end
 
 # Generate a random network given the desired dimensions at each layer
-function randomNetwork(xdims :: VecInt; type :: NetworkType = ReluNetwork(), σ :: Float64 = 1.0)
+function randomNetwork(xdims :: VecInt; activ :: Activation = ReluActivation(), σ :: Float64 = 1.0)
   @assert length(xdims) > 1
-  Ms = Vector{Any}()
-  for k = 1:length(xdims) - 1
-    # Width is xdims[k]+1 because Mk = [Wk bk]
-    Mk = randn(xdims[k+1], xdims[k]+1) * σ
-    push!(Ms, Mk)
-  end
-  return FeedForwardNetwork(type=type, xdims=xdims, Ms=Ms)
+  Ms = [randn(xdims[k+1], xdims[k]+1) * σ for k in 1:(length(xdims) - 1)]
+  return NeuralNetwork(activ=activ, xdims=xdims, Ms=Ms)
 end
 
 # Run a feedforward net on an initial input and give the output
-function runNetwork(x1 :: VecF64, ffnet :: FeedForwardNetwork)
-  @assert length(x1) == ffnet.xdims[1]
+function runNetwork(x1 :: VecF64, nnet :: NeuralNetwork)
+  @assert length(x1) == nnet.xdims[1]
   function ϕ(x)
-    if ffnet.type isa ReluNetwork; return max.(x, 0)
-    elseif ffnet.type isa TanhNetwork; return tanh.(x)
-    else; error("unsupported network: " * string(ffnet))
+    if nnet.activ isa ReluActivation; return max.(x, 0)
+    elseif nnet.activ isa TanhActivation; return tanh.(x)
+    else; error("unsupported network: " * string(nnet))
     end
   end
 
   xk = x1
-  # Run through each layer
-  for Mk in ffnet.Ms[1:end-1]
-    xk = Mk * [xk; 1]
-    xk = ϕ(xk)
-  end
-  # Then the final layer does not have an activation
-  xk = ffnet.Ms[end] * [xk; 1]
+  for Mk in nnet.Ms[1:end-1]; xk = ϕ(Mk * [xk; 1]) end
+  xk = nnet.Ms[end] * [xk; 1]
   return xk
 end
 
 # Generate trajectories from a unit box
-function randomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max)
+function randomTrajectories(N :: Int, nnet :: NeuralNetwork, x1min, x1max)
   # Random.seed!(1234) # Let's move the call to this earlier
-  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
+  @assert length(x1min) == length(x1max) == nnet.xdims[1]
   xgaps = x1max - x1min
-  box01points = rand(ffnet.xdims[1], N)
+  box01points = rand(nnet.xdims[1], N)
   x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
-  xfs = [runNetwork(x1, ffnet) for x1 in x1s]
+  xfs = [runNetwork(x1, nnet) for x1 in x1s]
   return xfs
 end
 
 # Plot some data to a file
-function plotRandomTrajectories(N :: Int, ffnet :: FeedForwardNetwork, x1min, x1max; saveto="~/Desktop/hello.png")
+function plotRandomTrajectories(N :: Int, nnet :: NeuralNetwork, x1min, x1max; saveto="~/Desktop/hello.png")
   # Make sure we can actually plot these in 2D
-  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
-  @assert ffnet.xdims[end] == 2
+  @assert length(x1min) == length(x1max) == nnet.xdims[1]
+  @assert nnet.xdims[end] == 2
 
-  xfs = randomTrajectories(N, ffnet, x1min, x1max)
+  xfs = randomTrajectories(N, nnet, x1min, x1max)
   d1s = [xf[1] for xf in xfs]
   d2s = [xf[2] for xf in xfs]
   
@@ -98,10 +89,10 @@ end
 
 # Find the vertices of a bunch of hyperplanes
 const Hplane = Tuple{VecF64, Float64}
-const Polytope = Vector{Hplane}
+const Poly = Vector{Hplane}
 
-function polytopeVertices(polytope :: Polytope)
-  hplanes = polytope
+function polyVertices(poly :: Poly)
+  hplanes = poly
   augs = [hplanes; hplanes[1]; hplanes[2]]
   verts = Vector{VecF64}()
   for i in 1:(length(augs)-1)
@@ -115,7 +106,7 @@ function polytopeVertices(polytope :: Polytope)
   return vxs, vys
 end
 
-function plotBoundingPolytopes(points :: Vector{VecF64}, labeled_polys :: Vector{Tuple{String, Polytope}}; saveto="~/Desktop/foo.png")
+function plotBoundingPolys(points :: Vector{VecF64}, labeled_polys :: Vector{Tuple{String, Poly}}; saveto="~/Desktop/foo.png")
   @assert all(z -> z == 2, length.(points))
   @assert all(lbp -> length(lbp[2]) >= 3, labeled_polys)
 
@@ -124,7 +115,7 @@ function plotBoundingPolytopes(points :: Vector{VecF64}, labeled_polys :: Vector
   ys = [p[2] for p in points]
 
   # The vertices of each poly
-  labeled_polyverts = [(label, polytopeVertices(poly)) for (label, poly) in labeled_polys]
+  labeled_polyverts = [(label, polyVertices(poly)) for (label, poly) in labeled_polys]
 
   for (label, (vxs, vys)) in labeled_polyverts
     @printf("label: %s\n", label)
@@ -159,10 +150,10 @@ function plotBoundingPolytopes(points :: Vector{VecF64}, labeled_polys :: Vector
   return plt
 end
 
-# Convert NNet to FeedForwardNetwork + BoxInput
-function NNet2FeedForwardNetwork(nnet :: NNet)
+# Convert NNet to NeuralNetwork
+function NNet2NeuralNetwork(nnet :: NNet)
   Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
-  ffnet = FeedForwardNetwork(type=ReluNetwork(), xdims=nnet.layerSizes, Ms=Ms)
+  ffnet = NeuralNetwork(type=ReluNetwork(), xdims=nnet.layerSizes, Ms=Ms)
   return ffnet
 end
 
@@ -170,7 +161,7 @@ end
 export quadraticSafety, L2gainSafety, outputNorm2Safety
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
-export plotBoundingPolytopes
+export plotBoundingPolys
 export NNet2FeedForwardNetwork
 
 end # End Module

@@ -1,128 +1,89 @@
-# Use during the evaluation
 module Methods
 
-using ..Header
-using ..Common
-using ..Intervals
-using ..DeepSdp
-using ..SplitSdp
-using ..NNetParser
-using ..Utils
+using Parameters 
 
-using LinearAlgebra
-using Printf
+using ..MyLinearAlgebra
+using ..MyNeuralNetwork
+using ..Qc
 
-# Safety
-function solveSafetyL2gain(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, L2gain :: Float64; verbose :: Bool = false)
-  @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
-  @assert L2gain > 1e-4 # Not a trivial gain
-  safety = L2gainSafety(L2gain, ffnet.xdims)
-  safety_inst = SafetyInstance(ffnet=ffnet, input=input, safety=safety)
-  if opts isa DeepSdpOptions
-    soln = DeepSdp.run(safety_inst, opts)
-  else
-    soln = SplitSdp.run(safety_inst, opts)
-  end
-  return soln
+# Different kinds of inputs
+abstract type InputConstraint end
+
+# The set where {x : x1min <= x <= x1max}
+@with_kw struct BoxInput
+  x1min :: VecF64
+  x1max :: VecF64
+  @assert length(x1min) == length(x1max)
 end
 
-# Reachability
-function solveReach(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, normal :: VecF64)
-  @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
-  @assert length(normal) == ffnet.xdims[end] == 2 # 2D visualization
-  hplane = HyperplaneSet(normal=normal)
-  reach_inst = ReachabilityInstance(ffnet=ffnet, input=input, reach_set=hplane)
-  if opts isa DeepSdpOptions
-    soln = DeepSdp.run(reach_inst, opts)
-  else
-    soln = SplitSdp.run(reach_inst, opts)
-  end
-  return soln
+# The set where {x : Hx <= h}
+@with_kw struct PolyInput
+  H :: MatF64
+  h :: VecF64
+  @assert size(H)[1] == length(h)
 end
 
-# Solve for a polytope
-function solveReachPolytope(ffnet :: FeedForwardNetwork, input :: BoxInput, opts, num_hplanes :: Int; verbose :: Bool = false)
-  @assert (opts isa DeepSdpOptions) || (opts isa SplitSdpOptions)
-  start_time = time()
-  hplanes = Vector{Tuple{VecF64, Float64}}()
-  for i in 1:num_hplanes
-    # Set up the hyperplane normal
-    θ = ((i-1) / num_hplanes) * 2 * π
-    normal = [cos(θ); sin(θ)]
-    if verbose; @printf("\tpoly [%d/%d] with normal θ=%.3f\n", i, num_hplanes, θ) end
-
-    # Run the query
-    soln = solveReach(ffnet, input, opts, normal)
-    if verbose
-      @printf("\t\tsolve time: %.3f, \t objval: %.4f (%s)\n",
-              soln.solve_time, soln.objective_value, soln.termination_status)
-    end
-    push!(hplanes, (normal, soln.objective_value))
-  end
-
-  poly_time = time() - start_time
-  if verbose; @printf("\ttotal time: %.3f\n", poly_time) end
-  return hplanes
+# Safety constraints
+# The set {x : [x; f(x); 1]' * S * [x; f(x); 1] <= 0
+@with_kw struct SafetyConstraint
+  S :: MatF64
 end
 
-# Warm up stuff
-function warmup(;verbose=false)
-  warmup_start_time = time()
-  xdims = [2;3;3;3;3;3;3;2]
-  ffnet = randomNetwork(xdims)
-  x1min = ones(2) .- 1e-2
-  x1max = ones(2) .+ 1e-2
-  input = BoxInput(x1min=x1min, x1max=x1max)
-  L2gain = 100.0
-  normal = [1.0; 1.0]
+# Some reachable set
+abstract type ReachSet end
 
-  x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  deep_opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
-  split_opts = SplitSdpOptions(β=1, x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=false)
-
-  # Warm up safety first
-  deep_safety_soln = solveSafetyL2gain(ffnet, input, deep_opts, L2gain, verbose=false)
-  split_safety_soln = solveSafetyL2gain(ffnet, input, split_opts, L2gain, verbose=false)
-
-  # Then warmup reachability
-  deep_reach_soln = solveReach(ffnet, input, deep_opts, normal)
-  split_reach_soln = solveReach(ffnet, input, split_opts, normal)
-
-  warmup_time = time() - warmup_start_time
-  if verbose; @printf("warmup time: %.3f\n", warmup_time) end
+# Given a hyperplane normals such that each normalk' * x <= hk
+@with_kw struct HplaneReachSet <: ReachSet
+  normal :: VecF64
+  @assert length(normal) >= 1
 end
 
-# Load up a P1 instance
-function loadP1(nnet_filepath :: String, input :: BoxInput; verbose=false, tband = nothing)
-  nnet = NNetParser.NNet(nnet_filepath)
-  ffnet = Utils.NNet2FeedForwardNetwork(nnet)
-  x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  opts = DeepSdpOptions(x_intvs=x_intvs, slope_intvs=slope_intvs, verbose=verbose)
-  return ffnet, opts
+# Different problem specifications
+abstract type Problem end
+
+# Safety stuff
+@with_kw struct SafetyProblem <: Problem
+  nnet :: NeuralNetwork
+  input :: InputConstraint
+  output :: SafetyConstraint
+  qcinfos :: Vector{QcInfo}
+  @assert length(qcinfos) >= 1
 end
 
-# Load a P2 instance
-function loadP2(nnet_filepath :: String, input :: BoxInput, β :: Int; verbose=false, tband_func = nothing)
-  nnet = NNetParser.NNet(nnet_filepath)
-  ffnet = Utils.NNet2FeedForwardNetwork(nnet)
-  x_intvs, _, slope_intvs = worstCasePropagation(input.x1min, input.x1max, ffnet)
-  if tband_func isa Nothing
-    tband_func = (k, qxdim) -> qxdim
-  end
-  opts = SplitSdpOptions(
-          β = β,
-          x_intvs = x_intvs,
-          slope_intvs = slope_intvs,
-          tband_func = tband_func,
-          verbose = verbose)
-  return ffnet, opts
+# Reachability stuff
+@with_kw struct ReachProblem <: Problem
+  nnet :: NeuralNetwork
+  input :: InputConstraint
+  output :: ReachSet
+  qcinfos :: Vector{QcInfo}
+  @assert length(qcinfos) >= 1
 end
 
-#
-export solveSafetyL2gain
-export solveReach, solveReachPolytope
-export warmup
-export loadP1, loadP2
-
+# The solution that is to be output by an algorithm
+@with_kw struct ProblemSolution{A, B, C, D}
+  objective_value :: A
+  values :: B
+  summary :: C
+  termination_status :: D
+  total_time :: Float64
+  setup_time :: Float64
+  solve_time :: Float64
 end
 
+# Calculate the sprasity pattern that we'll use
+@with_kw struct SparsityPattern
+  dummy :: Bool
+end
+
+function analyzeSparsity(qcinfos :: Vector{QcInfo})
+end
+
+include("methods/deep_sdp.jl")
+
+export InputContraint, BoxInput, HplaneInput
+export SafetyConstraint
+export ReachSet, HplaneReachSet
+export Problem, SafetyProblem, ReachProblem, ProblemSolution
+export SparsityPattern, analyzeSparsity
+
+end
