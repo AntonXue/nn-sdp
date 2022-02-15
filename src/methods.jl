@@ -1,6 +1,8 @@
 module Methods
 
+using LinearAlgebra
 using Parameters 
+using Printf
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
@@ -10,14 +12,14 @@ using ..Qc
 abstract type InputConstraint end
 
 # The set where {x : x1min <= x <= x1max}
-@with_kw struct BoxInput
+@with_kw struct BoxInput <: InputConstraint
   x1min :: VecF64
   x1max :: VecF64
   @assert length(x1min) == length(x1max)
 end
 
 # The set where {x : Hx <= h}
-@with_kw struct PolyInput
+@with_kw struct PolyInput <: InputConstraint
   H :: MatF64
   h :: VecF64
   @assert size(H)[1] == length(h)
@@ -75,9 +77,7 @@ end
   dummy :: Bool
 end
 
-function analyzeSparsity(qcinfos :: Vector{QcInfo})
-end
-
+include("methods/methods_common.jl")
 include("methods/deep_sdp.jl")
 
 export InputContraint, BoxInput, HplaneInput
@@ -85,5 +85,8 @@ export SafetyConstraint
 export ReachSet, HplaneReachSet
 export Problem, SafetyProblem, ReachProblem, ProblemSolution
 export SparsityPattern, analyzeSparsity
+
+export DeepSdpOptions
+export run
 
 end

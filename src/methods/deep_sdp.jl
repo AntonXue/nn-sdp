@@ -26,7 +26,7 @@ function makeMinP!(model, input :: InputConstraint, nnet :: NeuralNetwork, opts 
   E1 = E(1, nnet.zdims)
   Ea = E(nnet.K+1, nnet.zdims)
   Ein = [E1; Ea]
-  Xin = makeXin(γin, input, nnet)
+  Xin = makePin(γin, input, nnet)
   MinP = Ein' * Xin * Ein
   Pvars = Dict(:γin => γin)
   return MinP, Pvars
@@ -38,7 +38,7 @@ function makeMoutS!(model, S, nnet :: NeuralNetwork, opts :: DeepSdpOptions)
   EK = E(nnet.K, nnet.zdims)
   Ea = E(nnet.K+1, nnet.zdims)
   Eout = [E1; EK; Ea]
-  Xout = makeXout(S, nnet)
+  Xout = makeSout(S, nnet)
   MoutS = Eout' * Xout * Eout
   return MoutS
 end
@@ -52,7 +52,7 @@ function makeMmidQ!(model, qcinfos :: Vector{QcInfo}, nnet :: NeuralNetwork, opt
     γidim = vardim(qcinfo)
     γi = @variable(model, [1:γidim])
     Qvars[Symbol(:γ, i)] = γi
-    @constraint(model, γi >= 0)
+    @constraint(model, γi .>= 0)
     Q = makeQc(γi, qcinfo)
     push!(Qs, Q)
   end
@@ -75,8 +75,8 @@ function setupSafety!(model, prob :: SafetyProblem, opts :: DeepSdpOptions)
 
   # Make the components
   MinP, Pvars = makeMinP!(model, prob.input, prob.nnet, opts)
-  MmidQ, Qvars = makeMidQ!(model, prob.qcinfos, prob.nnet, opts)
-  MoutS = makeMoutS!(model, prob.safety.S, prob.nnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, prob.qcinfos, prob.nnet, opts)
+  MoutS = makeMoutS!(model, prob.output.S, prob.nnet, opts)
 
   # Now the LMI
   Z = MinP + MmidQ + MoutS
@@ -84,7 +84,7 @@ function setupSafety!(model, prob :: SafetyProblem, opts :: DeepSdpOptions)
 
   # Compute statistics and return
   vars = merge(Pvars, Qvars)
-  setup_time = time() - setup_star_time
+  setup_time = time() - setup_start_time
   return model, vars, setup_time
 end
 
@@ -121,7 +121,7 @@ function run(prob :: Problem, opts :: DeepSdpOptions)
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
   if opts.verbose; @printf("\ttotal time: %.3f\n", total_time) end
-  return SolutionOutput(
+  return ProblemSolution(
     objective_value = objective_value(model),
     values = values,
     summary = summary,
