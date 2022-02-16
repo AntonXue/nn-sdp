@@ -88,6 +88,32 @@ function setupSafety!(model, prob :: SafetyProblem, opts :: DeepSdpOptions)
   return model, vars, setup_time
 end
 
+# Hyperplane reachability setup
+function setupHplaneReach!(model, prob :: ReachProblem, opts :: DeepSdpOptions)
+  setup_start_time = time()
+  @assert prob.reach isa HplaneReachSet
+
+  # Make the MinP and MmidQ first
+  MinP, Pvars = makeMinP!(model, prob.input, prob.nnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, prob.qcinfos, prob.nnet, opts)
+
+  # now setup MoutS
+  @variable(model, h)
+  Svars = Dict(:h => h)
+  S = makeShplane(prob.reach.normal, h, prob.nnet)
+  MoutS = makeMoutS!(model, S, prob.nnet, opts)
+
+  # Set up the LMI and objective
+  Z = MinP + MmidQ + MoutS
+  @SDconstraint(model, Z <= 0)
+  @objective(model, Min, h)
+
+  # Calculate stuff and return
+  vars = merge(Pvars, Qvars, Svars)
+  setup_time = time() - setup_start_time
+  return model, vars, setup_time
+end
+
 
 # Solve a model that is ready
 function solve!(model, vars, opts :: DeepSdpOptions)
@@ -113,6 +139,8 @@ function run(prob :: Problem, opts :: DeepSdpOptions)
   # Delegate the appropriate call depending on the kind of problem
   if prob isa SafetyProblem
     _, vars, setup_time = setupSafety!(model, prob, opts)
+  elseif prob isa ReachProblem && prob.reach isa HplaneReachSet
+    _, vars, setup_time = setupHplaneReach!(model, prob, opts)
   else
     error(@sprintf("unrecognized problem: %s", prob))
   end

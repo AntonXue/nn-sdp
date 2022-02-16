@@ -25,7 +25,13 @@ function solveSafetyL2Gain(nnet :: NeuralNetwork, input :: BoxInput, qcinfos, op
 end
 
 # Load a P1
+function solveHplaneReach(nnet :: NeuralNetwork, input :: BoxInput, qcinfos, opts, normal :: VecF64; verbose = false)
+  hplane = HplaneReachSet(normal=normal)
+  reach_prob = ReachProblem(nnet=nnet, input=input, reach=hplane, qcinfos=qcinfos)
+  soln = Methods.run(reach_prob, opts)
+  return soln
+end
 
-export solveSafetyL2Gain
+export solveSafetyL2Gain, solveHplaneReach
 
 end

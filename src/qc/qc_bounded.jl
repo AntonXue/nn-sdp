@@ -21,7 +21,7 @@ function makeQc(γ, qcinfo :: QcBoundedInfo)
   qxdim, acmin, acmax = qcinfo.qxdim, qcinfo.acmin, qcinfo.acmax
   @assert length(γ) == vardim(qcinfo)
 
-  D = diagm(γ) # TODO: more efficent encoding
+  D = Diagonal(γ) # TODO: more efficent encoding
   _Q11 = zeros(qxdim, qxdim)
   _Q12 = zeros(qxdim, qxdim)
   _Q13 = zeros(qxdim)

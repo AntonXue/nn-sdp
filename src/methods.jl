@@ -56,7 +56,7 @@ end
 @with_kw struct ReachProblem <: Problem
   nnet :: NeuralNetwork
   input :: InputConstraint
-  output :: ReachSet
+  reach :: ReachSet
   qcinfos :: Vector{QcInfo}
   @assert length(qcinfos) >= 1
 end

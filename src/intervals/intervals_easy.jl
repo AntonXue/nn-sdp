@@ -15,7 +15,7 @@ function intervalsWorstCase(x1min :: VecF64, x1max :: VecF64, nnet :: NeuralNetw
   push!(x_intvs, (x1min, x1max))
 
   # The inputs to ϕ[1], ..., ϕ[K-1]
-  ac_intvs = Vector{PairVecF64}()
+  pre_ac_intvs = Vector{PairVecF64}()
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(nnet.Ms)
@@ -26,13 +26,13 @@ function intervalsWorstCase(x1min :: VecF64, x1max :: VecF64, nnet :: NeuralNetw
     if k == nnet.K
       xkmin, xkmax = ykmin, ykmax
     else
-      push!(ac_intvs, (ykmin, ykmax))
+      push!(pre_ac_intvs, (ykmin, ykmax))
       xkmin, xkmax = ϕ(ykmin), ϕ(ykmax)
     end
     push!(x_intvs, (xkmin, xkmax))
   end
 
   # Each is a list of tuple of vectors, for flexibility; vcat as needed
-  return IntervalInfo(nnet=nnet, x_intvs=x_intvs, ac_intvs=ac_intvs)
+  return IntervalInfo(nnet=nnet, x_intvs=x_intvs, pre_ac_intvs=pre_ac_intvs)
 end
 

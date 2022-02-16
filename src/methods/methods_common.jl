@@ -15,7 +15,7 @@ function makePbox(x1min :: VecF64, x1max :: VecF64, γin)
 end
 
 # P function for a polytope
-function makePpolytope(H :: Matrix{Float64}, h :: VecF64, Γ)
+function makePpoly(H :: Matrix{Float64}, h :: VecF64, Γ)
   @assert size(H)[1] == length(h)
   _P11 = H' * Γ * H
   _P12 = -H' * Γ * h
@@ -25,7 +25,7 @@ function makePpolytope(H :: Matrix{Float64}, h :: VecF64, Γ)
 end
 
 # Bounding hyperplane such that normal' * f(x) <= h, for variable h
-function makeShyperplane(normal :: VecF64, h, nnet :: NeuralNetwork)
+function makeShplane(normal :: VecF64, h, nnet :: NeuralNetwork)
   d1 = nnet.xdims[1]
   dK1 = nnet.xdims[end]
   @assert length(normal) == dK1
