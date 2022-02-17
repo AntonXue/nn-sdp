@@ -18,5 +18,6 @@ include("qc/qc_sector.jl")
 export QcInfo, QcBoundedInfo, QcSectorInfo
 export vardim, makeQc
 export makeA, makeb, makeB
+export sectorBounds
 
 end

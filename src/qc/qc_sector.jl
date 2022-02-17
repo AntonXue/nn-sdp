@@ -13,6 +13,9 @@ using ..MyNeuralNetwork
   @assert qxdim == length(pre_a) == length(pre_b)
   @assert 0 <= tband
   @assert base_a <= base_b
+  @assert pre_a <= pre_b
+  @assert all(base_a .<= pre_a)
+  @assert all(pre_b .<= base_b)
 end
 
 function vardim(qcinfo :: QcSectorInfo)
@@ -48,5 +51,34 @@ function makeQc(γ, qcinfo :: QcSectorInfo)
   _Q23 = zeros(size(_Q22)[1])
   _Q33 = 0
   Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
+end
+
+function sectorBounds(pre_acmin :: VecF64, pre_acmax :: VecF64, activ :: Activation)
+  @assert length(pre_acmin) == length(pre_acmax)
+  ε = 1e-4
+  if activ isa ReluActivation
+    Ipos = findall(z -> z > ε, pre_acmin)
+    Ineg = findall(z -> z < -ε, pre_acmax)
+    pre_a, pre_b = zeros(length(pre_acmin)), ones(length(pre_acmax))
+    pre_a[Ipos] .= 1.0
+    pre_b[Ineg] .= 0.0
+    return pre_a, pre_b
+
+  elseif activ isa TanhActivation
+    pre_a, pre_b = zeros(length(pre_ac_min)), ones(length(pre_ac_max))
+    for i in 1:length(pre_ac_min)
+      if pre_ac_min[i] * pre_ac_max[i] >= 0
+        pre_a[i] = tanh(pre_ac_max[i]) / pre_ac_max[i]
+        pre_b[i] = tanh(pre_ac_min[i]) / pre_ac_min[i]
+      else
+        pre_a[i] = min(tanh(pre_acmin[i]) / pre_acmin[i], tanh(pre_acmax[i]) / pre_acmax[i])
+        pre_b[i] = 1.0
+      end
+    end
+    return pre_a, pre_b
+
+  else
+    error(@sprintf("unsupported activation: %s\n", activ))
+  end
 end
 
