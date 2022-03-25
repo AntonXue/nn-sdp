@@ -23,7 +23,7 @@ NUM_LAYERS = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
 
 # Generate a random network given the number of layers, input, output, and layer dimensions
 def random_params(input_dim, output_dim, layer_dim, num_layers, sigma):
-  xdims = [input_dim] + ([layer_dim] * (num_layers - 1)) + [output_dim]
+  xdims = [input_dim] + ([layer_dim] * num_layers) + [output_dim]
   Ws = [np.random.standard_normal(size=(xdims[k+1], xdims[k])) * sigma for k in range(0, len(xdims)-1)]
   bs = [np.random.standard_normal(size=xdims[k+1]) * sigma for k in range(0, len(xdims)-1)]
   return xdims, Ws, bs

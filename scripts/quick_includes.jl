@@ -4,7 +4,7 @@ using LinearAlgebra
 using ArgParse
 using Printf
 
-include("../src/nn_sdp.jl"); using .NnSdp
+include("../src/NnSdp.jl"); using .NnSdp
 const nn = NnSdp
 
 function parseArgs()
@@ -30,32 +30,34 @@ intv_info = intervalsWorstCase(input.x1min, input.x1max, nnet)
 
 # QC bounded
 qxdim = sum(nnet.xdims[2:end-1])
-acmin = vcat([xi[1] for xi in intv_info.x_intvs[2:end-1]]...)
-acmax = vcat([xi[2] for xi in intv_info.x_intvs[2:end-1]]...)
-qcbounded_info = QcBoundedInfo(qxdim=qxdim, acmin=acmin, acmax=acmax)
+qxmin = vcat([qxi[1] for qxi in intv_info.x_intvs[2:end-1]]...)
+qxmax = vcat([qxi[2] for qxi in intv_info.x_intvs[2:end-1]]...)
+qcbounded_info = QcBoundedInfo(qxdim=qxdim, qxmin=qxmin, qxmax=qxmax)
 
 # QC sector
-pre_acmin = vcat([prei[1] for prei in intv_info.pre_ac_intvs]...)
-pre_acmax = vcat([prei[2] for prei in intv_info.pre_ac_intvs]...)
-
-pre_a, pre_b = sectorBounds(pre_acmin, pre_acmax, nnet.activ)
-qcsector_info = QcSectorInfo(qxdim=qxdim, tband=(5), pre_a=pre_a, pre_b=pre_b, base_a=0.0, base_b=1.0)
+qcsec_qxmin = vcat([prei[1] for prei in intv_info.qx_intvs]...)
+qcsec_qxmax = vcat([prei[2] for prei in intv_info.qx_intvs]...)
+smin, smax = sectorBounds(qcsec_qxmin, qcsec_qxmax, nnet.activ)
+qcsector_info = QcSectorInfo(qxdim=qxdim, β=1, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
 # qcinfos = [qcbounded_info]
 # qcinfos = [qcsector_info]
 qcinfos = [qcbounded_info, qcsector_info]
 
+MOSEK_OPTS =
+  Dict("MSK_IPAR_INTPNT_SOLVE_FORM" => 2)
 
-deepsdp_opts = DeepSdpOptions(verbose=true)
+deepsdp_opts = DeepSdpOptions(mosek_opts=MOSEK_OPTS, verbose=true)
+# deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
 
-@printf("\n\n\n")
+println("")
 
 normal = [1.0; 1.0]
 reach_soln = solveHplaneReach(nnet, input, qcinfos, deepsdp_opts, normal, verbose=true)
-@printf("%s\n", reach_soln)
+println(reach_soln)
 
-@printf("\n\n\n")
+println("\n\n")
 
 safety_soln = solveSafetyL2Gain(nnet, input, qcinfos, deepsdp_opts, 1000.0, verbose=true)
-@printf("%s\n", safety_soln)
+println(safety_soln)
 
