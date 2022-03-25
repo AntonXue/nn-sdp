@@ -61,6 +61,8 @@ end
   @assert length(qcinfos) >= 1
 end
 
+abstract type QueryOptions end
+
 # The solution that is to be output by an algorithm
 @with_kw struct QuerySolution{A,B,C,D}
   objective_value::A
@@ -72,21 +74,19 @@ end
   solve_time::Float64
 end
 
-# Calculate the sprasity pattern that we'll use
-@with_kw struct SparsityPattern
-  dummy :: Bool
-end
-
 include("methods_common.jl")
+include("clique_analysis.jl")
 include("deep_sdp.jl")
+include("chordal_sdp.jl")
 
 export InputContraint, BoxInput, HplaneInput
 export SafetyConstraint
 export ReachSet, HplaneReachSet
 export Query, SafetyQuery, ReachQuery, QuerySolution
-export SparsityPattern, analyzeSparsity
+export sectorCliques, findCliques
 
 export DeepSdpOptions
+export ChordalSdpOptions
 export runQuery
 
 end

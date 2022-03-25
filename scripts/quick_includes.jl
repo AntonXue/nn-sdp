@@ -3,6 +3,7 @@ start_time = time()
 using LinearAlgebra
 using ArgParse
 using Printf
+using Dates
 
 include("../src/NnSdp.jl"); using .NnSdp
 const nn = NnSdp
@@ -38,26 +39,33 @@ qcbounded_info = QcBoundedInfo(qxdim=qxdim, qxmin=qxmin, qxmax=qxmax)
 qcsec_qxmin = vcat([prei[1] for prei in intv_info.qx_intvs]...)
 qcsec_qxmax = vcat([prei[2] for prei in intv_info.qx_intvs]...)
 smin, smax = sectorBounds(qcsec_qxmin, qcsec_qxmax, nnet.activ)
-qcsector_info = QcSectorInfo(qxdim=qxdim, β=1, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
+qcsec_info = QcSectorInfo(qxdim=qxdim, β=1, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
-# qcinfos = [qcbounded_info]
-# qcinfos = [qcsector_info]
-qcinfos = [qcbounded_info, qcsector_info]
+qcinfos = [qcbounded_info, qcsec_info]
 
+#=
 MOSEK_OPTS =
   Dict("MSK_IPAR_INTPNT_SOLVE_FORM" => 2)
+=#
 
-deepsdp_opts = DeepSdpOptions(mosek_opts=MOSEK_OPTS, verbose=true)
-# deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
+deepsdp_opts = DeepSdpOptions(use_dual=true, verbose=true)
+chordalsdp_opts = ChordalSdpOptions(verbose=true)
 
 println("")
 
 normal = [1.0; 1.0]
-reach_soln = solveHplaneReach(nnet, input, qcinfos, deepsdp_opts, normal, verbose=true)
-println(reach_soln)
+
+println("now: $(now())")
+chordalsdp_reach_soln = solveHplaneReach(nnet, input, qcinfos, chordalsdp_opts, normal, verbose=true)
+println(chordalsdp_reach_soln)
+
+println("now: $(now())")
+deepsdp_reach_soln = solveHplaneReach(nnet, input, qcinfos, deepsdp_opts, normal, verbose=true)
+println(deepsdp_reach_soln)
+
 
 println("\n\n")
 
-safety_soln = solveSafetyL2Gain(nnet, input, qcinfos, deepsdp_opts, 1000.0, verbose=true)
-println(safety_soln)
+# safety_soln = solveSafetyL2Gain(nnet, input, qcinfos, deepsdp_opts, 1000.0, verbose=true)
+# println(safety_soln)
 

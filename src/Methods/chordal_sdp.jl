@@ -10,11 +10,11 @@ using ..MyNeuralNetwork
 using ..Qc
 
 # Default Mosek options
-DEEPSDP_DEFAULT_MOSEK_OPTS =
+CHORDALSDP_DEFAULT_MOSEK_OPTS =
   Dict("QUIET" => true)
 
 # Options
-@with_kw struct DeepSdpOptions <: QueryOptions
+@with_kw struct ChordalSdpOptions <: QueryOptions
   max_solve_time::Float64 = 60.0 * 20
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
@@ -23,17 +23,33 @@ DEEPSDP_DEFAULT_MOSEK_OPTS =
 end
 
 # Set up the model for safety verification (satisfiability)
-function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
+function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   setup_start_time = time()
 
-  # Make the components
+  # Make the components and first construct Z
   MinP, Pvars = makeMinP!(model, query.input, query.nnet, opts)
   MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.nnet, opts)
   MoutS = makeMoutS!(model, query.output.S, query.nnet, opts)
-
-  # Now the LMI
   Z = MinP + MmidQ + MoutS
-  @constraint(model, -Z in PSDCone())
+
+  # Now make each Zk and Eck
+  cliques = findCliques(query.qcinfos, query.nnet)
+  Zdim = sum(query.nnet.zdims)
+  p = length(cliques)
+  Zs = Vector{Any}()
+  Ecs = Vector{Any}()
+  for Ck in cliques
+    Ckdim = length(Ck)
+    Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
+    @constraint(model, -Zk in PSDCone())
+    push!(Zs, Zk)
+    Eck = Ec(Ck, Zdim)
+    push!(Ecs, Eck)
+  end
+
+  # Set up Zksum and assert the equality constraint
+  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:p)
+  @constraint(model, Z .== Zksum)
 
   # Compute statistics and return
   vars = merge(Pvars, Qvars)
@@ -42,7 +58,7 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
 end
 
 # Hyperplane reachability setup
-function setupHplaneReach!(model, query::ReachQuery, opts::DeepSdpOptions)
+function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   setup_start_time = time()
   @assert query.reach isa HplaneReachSet
 
@@ -50,15 +66,33 @@ function setupHplaneReach!(model, query::ReachQuery, opts::DeepSdpOptions)
   MinP, Pvars = makeMinP!(model, query.input, query.nnet, opts)
   MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.nnet, opts)
 
-  # now setup MoutS
+  # now setup MoutS, and make the Z
   @variable(model, h)
-  Svars = Dict(:γh => h)
+  Svars = Dict(:h => h)
   S = makeShplane(query.reach.normal, h, query.nnet)
   MoutS = makeMoutS!(model, S, query.nnet, opts)
-
-  # Set up the LMI and objective
   Z = MinP + MmidQ + MoutS
-  @constraint(model, -Z in PSDCone())
+
+  # Now make each Zk and Eck
+  cliques = findCliques(query.qcinfos, query.nnet)
+  Zdim = sum(query.nnet.zdims)
+  p = length(cliques)
+  Zs = Vector{Any}()
+  Ecs = Vector{Any}()
+  for Ck in cliques
+    Ckdim = length(Ck)
+    Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
+    @constraint(model, -Zk in PSDCone())
+    push!(Zs, Zk)
+    Eck = Ec(Ck, Zdim)
+    push!(Ecs, Eck)
+  end
+
+  # Set up Zksum and assert the equality constraint
+  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:p)
+  @constraint(model, Z .== Zksum)
+
+  # Set up the objective
   @objective(model, Min, h)
 
   # Calculate stuff and return
@@ -68,7 +102,7 @@ function setupHplaneReach!(model, query::ReachQuery, opts::DeepSdpOptions)
 end
 
 # Solve a model that is ready
-function solve!(model, vars, opts::DeepSdpOptions)
+function solve!(model, vars, opts::ChordalSdpOptions)
   optimize!(model)
   summary = solution_summary(model)
   values = Dict()
@@ -77,7 +111,7 @@ function solve!(model, vars, opts::DeepSdpOptions)
 end
 
 # The interface to call
-function runQuery(query::Query, opts::DeepSdpOptions)
+function runQuery(query::Query, opts::ChordalSdpOptions)
   total_start_time = time()
 
   # Set up the model and add solver options, with the defaults first
@@ -112,4 +146,5 @@ function runQuery(query::Query, opts::DeepSdpOptions)
     setup_time = setup_time,
     solve_time = solve_time)
 end
+
 
