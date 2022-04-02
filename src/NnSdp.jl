@@ -16,21 +16,20 @@ using Reexport
 @reexport using .Utils
 
 # Safety
-function solveSafetyL2Gain(nnet::NeuralNetwork, input::BoxInput, qcinfos, opts, L2gain::Float64; verbose = false)
-  safety = L2gainSafety(L2gain, nnet.xdims)
-  safety_inst = SafetyQuery(nnet=nnet, input=input, output=safety, qcinfos=qcinfos)
+function solveSafetyL2Gain(ffnet::FeedFwdNet, input::BoxInput, qcinfos, opts, L2gain::Float64; verbose = false)
+  safety = L2gainSafety(L2gain, ffnet.xdims)
+  safety_inst = SafetyQuery(ffnet=ffnet, input=input, output=safety, qcinfos=qcinfos)
   soln = Methods.runQuery(safety_inst, opts)
   return soln
 end
 
 # Load a P1
-function solveHplaneReach(nnet::NeuralNetwork, input::BoxInput, qcinfos, opts, normal::VecF64; verbose = false)
+function solveHplaneReach(ffnet::FeedFwdNet, input::BoxInput, qcinfos, opts, normal::VecF64; verbose = false)
   hplane = HplaneReachSet(normal=normal)
-  reach_inst = ReachQuery(nnet=nnet, input=input, reach=hplane, qcinfos=qcinfos)
+  reach_inst = ReachQuery(ffnet=ffnet, input=input, reach=hplane, qcinfos=qcinfos)
   soln = Methods.runQuery(reach_inst, opts)
   return soln
 end
-
 
 
 

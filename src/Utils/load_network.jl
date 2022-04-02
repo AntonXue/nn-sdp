@@ -4,7 +4,7 @@ using PyCall
 function loadFromNnet(nnet_file::String, activ::Activ = ReluActiv())
   nnet = NNet(nnet_file)
   Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
-  ffnet = NeuralNetwork(activ=activ, xdims=nnet.layerSizes, Ms=Ms)
+  ffnet = FeedFwdNet(activ=activ, xdims=nnet.layerSizes, Ms=Ms)
   return ffnet
 end
 

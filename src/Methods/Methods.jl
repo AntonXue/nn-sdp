@@ -45,7 +45,7 @@ abstract type Query end
 
 # Safety stuff
 @with_kw struct SafetyQuery <: Query
-  nnet::NeuralNetwork
+  ffnet::FeedFwdNet
   input::InputConstraint
   output::SafetyConstraint
   qcinfos::Vector{QcInfo}
@@ -54,7 +54,7 @@ end
 
 # Reachability stuff
 @with_kw struct ReachQuery <: Query
-  nnet::NeuralNetwork
+  ffnet::FeedFwdNet
   input::InputConstraint
   reach::ReachSet
   qcinfos::Vector{QcInfo}
@@ -79,7 +79,7 @@ include("clique_analysis.jl")
 include("deep_sdp.jl")
 include("chordal_sdp.jl")
 
-export InputContraint, BoxInput, HplaneInput
+export InputConstraint, BoxInput, HplaneInput
 export SafetyConstraint
 export ReachSet, HplaneReachSet
 export Query, SafetyQuery, ReachQuery, QuerySolution

@@ -27,9 +27,9 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
   setup_start_time = time()
 
   # Make the components
-  MinP, Pvars = makeMinP!(model, query.input, query.nnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.nnet, opts)
-  MoutS = makeMoutS!(model, query.output.S, query.nnet, opts)
+  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
+  MoutS = makeMoutS!(model, query.output.S, query.ffnet, opts)
 
   # Now the LMI
   Z = MinP + MmidQ + MoutS
@@ -47,14 +47,14 @@ function setupHplaneReach!(model, query::ReachQuery, opts::DeepSdpOptions)
   @assert query.reach isa HplaneReachSet
 
   # Make the MinP and MmidQ first
-  MinP, Pvars = makeMinP!(model, query.input, query.nnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.nnet, opts)
+  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
 
   # now setup MoutS
   @variable(model, h)
   Svars = Dict(:γh => h)
-  S = makeShplane(query.reach.normal, h, query.nnet)
-  MoutS = makeMoutS!(model, S, query.nnet, opts)
+  S = makeShplane(query.reach.normal, h, query.ffnet)
+  MoutS = makeMoutS!(model, S, query.ffnet, opts)
 
   # Set up the LMI and objective
   Z = MinP + MmidQ + MoutS

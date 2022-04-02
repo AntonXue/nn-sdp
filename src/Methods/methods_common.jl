@@ -23,9 +23,9 @@ function makePpoly(Γ, H::Matrix{Float64}, h::VecF64)
 end
 
 # Bounding hyperplane such that normal' * f(x) <= h, for variable h
-function makeShplane(normal::VecF64, h, nnet::NeuralNetwork)
-  d1 = nnet.xdims[1]
-  dK1 = nnet.xdims[end]
+function makeShplane(normal::VecF64, h, ffnet::FeedFwdNet)
+  d1 = ffnet.xdims[1]
+  dK1 = ffnet.xdims[end]
   @assert length(normal) == dK1
   _S11 = zeros(d1, d1)
   _S12 = zeros(d1, dK1)
@@ -38,8 +38,8 @@ function makeShplane(normal::VecF64, h, nnet::NeuralNetwork)
 end
 
 # γin is a vector
-function makePin(γin, input::InputConstraint, nnet::NeuralNetwork)
-  d1 = nnet.xdims[1]
+function makePin(γin, input::InputConstraint, ffnet::FeedFwdNet)
+  d1 = ffnet.xdims[1]
   if input isa BoxInput
     @assert length(γin) == d1
     return makePbox(γin, input.x1min, input.x1max)
@@ -53,11 +53,11 @@ function makePin(γin, input::InputConstraint, nnet::NeuralNetwork)
 end
 
 # Make the big Sout matrix, where S may be parametrized
-function makeSout(S, nnet::NeuralNetwork)
-  WK = nnet.Ms[nnet.K][1:end, 1:end-1]
-  bK = nnet.Ms[nnet.K][1:end, end]
+function makeSout(S, ffnet::FeedFwdNet)
+  WK = ffnet.Ms[ffnet.K][1:end, 1:end-1]
+  bK = ffnet.Ms[ffnet.K][1:end, end]
 
-  d1 = nnet.zdims[1]
+  d1 = ffnet.zdims[1]
   (dK1, dK) = size(WK)
 
   _R11 = I(d1)
@@ -74,36 +74,36 @@ function makeSout(S, nnet::NeuralNetwork)
 end
 
 # Computes the MinP matrix. Treat this function as though it modifies the model
-function makeMinP!(model, input::InputConstraint, nnet::NeuralNetwork, opts::QueryOptions)
+function makeMinP!(model, input::InputConstraint, ffnet::FeedFwdNet, opts::QueryOptions)
   if input isa BoxInput
-    @variable(model, γin[1:nnet.zdims[1]] >= 0)
+    @variable(model, γin[1:ffnet.zdims[1]] >= 0)
   elseif input isa PolytopeInput
-    @variable(model, γin[1:nnet.zdims[1]^2] >= 0)
+    @variable(model, γin[1:ffnet.zdims[1]^2] >= 0)
   else
     error("unsupported input constraints: $(input)")
   end
-  E1 = E(1, nnet.zdims)
-  Ea = E(nnet.K+1, nnet.zdims)
+  E1 = E(1, ffnet.zdims)
+  Ea = E(ffnet.K+1, ffnet.zdims)
   Ein = [E1; Ea]
-  Pin = makePin(γin, input, nnet)
+  Pin = makePin(γin, input, ffnet)
   MinP = Ein' * Pin * Ein
   Pvars = Dict(:γin => γin)
   return MinP, Pvars
 end
 
 # Computes the MoutS matrix. Treat this function as though it modifies the model
-function makeMoutS!(model, S, nnet::NeuralNetwork, opts::QueryOptions)
-  E1 = E(1, nnet.zdims)
-  EK = E(nnet.K, nnet.zdims)
-  Ea = E(nnet.K+1, nnet.zdims)
+function makeMoutS!(model, S, ffnet::FeedFwdNet, opts::QueryOptions)
+  E1 = E(1, ffnet.zdims)
+  EK = E(ffnet.K, ffnet.zdims)
+  Ea = E(ffnet.K+1, ffnet.zdims)
   Eout = [E1; EK; Ea]
-  Sout = makeSout(S, nnet)
+  Sout = makeSout(S, ffnet)
   MoutS = Eout' * Sout * Eout
   return MoutS
 end
 
 # Make the MmidQ matrix. Treat this function as though it modifies the model
-function makeMmidQ!(model, qcinfos::Vector{QcInfo}, nnet::NeuralNetwork, opts::QueryOptions)
+function makeMmidQ!(model, qcinfos::Vector{QcInfo}, ffnet::FeedFwdNet, opts::QueryOptions)
   Qvars = Dict()
   Qs = Vector{Any}()
   for (i, qcinfo) in enumerate(qcinfos)
@@ -117,9 +117,9 @@ function makeMmidQ!(model, qcinfos::Vector{QcInfo}, nnet::NeuralNetwork, opts::Q
   end
   Q = sum(Qs)
 
-  _R11 = makeA(nnet)
-  _R12 = makeb(nnet)
-  _R21 = makeB(nnet)
+  _R11 = makeA(ffnet)
+  _R12 = makeb(ffnet)
+  _R21 = makeB(ffnet)
   _R22 = zeros(size(_R21)[1])
   _R31 = zeros(1, size(_R21)[2])
   _R32 = 1

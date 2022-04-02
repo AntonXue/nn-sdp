@@ -27,14 +27,14 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   setup_start_time = time()
 
   # Make the components and first construct Z
-  MinP, Pvars = makeMinP!(model, query.input, query.nnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.nnet, opts)
-  MoutS = makeMoutS!(model, query.output.S, query.nnet, opts)
+  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
+  MoutS = makeMoutS!(model, query.output.S, query.ffnet, opts)
   Z = MinP + MmidQ + MoutS
 
   # Now make each Zk and Eck
-  cliques = findCliques(query.qcinfos, query.nnet)
-  Zdim = sum(query.nnet.zdims)
+  cliques = findCliques(query.qcinfos, query.ffnet)
+  Zdim = sum(query.ffnet.zdims)
   p = length(cliques)
   Zs = Vector{Any}()
   Ecs = Vector{Any}()
@@ -63,19 +63,19 @@ function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   @assert query.reach isa HplaneReachSet
 
   # Make the MinP and MmidQ first
-  MinP, Pvars = makeMinP!(model, query.input, query.nnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.nnet, opts)
+  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
+  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
 
   # now setup MoutS, and make the Z
   @variable(model, h)
   Svars = Dict(:h => h)
-  S = makeShplane(query.reach.normal, h, query.nnet)
-  MoutS = makeMoutS!(model, S, query.nnet, opts)
+  S = makeShplane(query.reach.normal, h, query.ffnet)
+  MoutS = makeMoutS!(model, S, query.ffnet, opts)
   Z = MinP + MmidQ + MoutS
 
   # Now make each Zk and Eck
-  cliques = findCliques(query.qcinfos, query.nnet)
-  Zdim = sum(query.nnet.zdims)
+  cliques = findCliques(query.qcinfos, query.ffnet)
+  Zdim = sum(query.ffnet.zdims)
   p = length(cliques)
   Zs = Vector{Any}()
   Ecs = Vector{Any}()

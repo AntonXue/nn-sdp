@@ -9,7 +9,7 @@ struct ReluActiv <: Activ end
 struct TanhActiv <: Activ end
 
 # Parameters needed to define the feed-forward network
-@with_kw struct NeuralNetwork
+@with_kw struct FeedFwdNet
   activ::Activ
 
   # The state vector dimension at start of each layer
@@ -27,7 +27,7 @@ struct TanhActiv <: Activ end
 end
 
 export Activ, ReluActiv, TanhActiv
-export NeuralNetwork
+export FeedFwdNet
 
 end
 

@@ -20,3 +20,12 @@ function parseArgs()
 end
 
 args = parseArgs()
+
+# Load the network
+ffnet = nothing
+if !(args["onnx"] isa Nothing); ffnet = loadFromOnnx(args["onnx"]); end
+if !(args["nnet"] isa Nothing); ffnet = loadFromNnet(args["nnet"]); end
+@assert !(ffnet isa Nothing)
+
+if haskey(args, "vnnlib"); constrs = loadVnnlib(args["vnnlib"], ffnet) end
+
