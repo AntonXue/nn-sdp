@@ -19,7 +19,7 @@ using ..MyNeuralNetwork
   @assert all(k -> nnet.xdims[k] == length(x_intvs[k][1]), 1:(nnet.K+1))
 
   # What is fed into each activation
-  qx_intvs :: Vector{PairVecF64}
+  qx_intvs::Vector{PairVecF64}
   @assert length(qx_intvs) == nnet.K-1
   @assert all(ϕi -> length(ϕi) == 2, qx_intvs)
   @assert all(ϕi -> length(ϕi[1]) == length(ϕi[2]), qx_intvs)

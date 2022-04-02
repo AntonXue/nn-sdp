@@ -12,7 +12,9 @@ using ..MyLinearAlgebra
 using ..MyNeuralNetwork
 using ..Methods
 
-include("nnet_parser.jl"); using .NNetParser
+include("stolen_code/nnet_parser.jl");
+include("stolen_code/vnnlib_parser.jl"); 
+include("load_network.jl");
 
 pyplot()
 
@@ -153,22 +155,12 @@ function plotBoundingPolys(points :: Vector{VecF64}, labeled_polys :: Vector{Tup
 end
 
 # Convert NNet to NeuralNetwork
-function loadNeuralNetwork(nnet_filepath :: String; activ = ReluActiv())
-  nnet = NNetParser.NNet(nnet_filepath)
-  Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
-  ffnet = NeuralNetwork(activ=activ, xdims=nnet.layerSizes, Ms=Ms)
-  return ffnet
-end
-
-#
-
-export NNetParser
 
 export quadraticSafety, L2gainSafety, outputNorm2Safety
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys
-export loadNeuralNetwork
+export loadFromNNet, loadFromOnnx, onnx2nnet
 
 end # End Module
 

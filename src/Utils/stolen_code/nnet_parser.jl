@@ -1,6 +1,4 @@
-# Stolen from
-# https://github.com/sisl/NNet/blob/4411dd47621489f44062ca96898b8cebd722c7c8/julia/nnet.jl
-module NNetParser
+# https://github.com/intelligent-control-lab/NeuralVerification.jl/blob/4e612602ba4b34b42416742d85476d9b0dcdcb51/vnncomp_scripts/NNet/julia/nnet.jl
 
 export NNet, evaluate_network, evaluate_network_multiple, num_inputs, num_outputs
 
@@ -230,6 +228,4 @@ end
 """ Get number of outputs from network"""
 function num_outputs(nnet::NNet)
     return nnet.outputSize
-end
-
 end
