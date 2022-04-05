@@ -26,6 +26,7 @@ abstract type Query end
   qc_safety::QcSafety
   qc_activs::Vector{QcActiv}
   @assert length(qc_activs) >= 1
+  qcs::Vector{QcInfo} = [qc_input; qc_safety; qc_activs]
 end
 
 # Reachability stuff
@@ -35,6 +36,7 @@ end
   qc_reach::QcReach
   qc_activs::Vector{QcActiv}
   @assert length(qc_activs) >= 1
+  qcs::Vector{QcInfo} = [qc_input; qc_reach; qc_activs]
 end
 
 abstract type QueryOptions end

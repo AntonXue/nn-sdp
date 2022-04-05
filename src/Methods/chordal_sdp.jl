@@ -12,14 +12,12 @@ end
 # Do the cliques
 function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
   Zdim = sum(query.ffnet.zdims)
-  Zs = Vector{Any}()
-  Ecs = Vector{Any}()
+  Zs, Ecs = Vector{Any}(), Vector{Any}()
   for (Ck, Djs) in cliques
     Ckdim = length(Ck)
     # Use two-stage decomposition
     if opts.two_stage_cliques
-      Ys = Vector{Any}()
-      Fcs = Vector{Any}()
+      Ys, Fcs = Vector{Any}(), Vector{Any}()
       for Dj in Djs
         Djdim = length(Dj)
         Yj = @variable(model, [1:Djdim, 1:Djdim], Symmetric)
@@ -60,8 +58,7 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   vars[:Z] = Z
 
   # Set up cliques
-  qcs = [query.qc_input; query.qc_safety; query.qc_activs]
-  cliques = findCliques(qcs, query.ffnet)
+  cliques = findCliques(query.qcs, query.ffnet)
   Zs, Ecs = setupCliques!(model, cliques, query, opts)
 
   # The equality constraint
@@ -85,24 +82,23 @@ function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
   Zin = makeZin(γin, query.qc_input, query.ffnet)
 
-  # And also the Zout
+  # And also the Zout and the objective
   γout = @variable(model)
   vars[:γout] = γout
   @constraint(model, γout >= 0)
+  @objective(model, Min, γout)
   Zout = makeZout([γout], query.qc_reach, query.ffnet)
 
   # Now the activations
-  Zac, Zacvars = setupZacs!(model, queyr, opts)
+  Zacs, Zacvars = setupZacs!(model, query, opts)
   vars = merge(vars, Zacvars)
 
-  # Big Z matrix and objectives
+  # Big Z matrix
   Z = Zin + Zout + sum(Zacs)
   vars[:Z] = Z
-  @objective(model, Min, γout)
 
   # Set up cliques
-  qcs = [query.qc_input; query.qc_safety; query.qc_activs]
-  cliques = findCliques(qcs, query.ffnet)
+  cliques = findCliques(query.qcs, query.ffnet)
   Zs, Ecs = setupCliques!(model, cliques, query, opts)
 
   # The equality constraint

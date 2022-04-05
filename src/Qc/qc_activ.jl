@@ -9,7 +9,7 @@ function makeA(ffnet::FeedFwdNet)
   fdims = edims[2:end]
   Ws = [M[1:end, 1:end-1] for M in ffnet.Ms]
   A = sum(E(k, fdims)' * Ws[k] * E(k, edims) for k in 1:(ffnet.K-1))
-  return A
+  return sparse(A)
 end
 
 # Make the b stacked vector

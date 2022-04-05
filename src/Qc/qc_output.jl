@@ -19,10 +19,8 @@ end
 function makeSide(ffnet::FeedFwdNet)
   WK = ffnet.Ms[ffnet.K][1:end, 1:end-1]
   bK = ffnet.Ms[ffnet.K][1:end, end]
-
   d1 = ffnet.zdims[1]
   (dK1, dK) = size(WK)
-
   _R11 = I(d1)
   _R12 = spzeros(d1, dK)
   _R13 = spzeros(d1)

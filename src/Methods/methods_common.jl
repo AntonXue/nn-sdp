@@ -9,8 +9,7 @@ end
 
 # The Zacs
 function setupZacs!(model, query::Query, opts::QueryOptions)
-  vars = Dict()
-  Zacs = Vector{Any}()
+  vars, Zacs = Dict(), Vector{Any}()
   for (i, qc) in enumerate(query.qc_activs)
     γac = @variable(model, [1:qc.vardim])
     vars[Symbol(:γac, i)] = γac
