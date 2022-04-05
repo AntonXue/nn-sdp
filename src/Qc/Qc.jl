@@ -1,23 +1,34 @@
 module Qc
 
 using LinearAlgebra
+using SparseArrays
 using Parameters
-using Printf
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
 
 # Meta information necessary to construct each Qc
 abstract type QcInfo end
+abstract type QcInput <: QcInfo end
+abstract type QcActiv <: QcInfo end
+abstract type QcOutput <: QcInfo end
+
+const Clique = VecInt
 
 # Now that the QCinfo is defined, import the other constructions
-include("qc_common.jl")
-include("qc_bounded.jl")
-include("qc_sector.jl")
+include("qc_input.jl")
+include("qc_output.jl")
+include("qc_activ.jl")
+include("cliques.jl")
 
-export QcInfo, QcBoundedInfo, QcSectorInfo
-export vardim, makeQc
-export makeA, makeb, makeB
-export sectorBounds
+export Clique
+export QcInfo, QcInput, QcOutput, QcActiv
+export QcBoxInput, QcPolyInput
+export QcSafety, QcReach, QcHplaneReach
+export QcBoundedActiv, QcSectorActiv
+export findSectorMinMax, makeQac, makeA, makeb, makeB
+export makeZin, makeZout, makeZac
+export findCliques
 
 end
+

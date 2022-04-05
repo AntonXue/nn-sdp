@@ -1,22 +1,7 @@
-using LinearAlgebra
-using Parameters
-using JuMP
-using MosekTools
-using Dualization
-using Printf
-using Dates
-
-using ..MyLinearAlgebra
-using ..MyNeuralNetwork
-using ..Qc
-
-# Default Mosek options
-DEEPSDP_DEFAULT_MOSEK_OPTS =
-  Dict("QUIET" => true)
 
 # Options
 @with_kw struct DeepSdpOptions <: QueryOptions
-  max_solve_time::Float64 = 60.0 * 20
+  max_solve_time::Float64 = 60.0 * 20 # seconds
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
   use_dual::Bool = false
@@ -26,44 +11,58 @@ end
 # Set up the model for safety verification (satisfiability)
 function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
   setup_start_time = time()
+  vars = Dict()
 
-  # Make the components
-  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
-  MoutS = makeMoutS!(model, query.safety.S, query.ffnet, opts)
+  # Make the Zin and Zout first
+  γin = @variable(model, [1:query.qc_input.vardim])
+  vars[:γin] = γin
+  @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
+  Zin = makeZin(γin, query.qc_input, query.ffnet)
+  Zout = makeZout(query.qc_safety, query.ffnet)
 
-  # Now the LMI
-  Z = MinP + MmidQ + MoutS
+  # Then do the Zacs
+  Zacs, Zacvars = setupZacs!(model, query, opts)
+  vars = merge(vars, Zacvars)
+
+  # Now set up the LMI
+  Z = Zin + Zout + sum(Zacs)
+  vars[:Z] = Z
   @constraint(model, -Z in PSDCone())
 
   # Compute statistics and return
-  vars = merge(Pvars, Qvars)
   setup_time = time() - setup_start_time
   return model, vars, setup_time
 end
 
 # Hyperplane reachability setup
 function setupHplaneReach!(model, query::ReachQuery, opts::DeepSdpOptions)
+  @assert query.qc_reach isa QcHplaneReach
   setup_start_time = time()
-  @assert query.reach isa HplaneReachSet
+  vars = Dict()
 
-  # Make the MinP and MmidQ first
-  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
+  # Make the Zin
+  γin = @variable(model, [1:query.qc_input.vardim])
+  vars[:γin] = γin
+  @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
+  Zin = makeZin(γin, query.qc_input, query.ffnet)
 
-  # now setup MoutS
-  @variable(model, h)
-  Svars = Dict(:γh => h)
-  S = makeShplane(query.reach.normal, h, query.ffnet)
-  MoutS = makeMoutS!(model, S, query.ffnet, opts)
+  # And also the Zout and also the objective
+  γout = @variable(model)
+  vars[:γout] = γout
+  @constraint(model, γout >= 0)
+  @objective(model, Min, γout)
+  Zout = makeZout([γout], query.qc_reach, query.ffnet)
 
-  # Set up the LMI and objective
-  Z = MinP + MmidQ + MoutS
+  # Then do the Zacs
+  Zacs, Zacvars = setupZacs!(model, query, opts)
+  vars = merge(vars, Zacvars)
+
+  # Now set up the LMI and objective
+  Z = Zin + Zout + sum(Zacs)
+  vars[:Z] = Z
   @constraint(model, -Z in PSDCone())
-  @objective(model, Min, h)
 
   # Calculate stuff and return
-  vars = merge(Pvars, Qvars, Svars)
   setup_time = time() - setup_start_time
   return model, vars, setup_time
 end
@@ -80,24 +79,19 @@ end
 # The interface to call
 function runQuery(query::Query, opts::DeepSdpOptions)
   total_start_time = time()
+  model = setupModel!(query, opts)
 
-  # Set up the model and add solver options, with the defaults first
-  model = opts.use_dual ? Model(dual_optimizer(Mosek.Optimizer)) : Model(Mosek.Optimizer)
-  pre_mosek_opts = opts.include_default_mosek_opts ? DEEPSDP_DEFAULT_MOSEK_OPTS : Dict()
-  todo_mosek_opts = merge(pre_mosek_opts, opts.mosek_opts)
-  for (k, v) in todo_mosek_opts; set_optimizer_attribute(model, k, v) end
-
-  # Delegate the appropriate call depending on the kind of querylem
+  # Delegate the appropriate call depending on the kind of query
   if query isa SafetyQuery
     _, vars, setup_time = setupSafety!(model, query, opts)
-  elseif query isa ReachQuery && query.reach isa HplaneReachSet
+  elseif query isa ReachQuery && query.qc_reach isa QcHplaneReach
     _, vars, setup_time = setupHplaneReach!(model, query, opts)
   else
     error("\tunrecognized query: $(query)")
   end
 
   # Get ready to return
-  if opts.verbose; println("\tabout to solve; now: $(now())") end
+  if opts.verbose; println("\tsetup done at: $(now())") end
 
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time

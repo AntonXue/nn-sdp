@@ -1,127 +1,115 @@
-using LinearAlgebra
-using Parameters
-using JuMP
-using MosekTools
-using Dualization
-using Printf
-using Dates
-
-using ..MyLinearAlgebra
-using ..MyNeuralNetwork
-using ..Qc
-
-# Default Mosek options
-CHORDALSDP_DEFAULT_MOSEK_OPTS =
-  Dict("QUIET" => true)
 
 # Options
 @with_kw struct ChordalSdpOptions <: QueryOptions
-  max_solve_time::Float64 = 60.0 * 20
+  max_solve_time::Float64 = 60.0 * 20 # seconds
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
+  two_stage_cliques::Bool = true
   use_dual::Bool = false
   verbose::Bool = false
+end
+
+# Do the cliques
+function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
+  Zdim = sum(query.ffnet.zdims)
+  Zs = Vector{Any}()
+  Ecs = Vector{Any}()
+  for (Ck, Djs) in cliques
+    Ckdim = length(Ck)
+    # Use two-stage decomposition
+    if opts.two_stage_cliques
+      Ys = Vector{Any}()
+      Fcs = Vector{Any}()
+      for Dj in Djs
+        Djdim = length(Dj)
+        Yj = @variable(model, [1:Djdim, 1:Djdim], Symmetric)
+        @constraint(model, -Yj in PSDCone())
+        push!(Ys, Yj)
+        push!(Fcs, Ec(Dj, Ckdim)) # Fcj
+      end
+      Zk = sum(Fcs[j]' * Ys[j] * Fcs[j] for j in 1:length(Djs))
+    # In the non-two stage case, the original stuff
+    else
+      Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
+      @constraint(model, -Zk in PSDCone())
+    end
+    push!(Zs, Zk)
+    push!(Ecs, Ec(Ck, Zdim)) # Eck
+  end
+  return Zs, Ecs
 end
 
 # Set up the model for safety verification (satisfiability)
 function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   setup_start_time = time()
+  vars = Dict()
 
-  # Make the components and first construct Z
-  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
-  MoutS = makeMoutS!(model, query.safety.S, query.ffnet, opts)
-  Z = MinP + MmidQ + MoutS
+  # Make the Zin and Zout first
+  γin = @variable(model, [1:query.qc_input.vardim])
+  vars[:γin] = γin
+  @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
+  Zin = makeZin(γin, query.qc_input, query.ffnet)
+  Zout = makeZout(query.qc_safety, query.ffnet)
 
-  # Now make each Zk and Eck
-  cliques = findCliques(query.qcinfos, query.ffnet)
-  Zdim = sum(query.ffnet.zdims)
-  Zs = Vector{Any}()
-  Ecs = Vector{Any}()
+  # Then do the Zacs so we can set up Z
+  Zacs, Zacvars = setupZacs!(model, query, opts)
+  vars = merge(vars, Zacvars)
 
-  for (Ck, Dks) in cliques
-    Ckdim = length(Ck)
-    Ys = Vector{Any}()
-    Eds = Vector{Any}()
-    # Compute the sub-cliques first
-    for Dk in Dks
-      Dkdim = length(Dk)
-      Yk = @variable(model, [1:Dkdim, 1:Dkdim], Symmetric)
-      @constraint(model, -Yk in PSDCone())
-      push!(Ys, Yk)
-      Edk = Ec(Dk, Ckdim)
-      push!(Eds, Edk)
-      println("\tDkdim: $(Dkdim)")
-    end
-    # Now piece together the Zk
-    Zk = sum(Eds[l]' * Ys[l] * Eds[l] for l in 1:length(Dks))
-    push!(Zs, Zk)
-    Eck = Ec(Ck, Zdim)
-    push!(Ecs, Eck)
-  end
+  # Big Z matrix
+  Z = Zin + Zout + sum(Zacs)
+  vars[:Z] = Z
 
-  #=
-  for Ck in cliques
-    Ckdim = length(Ck)
-    Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
-    @constraint(model, -Zk in PSDCone())
-    push!(Zs, Zk)
-    Eck = Ec(Ck, Zdim)
-    push!(Ecs, Eck)
-    println("\tCkdim: $(Ckdim)")
-  end
-  =#
+  # Set up cliques
+  qcs = [query.qc_input; query.qc_safety; query.qc_activs]
+  cliques = findCliques(qcs, query.ffnet)
+  Zs, Ecs = setupCliques!(model, cliques, query, opts)
 
-  # Set up Zksum and assert the equality constraint
+  # The equality constraint
   Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
   @constraint(model, Z .== Zksum)
 
   # Compute statistics and return
-  vars = merge(Pvars, Qvars)
-  vars = merge(vars, Dict(:Z => Zksum))
   setup_time = time() - setup_start_time
   return model, vars, setup_time
 end
 
 # Hyperplane reachability setup
 function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
+  @assert query.qc_reach isa QcHplaneReach
   setup_start_time = time()
-  @assert query.reach isa HplaneReachSet
+  vars = Dict()
 
-  # Make the MinP and MmidQ first
-  MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
-  MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
+  # Make the Zin
+  γin = @variable(model, [1:query.qc_input.vardim])
+  vars[:γin] = γin
+  @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
+  Zin = makeZin(γin, query.qc_input, query.ffnet)
 
-  # now setup MoutS, and make the Z
-  @variable(model, h)
-  Svars = Dict(:h => h)
-  S = makeShplane(query.reach.normal, h, query.ffnet)
-  MoutS = makeMoutS!(model, S, query.ffnet, opts)
-  Z = MinP + MmidQ + MoutS
+  # And also the Zout
+  γout = @variable(model)
+  vars[:γout] = γout
+  @constraint(model, γout >= 0)
+  Zout = makeZout([γout], query.qc_reach, query.ffnet)
 
-  # Now make each Zk and Eck
-  cliques = findCliques(query.qcinfos, query.ffnet)
-  Zdim = sum(query.ffnet.zdims)
-  Zs = Vector{Any}()
-  Ecs = Vector{Any}()
-  for Ck in cliques
-    Ckdim = length(Ck)
-    Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
-    @constraint(model, -Zk in PSDCone())
-    push!(Zs, Zk)
-    Eck = Ec(Ck, Zdim)
-    push!(Ecs, Eck)
-  end
+  # Now the activations
+  Zac, Zacvars = setupZacs!(model, queyr, opts)
+  vars = merge(vars, Zacvars)
 
-  # Set up Zksum and assert the equality constraint
+  # Big Z matrix and objectives
+  Z = Zin + Zout + sum(Zacs)
+  vars[:Z] = Z
+  @objective(model, Min, γout)
+
+  # Set up cliques
+  qcs = [query.qc_input; query.qc_safety; query.qc_activs]
+  cliques = findCliques(qcs, query.ffnet)
+  Zs, Ecs = setupCliques!(model, cliques, query, opts)
+
+  # The equality constraint
   Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
   @constraint(model, Z .== Zksum)
 
-  # Set up the objective
-  @objective(model, Min, h)
-
   # Calculate stuff and return
-  vars = merge(Pvars, Qvars, Svars)
   setup_time = time() - setup_start_time
   return model, vars, setup_time
 end
@@ -138,24 +126,19 @@ end
 # The interface to call
 function runQuery(query::Query, opts::ChordalSdpOptions)
   total_start_time = time()
+  model = setupModel!(query, opts)
 
-  # Set up the model and add solver options, with the defaults first
-  model = opts.use_dual ? Model(dual_optimizer(Mosek.Optimizer)) : Model(Mosek.Optimizer)
-  pre_mosek_opts = opts.include_default_mosek_opts ? DEEPSDP_DEFAULT_MOSEK_OPTS : Dict()
-  todo_mosek_opts = merge(pre_mosek_opts, opts.mosek_opts)
-  for (k, v) in todo_mosek_opts; set_optimizer_attribute(model, k, v) end
-
-  # Delegate the appropriate call depending on the kind of querylem
+  # Delegate the appropriate call depending on the kind of query
   if query isa SafetyQuery
     _, vars, setup_time = setupSafety!(model, query, opts)
-  elseif query isa ReachQuery && query.reach isa HplaneReachSet
+  elseif query isa ReachQuery && query.qc_reach isa QcHplaneReach
     _, vars, setup_time = setupHplaneReach!(model, query, opts)
   else
     error("\tunrecognized query: $(query)")
   end
 
   # Get ready to return
-  if opts.verbose; println("\tabout to solve; now: $(now())") end
+  if opts.verbose; println("\tsetup done at: $(now())") end
 
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
@@ -173,5 +156,4 @@ function runQuery(query::Query, opts::ChordalSdpOptions)
     setup_time = setup_time,
     solve_time = solve_time)
 end
-
 

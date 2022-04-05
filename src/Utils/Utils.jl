@@ -3,6 +3,7 @@
 module Utils
 
 using LinearAlgebra
+using SparseArrays
 using DelimitedFiles
 using Random
 using Plots
@@ -21,8 +22,8 @@ pyplot()
 
 # A general form of quadratic safety
 # a||x||^2 + b||f(x)||^2 + c <= 0
-function quadraticSafety(a, b, c, xdims::VecInt)
-  @assert length(xdims) > 1
+function abcQuadS(a, b, c, ffnet::FeedFwdNet)
+  xdims = ffnet.xdims
   _S11 = a * I(xdims[1])
   _S12 = zeros(xdims[1], xdims[end])
   _S13 = zeros(xdims[1], 1)
@@ -30,17 +31,16 @@ function quadraticSafety(a, b, c, xdims::VecInt)
   _S23 = zeros(xdims[end], 1)
   _S33 = c
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
-  return SafetyConstraint(S=S)
 end
 
 # ||f(x)||^2 <= L ||x||^2
-function L2gainSafety(L2gain, xdims::VecInt)
-  return quadraticSafety(-L2gain, 1.0, 0.0, xdims)
+function L2S(L2gain, ffnet::FeedFwdNet)
+  return abcQuadS(-L2gain, 1.0, 0.0, ffnet)
 end
 
 # ||f(x)||^2 <= C
-function outputNorm2Safety(norm2, xdims::VecInt)
-  return quadraticSafety(0.0, 1.0, -norm2)
+function outNorm2S(norm2, ffnet::FeedFwdNet)
+  return abcQuadS(0.0, 1.0, -norm2, ffnet)
 end
 
 # Generate a random network given the desired dimensions at each layer
@@ -157,7 +157,7 @@ end
 
 # Convert NNet to FeedFwdNet
 
-export quadraticSafety, L2gainSafety, outputNorm2Safety
+export abcQuadS, L2S, outNorm2S
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys

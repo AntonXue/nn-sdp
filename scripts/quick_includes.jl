@@ -22,50 +22,48 @@ end
 args = parseArgs()
 @printf("load done: %.3f\n", time() - start_time)
 
-nnet = loadNeuralNetwork(args["nnet"])
+ffnet = loadFromNnet(args["nnet"])
 
-# Craft some artificial inputs
-input = BoxInput(x1min=(ones(2) .- 0.1), x1max=(ones(2) .+ 0.1))
+# Craft some artificial inputs and safeties
+qc_input = QcBoxInput(x1min=(ones(2) .- 0.1), x1max=(ones(2) .+ 0.1))
+qc_safety = QcSafety(S=outNorm2S(400, ffnet))
+qc_reach = QcHplaneReach(normal=[1.0; 1.0])
 
-intv_info = intervalsWorstCase(input.x1min, input.x1max, nnet)
+intv_info = intervalsWorstCase(qc_input.x1min, qc_input.x1max, ffnet)
 
 # QC bounded
-qxdim = sum(nnet.xdims[2:end-1])
-qxmin = vcat([qxi[1] for qxi in intv_info.x_intvs[2:end-1]]...)
-qxmax = vcat([qxi[2] for qxi in intv_info.x_intvs[2:end-1]]...)
-qcbounded_info = QcBoundedInfo(qxdim=qxdim, qxmin=qxmin, qxmax=qxmax)
+acxdim = sum(ffnet.xdims[2:end-1])
+acxmin = vcat([acxi[1] for acxi in intv_info.x_intvs[2:end-1]]...)
+acxmax = vcat([acxi[2] for acxi in intv_info.x_intvs[2:end-1]]...)
+qc_bnd = QcBoundedActiv(acxdim=acxdim, acxmin=acxmin, acxmax=acxmax)
 
 # QC sector
-qcsec_qxmin = vcat([prei[1] for prei in intv_info.qx_intvs]...)
-qcsec_qxmax = vcat([prei[2] for prei in intv_info.qx_intvs]...)
-smin, smax = sectorBounds(qcsec_qxmin, qcsec_qxmax, nnet.activ)
-qcsec_info = QcSectorInfo(qxdim=qxdim, β=1, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
+qcsec_acxmin = vcat([acxi[1] for acxi in intv_info.acx_intvs]...)
+qcsec_acxmax = vcat([acxi[2] for acxi in intv_info.acx_intvs]...)
+smin, smax = findSectorMinMax(qcsec_acxmin, qcsec_acxmax, ffnet.activ)
+qc_sec = QcSectorActiv(acxdim=acxdim, β=5, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
-qcinfos = [qcbounded_info, qcsec_info]
+qc_activs = [qc_bnd, qc_sec]
 
-#=
-MOSEK_OPTS =
-  Dict("MSK_IPAR_INTPNT_SOLVE_FORM" => 2)
-=#
+safety_query = SafetyQuery(ffnet=ffnet, qc_input=qc_input, qc_safety=qc_safety, qc_activs=qc_activs)
+reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_reach=qc_reach, qc_activs=qc_activs)
 
-deepsdp_opts = DeepSdpOptions(use_dual=true, verbose=true)
-chordalsdp_opts = ChordalSdpOptions(verbose=true)
+
+mosek_opts = 
+  Dict("QUIET" => true,
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 1, # seconds
+       "INTPNT_CO_TOL_REL_GAP" => 1e-6,
+       "INTPNT_CO_TOL_PFEAS" => 1e-6,
+       "INTPNT_CO_TOL_DFEAS" => 1e-6)
+
+chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true)
+chordalreach_soln = runQuery(safety_query, chordalsdp_opts)
+
+deepsdp_opts = DeepSdpOptions(use_dual=false, mosek_opts=mosek_opts, verbose=true)
+deepreach_soln = runQuery(reach_query, deepsdp_opts)
+# deepsafety_soln = runQuery(safety_query, deepsdp_opts)
+
 
 println("")
 
-normal = [1.0; 1.0]
-
-println("now: $(now())")
-chordalsdp_reach_soln = solveHplaneReach(nnet, input, qcinfos, chordalsdp_opts, normal, verbose=true)
-println(chordalsdp_reach_soln)
-
-println("now: $(now())")
-deepsdp_reach_soln = solveHplaneReach(nnet, input, qcinfos, deepsdp_opts, normal, verbose=true)
-println(deepsdp_reach_soln)
-
-
-println("\n\n")
-
-# safety_soln = solveSafetyL2Gain(nnet, input, qcinfos, deepsdp_opts, 1000.0, verbose=true)
-# println(safety_soln)
 

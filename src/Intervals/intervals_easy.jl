@@ -15,7 +15,7 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
   push!(x_intvs, (x1min, x1max))
 
   # The inputs to ϕ[1], ..., ϕ[K-1]
-  qx_intvs = Vector{PairVecF64}()
+  acx_intvs = Vector{PairVecF64}()
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)
@@ -26,13 +26,13 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
     if k == ffnet.K
       xkmin, xkmax = ykmin, ykmax
     else
-      push!(qx_intvs, (ykmin, ykmax))
+      push!(acx_intvs, (ykmin, ykmax))
       xkmin, xkmax = ϕ(ykmin), ϕ(ykmax)
     end
     push!(x_intvs, (xkmin, xkmax))
   end
 
   # Each is a list of tuple of vectors for flexibility; vcat as needed
-  return IntervalInfo(ffnet=ffnet, x_intvs=x_intvs, qx_intvs=qx_intvs)
+  return IntervalInfo(ffnet=ffnet, x_intvs=x_intvs, acx_intvs=acx_intvs)
 end
 

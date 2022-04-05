@@ -19,11 +19,11 @@ using ..MyNeuralNetwork
   @assert all(k -> ffnet.xdims[k] == length(x_intvs[k][1]), 1:(ffnet.K+1))
 
   # What is fed into each activation
-  qx_intvs::Vector{PairVecF64}
-  @assert length(qx_intvs) == ffnet.K-1
-  @assert all(ϕi -> length(ϕi) == 2, qx_intvs)
-  @assert all(ϕi -> length(ϕi[1]) == length(ϕi[2]), qx_intvs)
-  @assert all(k -> ffnet.xdims[k+1] == length(qx_intvs[k][1]), 1:ffnet.K-1)
+  acx_intvs::Vector{PairVecF64}
+  @assert length(acx_intvs) == ffnet.K-1
+  @assert all(ϕi -> length(ϕi) == 2, acx_intvs)
+  @assert all(ϕi -> length(ϕi[1]) == length(ϕi[2]), acx_intvs)
+  @assert all(k -> ffnet.xdims[k+1] == length(acx_intvs[k][1]), 1:ffnet.K-1)
 end
 
 include("intervals_easy.jl")
