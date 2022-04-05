@@ -1,9 +1,10 @@
 
 # Gives a list of input-output safety constraints given the spec file
+# Vnnlib uses box inputs
 function loadVnnlib(spec_file::String, ffnet::FeedFwdNet)
   indim, outdim = ffnet.xdims[1], ffnet.xdims[end]
   specs = read_vnnlib_simple(spec_file, indim, outdim)
-  input_safety_constrs = Vector{Tuple{InputConstraint, SafetyConstraint}}()
+  input_safety_constrs = Vector{Tuple{BoxInput, SafetyConstraint}}()
   for spec in specs
     inbox, outbox = spec
     lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]

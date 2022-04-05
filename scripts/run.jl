@@ -1,3 +1,6 @@
+start_time = time()
+
+using Dates
 using ArgParse
 
 include("../src/NnSdp.jl"); using .NnSdp
@@ -28,4 +31,11 @@ if !(args["nnet"] isa Nothing); ffnet = loadFromNnet(args["nnet"]); end
 @assert !(ffnet isa Nothing)
 
 if haskey(args, "vnnlib"); constrs = loadVnnlib(args["vnnlib"], ffnet) end
+
+inputs = [c[1] for c in constrs]
+safeties = [c[2] for c in constrs]
+
+println("elapsed: $(time() - start_time)")
+println("now: $(now())")
+
 

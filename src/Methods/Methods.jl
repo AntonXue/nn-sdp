@@ -47,7 +47,7 @@ abstract type Query end
 @with_kw struct SafetyQuery <: Query
   ffnet::FeedFwdNet
   input::InputConstraint
-  output::SafetyConstraint
+  safety::SafetyConstraint
   qcinfos::Vector{QcInfo}
   @assert length(qcinfos) >= 1
 end
@@ -82,11 +82,11 @@ include("chordal_sdp.jl")
 export InputConstraint, BoxInput, HplaneInput
 export SafetyConstraint
 export ReachSet, HplaneReachSet
-export Query, SafetyQuery, ReachQuery, QuerySolution
+export Query, SafetyQuery, ReachQuery, QueryOptions, QuerySolution
 export sectorCliques, findCliques
 
-export DeepSdpOptions
-export ChordalSdpOptions
+export DeepSdpOptions, ChordalSdpOptions
 export runQuery
 
 end
+

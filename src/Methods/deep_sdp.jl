@@ -4,6 +4,7 @@ using JuMP
 using MosekTools
 using Dualization
 using Printf
+using Dates
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
@@ -29,7 +30,7 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
   # Make the components
   MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
   MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
-  MoutS = makeMoutS!(model, query.output.S, query.ffnet, opts)
+  MoutS = makeMoutS!(model, query.safety.S, query.ffnet, opts)
 
   # Now the LMI
   Z = MinP + MmidQ + MoutS
@@ -92,10 +93,12 @@ function runQuery(query::Query, opts::DeepSdpOptions)
   elseif query isa ReachQuery && query.reach isa HplaneReachSet
     _, vars, setup_time = setupHplaneReach!(model, query, opts)
   else
-    error("unrecognized query: $(query)")
+    error("\tunrecognized query: $(query)")
   end
 
   # Get ready to return
+  if opts.verbose; println("\tabout to solve; now: $(now())") end
+
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
   if opts.verbose;

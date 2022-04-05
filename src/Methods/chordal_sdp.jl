@@ -4,6 +4,7 @@ using JuMP
 using MosekTools
 using Dualization
 using Printf
+using Dates
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
@@ -29,15 +30,37 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   # Make the components and first construct Z
   MinP, Pvars = makeMinP!(model, query.input, query.ffnet, opts)
   MmidQ, Qvars = makeMmidQ!(model, query.qcinfos, query.ffnet, opts)
-  MoutS = makeMoutS!(model, query.output.S, query.ffnet, opts)
+  MoutS = makeMoutS!(model, query.safety.S, query.ffnet, opts)
   Z = MinP + MmidQ + MoutS
 
   # Now make each Zk and Eck
   cliques = findCliques(query.qcinfos, query.ffnet)
   Zdim = sum(query.ffnet.zdims)
-  p = length(cliques)
   Zs = Vector{Any}()
   Ecs = Vector{Any}()
+
+  for (Ck, Dks) in cliques
+    Ckdim = length(Ck)
+    Ys = Vector{Any}()
+    Eds = Vector{Any}()
+    # Compute the sub-cliques first
+    for Dk in Dks
+      Dkdim = length(Dk)
+      Yk = @variable(model, [1:Dkdim, 1:Dkdim], Symmetric)
+      @constraint(model, -Yk in PSDCone())
+      push!(Ys, Yk)
+      Edk = Ec(Dk, Ckdim)
+      push!(Eds, Edk)
+      println("\tDkdim: $(Dkdim)")
+    end
+    # Now piece together the Zk
+    Zk = sum(Eds[l]' * Ys[l] * Eds[l] for l in 1:length(Dks))
+    push!(Zs, Zk)
+    Eck = Ec(Ck, Zdim)
+    push!(Ecs, Eck)
+  end
+
+  #=
   for Ck in cliques
     Ckdim = length(Ck)
     Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
@@ -45,14 +68,17 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
     push!(Zs, Zk)
     Eck = Ec(Ck, Zdim)
     push!(Ecs, Eck)
+    println("\tCkdim: $(Ckdim)")
   end
+  =#
 
   # Set up Zksum and assert the equality constraint
-  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:p)
+  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
   @constraint(model, Z .== Zksum)
 
   # Compute statistics and return
   vars = merge(Pvars, Qvars)
+  vars = merge(vars, Dict(:Z => Zksum))
   setup_time = time() - setup_start_time
   return model, vars, setup_time
 end
@@ -76,7 +102,6 @@ function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   # Now make each Zk and Eck
   cliques = findCliques(query.qcinfos, query.ffnet)
   Zdim = sum(query.ffnet.zdims)
-  p = length(cliques)
   Zs = Vector{Any}()
   Ecs = Vector{Any}()
   for Ck in cliques
@@ -89,7 +114,7 @@ function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   end
 
   # Set up Zksum and assert the equality constraint
-  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:p)
+  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
   @constraint(model, Z .== Zksum)
 
   # Set up the objective
@@ -126,10 +151,12 @@ function runQuery(query::Query, opts::ChordalSdpOptions)
   elseif query isa ReachQuery && query.reach isa HplaneReachSet
     _, vars, setup_time = setupHplaneReach!(model, query, opts)
   else
-    error("unrecognized query: $(query)")
+    error("\tunrecognized query: $(query)")
   end
 
   # Get ready to return
+  if opts.verbose; println("\tabout to solve; now: $(now())") end
+
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
   if opts.verbose;
