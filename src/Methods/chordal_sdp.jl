@@ -4,7 +4,7 @@
   max_solve_time::Float64 = 60.0 * 20 # seconds
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
-  two_stage_cliques::Bool = true
+  two_stage_cliques::Bool = false # Broken for now
   use_dual::Bool = false
   verbose::Bool = false
 end
