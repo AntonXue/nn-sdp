@@ -1,6 +1,6 @@
 
 # Make Q using bounds ϕlow and ϕhigh
-@with_kw struct QcBoundedActiv <: QcActiv
+@with_kw struct QcActivBounded <: QcActiv
   acxdim::Int
   acxmin::VecF64
   acxmax::VecF64
@@ -10,7 +10,7 @@
 end
 
 # The construction of Qac to be used in Zac
-function makeQac(γac, qc::QcBoundedActiv)
+function makeQac(γac, qc::QcActivBounded)
   @assert length(γac) == qc.vardim
   D = Diagonal(γac)
   _Q11 = spzeros(qc.acxdim, qc.acxdim)

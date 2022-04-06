@@ -30,12 +30,16 @@ if !(args["onnx"] isa Nothing); ffnet = loadFromOnnx(args["onnx"]); end
 if !(args["nnet"] isa Nothing); ffnet = loadFromNnet(args["nnet"]); end
 @assert !(ffnet isa Nothing)
 
-if haskey(args, "vnnlib"); constrs = loadVnnlib(args["vnnlib"], ffnet) end
+if haskey(args, "vnnlib"); spec = loadVnnlib(args["vnnlib"], ffnet) end
 
-inputs = [c[1] for c in constrs]
-safeties = [c[2] for c in constrs]
+qc_inputs = [c[1] for c in spec]
+qc_safeties = [c[2] for c in spec]
 
 println("elapsed: $(time() - start_time)")
 println("now: $(now())")
+
+for (qc_input, qc_safety) in spec
+  
+end
 
 

@@ -11,6 +11,7 @@ using Printf
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
+using ..Qc
 using ..Methods
 
 include("stolen_code/nnet_parser.jl");
@@ -23,12 +24,12 @@ pyplot()
 # A general form of quadratic safety
 # a||x||^2 + b||f(x)||^2 + c <= 0
 function abcQuadS(a, b, c, ffnet::FeedFwdNet)
-  xdims = ffnet.xdims
+  xdims, K = ffnet.xdims, ffnet.K
   _S11 = a * I(xdims[1])
-  _S12 = zeros(xdims[1], xdims[end])
-  _S13 = zeros(xdims[1], 1)
-  _S22 = b * I(xdims[end])
-  _S23 = zeros(xdims[end], 1)
+  _S12 = spzeros(xdims[1], xdims[K+1])
+  _S13 = spzeros(xdims[1], 1)
+  _S22 = b * I(xdims[K+1])
+  _S23 = spzeros(xdims[K+1], 1)
   _S33 = c
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
 end
@@ -41,6 +42,19 @@ end
 # ||f(x)||^2 <= C
 function outNorm2S(norm2, ffnet::FeedFwdNet)
   return abcQuadS(0.0, 1.0, -norm2, ffnet)
+end
+
+# Hyperplane S
+function hplaneS(normal, h, ffnet::FeedFwdNet)
+  xdims, K = ffnet.xdims, ffnet.K
+  _S11 = spzeros(xdims[1], xdims[1])
+  _S12 = spzeros(xdims[1], xdims[K+1])
+  _S13 = spzeros(xdims[1])
+  _S22 = spzeros(xdims[K+1], xdims[K+1])
+  _S23 = normal
+  _S33 = -2 * h
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return S
 end
 
 # Generate a random network given the desired dimensions at each layer
@@ -157,7 +171,7 @@ end
 
 # Convert NNet to FeedFwdNet
 
-export abcQuadS, L2S, outNorm2S
+export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys

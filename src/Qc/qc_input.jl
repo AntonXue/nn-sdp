@@ -1,6 +1,6 @@
 
 # QC for box inputs
-@with_kw struct QcBoxInput <: QcInput
+@with_kw struct QcInputBox <: QcInput
   x1min::VecF64
   x1max::VecF64
   @assert length(x1min) == length(x1max)
@@ -8,7 +8,7 @@
 end
 
 # Qc for polytope inputs
-@with_kw struct QcPolyInput <: QcInput
+@with_kw struct QcInputPoly <: QcInput
   H::MatF64
   h::VecF64
   @assert size(H)[1] == length(h)
@@ -19,7 +19,7 @@ end
 function makeZin(γin, qc::QcInput, ffnet::FeedFwdNet)
   @assert length(γin) == qc.vardim
   # Qc for boxes
-  if qc isa QcBoxInput
+  if qc isa QcInputBox
     Γ = Diagonal(γin)
     _P11 = -2 * Γ
     _P12 = Γ * (qc.x1min + qc.x1max)
@@ -27,7 +27,7 @@ function makeZin(γin, qc::QcInput, ffnet::FeedFwdNet)
     P = [_P11 _P12; _P12' _P22]
   
   # Qc for polytopes
-  elseif qc isa QcPolyInput
+  elseif qc isa QcInputPoly
     _P11 = H' * Γ * H
     _P12 = -H' * Γ * h
     _P22 = h' * Γ * h

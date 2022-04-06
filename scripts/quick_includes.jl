@@ -25,9 +25,9 @@ args = parseArgs()
 ffnet = loadFromNnet(args["nnet"])
 
 # Craft some artificial inputs and safeties
-qc_input = QcBoxInput(x1min=(ones(2) .- 0.1), x1max=(ones(2) .+ 0.1))
+qc_input = QcInputBox(x1min=(ones(2) .- 0.1), x1max=(ones(2) .+ 0.1))
 qc_safety = QcSafety(S=outNorm2S(1000, ffnet))
-qc_reach = QcHplaneReach(normal=[1.0; 1.0])
+qc_reach = QcReachHplane(normal=[1.0; 1.0])
 
 intv_info = intervalsWorstCase(qc_input.x1min, qc_input.x1max, ffnet)
 
@@ -35,13 +35,13 @@ intv_info = intervalsWorstCase(qc_input.x1min, qc_input.x1max, ffnet)
 acxdim = sum(ffnet.xdims[2:end-1])
 acxmin = vcat([acxi[1] for acxi in intv_info.x_intvs[2:end-1]]...)
 acxmax = vcat([acxi[2] for acxi in intv_info.x_intvs[2:end-1]]...)
-qc_bnd = QcBoundedActiv(acxdim=acxdim, acxmin=acxmin, acxmax=acxmax)
+qc_bnd = QcActivBounded(acxdim=acxdim, acxmin=acxmin, acxmax=acxmax)
 
 # QC sector
 qcsec_acxmin = vcat([acxi[1] for acxi in intv_info.acx_intvs]...)
 qcsec_acxmax = vcat([acxi[2] for acxi in intv_info.acx_intvs]...)
 smin, smax = findSectorMinMax(qcsec_acxmin, qcsec_acxmax, ffnet.activ)
-qc_sec = QcSectorActiv(acxdim=acxdim, β=4, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
+qc_sec = QcActivSector(acxdim=acxdim, β=4, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
 qc_activs = [qc_bnd, qc_sec]
 

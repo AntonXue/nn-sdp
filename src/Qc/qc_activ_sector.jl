@@ -1,5 +1,5 @@
 
-@with_kw struct QcSectorActiv <: QcActiv
+@with_kw struct QcActivSector <: QcActiv
   acxdim::Int
   β::Int
   base_smin::Float64
@@ -17,7 +17,7 @@
 end
 
 # The construction of Qac, which will be used in Zac
-function makeQac(γac, qc::QcSectorActiv)
+function makeQac(γac, qc::QcActivSector)
   @assert length(γac) == qc.vardim
   acxdim, β = qc.acxdim, qc.β
   initγac = γac[1:acxdim]

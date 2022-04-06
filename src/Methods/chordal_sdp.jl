@@ -72,7 +72,7 @@ end
 
 # Hyperplane reachability setup
 function setupHplaneReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
-  @assert query.qc_reach isa QcHplaneReach
+  @assert query.qc_reach isa QcReachHplane
   setup_start_time = time()
   vars = Dict()
 
@@ -127,7 +127,7 @@ function runQuery(query::Query, opts::ChordalSdpOptions)
   # Delegate the appropriate call depending on the kind of query
   if query isa SafetyQuery
     _, vars, setup_time = setupSafety!(model, query, opts)
-  elseif query isa ReachQuery && query.qc_reach isa QcHplaneReach
+  elseif query isa ReachQuery && query.qc_reach isa QcReachHplane
     _, vars, setup_time = setupHplaneReach!(model, query, opts)
   else
     error("\tunrecognized query: $(query)")

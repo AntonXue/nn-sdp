@@ -53,23 +53,23 @@ end
 # Must have at least one QcInput
 # Must have at least one QcActiv
 # Must have exactly one QcOutput
-# Must include exactly one QcSectorActiv
+# Must include exactly one QcActivSector
 function isValidQcInfos(qcs::Vector{QcInfo})
   qc_ins = filter(qc -> qc isa QcInput, qcs)
   qc_acs = filter(qc -> qc isa QcActiv, qcs)
   qc_outs = filter(qc -> qc isa QcOutput, qcs)
-  qc_secs = filter(qc -> qc isa QcSectorActiv, qcs)
+  qc_secs = filter(qc -> qc isa QcActivSector, qcs)
   return (length(qc_ins) >= 1 && length(qc_acs) >= 1
           && length(qc_outs) == 1 && length(qc_secs) == 1)
 end
 
 # Given a bunch of qcs, return a Vector{VecInt} of their cliques
 function findCliques(qcs::Vector{QcInfo}, ffnet::FeedFwdNet)
-  # Check validity, and that QcSectorActiv is among them
+  # Check validity, and that QcActivSector is among them
   @assert isValidQcInfos(qcs)
 
-  # We are guaranteed to have exactly one QcSectorActiv
-  qc_secs = filter(qc -> qc isa QcSectorActiv, qcs)
+  # We are guaranteed to have exactly one QcActivSector
+  qc_secs = filter(qc -> qc isa QcActivSector, qcs)
   return find2StageCliques(qc_secs[1].β, ffnet)
 end
 

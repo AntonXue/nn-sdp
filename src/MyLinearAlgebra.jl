@@ -8,6 +8,7 @@ const VecInt = Vector{Int}
 const VecF64 = Vector{Float64}
 const PairVecF64 = Tuple{VecF64, VecF64}
 const MatF64 = Matrix{Float64}
+const SpMatF64 = SparseMatrixCSC{Float64, Int64}
 
 # Splice a vector
 function splice(x, sizes::VecInt)
@@ -50,7 +51,7 @@ function Ec(elems::VecInt, N::Int)
   return vcat(eis...)
 end
 
-export VecInt, VecF64, PairVecF64, MatF64
+export VecInt, VecF64, PairVecF64, MatF64, SpMatF64
 export splice, e, E, Ec
 
 end

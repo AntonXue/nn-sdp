@@ -23,9 +23,9 @@ include("cliques.jl")
 
 export Clique
 export QcInfo, QcInput, QcOutput, QcActiv
-export QcBoxInput, QcPolyInput
-export QcSafety, QcReach, QcHplaneReach
-export QcBoundedActiv, QcSectorActiv
+export QcInputBox, QcInputPoly
+export QcSafety, QcReach, QcReachHplane
+export QcActivBounded, QcActivSector
 export findSectorMinMax, makeQac, makeA, makeb, makeB
 export makeZin, makeZout, makeZac
 export findCliques
