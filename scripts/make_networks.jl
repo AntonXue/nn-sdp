@@ -4,7 +4,7 @@ using Random
 Random.seed!(1234)
 
 # Set up the path
-NNET_PATH = joinpath(@__DIR__, "..", "src", "Utils", "stolen_code")
+NNET_PATH = joinpath(@__DIR__, "..", "exts") 
 pushfirst!(PyVector(pyimport("sys")."path"), NNET_PATH)
 NNet = pyimport("NNet")
 

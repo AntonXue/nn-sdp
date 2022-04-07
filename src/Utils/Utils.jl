@@ -14,8 +14,12 @@ using ..MyNeuralNetwork
 using ..Qc
 using ..Methods
 
-include("stolen_code/nnet_parser.jl");
-include("stolen_code/vnnlib_parser.jl"); 
+# Externals dependency directory
+EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
+
+# Load stuff
+include(joinpath(EXTS_DIR, "nnet_parser.jl"))
+include(joinpath(EXTS_DIR, "vnnlib_parser.jl"))
 include("load_network.jl");
 include("load_specs.jl");
 

@@ -10,9 +10,8 @@ end
 
 # Convert an ONNX to an NNet file
 function onnx2nnet(onnx_file::String, nnet_file::String)
-  root_path = joinpath(@__DIR__, "stolen_code")
-  println("root path is: $(root_path)")
-  pushfirst!(PyVector(pyimport("sys")."path"), root_path)
+  # Load at path/to/EXTS_DIR/NNet
+  pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
   nnet = pyimport("NNet")
   use_gz = split(onnx_file, ".")[end] == "gz"
   if use_gz
