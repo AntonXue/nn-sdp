@@ -29,6 +29,6 @@ end
 include("intervals_easy.jl")
 
 export IntervalsInfo
-export intervalsWorstCase
+export intervalsWorstCase, intervalsRandomized
 
 end

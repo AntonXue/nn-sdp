@@ -13,6 +13,7 @@ using ..MyLinearAlgebra
 using ..MyNeuralNetwork
 using ..Qc
 using ..Methods
+using ..Intervals
 
 # Externals dependency directory
 EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
@@ -22,6 +23,7 @@ include(joinpath(EXTS_DIR, "nnet_parser.jl"))
 include(joinpath(EXTS_DIR, "vnnlib_parser.jl"))
 include("load_network.jl");
 include("load_specs.jl");
+include("load_query.jl");
 
 pyplot()
 
@@ -129,7 +131,7 @@ function polyVertices(poly::Poly)
   return vxs, vys
 end
 
-function plotBoundingPolys(points::Vector{VecF64}, labeled_polys::Vector{Tuple{String, Poly}}; saveto="~/Desktop/foo.png")
+function plotBoundingPolys(points::Vector{VecF64}, labeled_polys::Vector{Tuple{String, Poly}}; saveto="~/dump/foo.png")
   @assert all(z -> z == 2, length.(points))
   @assert all(lbp -> length(lbp[2]) >= 3, labeled_polys)
 
@@ -179,7 +181,8 @@ export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys
-export loadFromNnet, loadFromOnnx, onnx2ffnet, loadVnnlib
+export loadFromNnet, loadFromOnnx, loadFromFile, onnx2ffnet, loadVnnlib
+export loadQueries
 
 end # End Module
 

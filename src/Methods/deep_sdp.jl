@@ -91,8 +91,6 @@ function runQuery(query::Query, opts::DeepSdpOptions)
   end
 
   # Get ready to return
-  if opts.verbose; println("\tsetup done at: $(now())") end
-
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
   if opts.verbose;

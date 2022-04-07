@@ -27,4 +27,15 @@ function loadFromOnnx(onnx_file::String, activ::Activ = ReluActiv())
   return loadFromNnet(nnet_file, activ)
 end
 
+# Check the extension and load accordingly
+function loadFromFile(file, activ::Activ = ReluActiv())
+  ext = split(file, ".")[end]
+  if ext == "nnet"
+    return loadFromNnet(file)
+  elseif ext == "onnx"
+    return loadFromOnnx(file)
+  else
+    error("Unrecognized file: $(file)")
+  end
+end
 
