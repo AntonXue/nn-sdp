@@ -15,6 +15,8 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet)
     for out in outbox
       A = hcat(out[1]...)'
       b = out[2]
+      # println("making specs relaxed")
+      # b = b .+ 1
       @assert size(A)[1] == length(b)
       for i in 1:length(b)
         S = hplaneS(A[i,:], b[i], ffnet)

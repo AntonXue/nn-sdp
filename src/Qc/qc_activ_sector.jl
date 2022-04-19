@@ -1,10 +1,11 @@
 
 @with_kw struct QcActivSector <: QcActiv
+  activ::Activ
   acxdim::Int
   β::Int
   base_smin::Float64
   base_smax::Float64
-  # Default values; only need to specify top 4 at a minimum
+  # Default values; only need to specify the variables above this line
   smin::VecF64 = ones(acxdim) * base_smin
   smax::VecF64 = ones(acxdim) * base_smax
   @assert acxdim == length(smin) == length(smax)
@@ -13,7 +14,9 @@
   @assert smin <= smax
   @assert all(base_smin .<= smin)
   @assert all(smax .<= base_smax)
-  vardim::Int = sum((acxdim-β):acxdim)
+  # vardim::Int = sum((acxdim-β):acxdim)
+  _λdim::Int = sum((acxdim-β):acxdim) # The base amount
+  vardim::Int = (activ isa ReluActiv) ? _λdim + 2 * acxdim : _λdim
 end
 
 # The construction of Qac, which will be used in Zac
@@ -26,7 +29,7 @@ function makeQac(γac, qc::QcActivSector)
     ijs = [(i, j) for i in 1:(acxdim-1) for j in (i+1):acxdim if j-i <= β]
     δts = [e(i, acxdim)' - e(j, acxdim)' for (i, j) in ijs]
     Δ = vcat(δts...)
-    @assert acxdim + length(ijs) == length(γac)
+    @assert acxdim + length(ijs) == qc._λdim
     # Given a pair i,j, calculate its relative index in the γac vector
     v = vec([γac[acxdim+ind] for ind in 1:length(ijs)])
     T = Δ' * (v .* Δ)
@@ -42,6 +45,17 @@ function makeQac(γac, qc::QcActivSector)
   _Q22 = -2 * T
   _Q23 = spzeros(size(_Q22)[1])
   _Q33 = 0
+
+  if qc.activ isa ReluActiv
+    λend = qc._λdim
+    ηstart, ηend = (qc._λdim + 1), (qc._λdim + qc.acxdim)
+    νstart, νend = (qc._λdim + qc.acxdim + 1), qc.vardim
+    η = γac[ηstart:ηend]
+    ν = γac[νstart:νend]
+    _Q13 = -qc.smin .* η - qc.smax .* ν
+    _Q23 = η + ν
+  end
+
   Q = Symmetric([_Q11 _Q12 _Q13; _Q12' _Q22 _Q23; _Q13' _Q23' _Q33])
 end
 

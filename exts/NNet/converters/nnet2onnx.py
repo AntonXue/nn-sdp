@@ -29,8 +29,8 @@ def nnet2onnx(nnetFile, onnxFile="", outputVar = "y_out", inputVar="X", normaliz
         onnxFile = nnetFile[:-4]+'onnx'
     
     # Initialize graph
-    inputs = [helper.make_tensor_value_info(inputVar,   TensorProto.DOUBLE, [inputSize])]
-    outputs = [helper.make_tensor_value_info(outputVar, TensorProto.DOUBLE, [outputSize])]
+    inputs = [helper.make_tensor_value_info(inputVar,   TensorProto.FLOAT, [inputSize])]
+    outputs = [helper.make_tensor_value_info(outputVar, TensorProto.FLOAT, [outputSize])]
     operations = []
     initializers = []
     
@@ -44,11 +44,11 @@ def nnet2onnx(nnetFile, onnxFile="", outputVar = "y_out", inputVar="X", normaliz
            
         # Weight matrix multiplication
         operations.append(helper.make_node("MatMul",["W%d"%i,inputVar],["M%d"%i]))
-        initializers.append(numpy_helper.from_array(weights[i].astype(np.double),name="W%d"%i))
-
+        initializers.append(numpy_helper.from_array(weights[i].astype(np.float32),name="W%d"%i))
+            
         # Bias add 
         operations.append(helper.make_node("Add",["M%d"%i,"B%d"%i],[outputName]))
-        initializers.append(numpy_helper.from_array(biases[i].astype(np.double),name="B%d"%i))
+        initializers.append(numpy_helper.from_array(biases[i].astype(np.float32),name="B%d"%i))
             
         # Use Relu activation for all layers except the last layer
         if i<numLayers-1: 
@@ -84,3 +84,4 @@ if __name__ == '__main__':
         else: nnet2onnx(nnetFile)
     else:
         print("Need to specify which .nnet file to convert to ONNX!")
+

@@ -27,6 +27,7 @@ using ..MyNeuralNetwork
 end
 
 include("intervals_easy.jl")
+include("intervals_autolirpa.jl")
 
 export IntervalsInfo
 export intervalsWorstCase, intervalsRandomized

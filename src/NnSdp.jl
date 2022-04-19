@@ -28,10 +28,11 @@ function solveQuery(query::Query, opts::QueryOptions)
 end
 
 # Check whether a network satisfies all the vnnlib stuff
-function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::QueryOptions, β; num_hplanes = 6)
+function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::QueryOptions, β::Int;
+                         num_hplanes = 6, use_qc_sector = true)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
-  qc_activs = Utils.makeQcActivs(ffnet, x1min, x1max, β)
+  qc_activs = Utils.makeQcActivs(ffnet, x1min, x1max, β, use_qc_sector=use_qc_sector)
 
   hplanes = Vector{Tuple{VecF64, Float64}}()
   solns = Vector{Any}()
