@@ -30,7 +30,7 @@ EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
 end
 
 include("intervals_easy.jl")
-include("intervals_autolirpa.jl")
+include("intervals_auto_lirpa.jl")
 
 export IntervalsInfo
 export intervalsWorstCase, intervalsRandomized
