@@ -51,9 +51,8 @@ function loadFromFile(file, activ::Activ = ReluActiv())
 end
 
 # Write FeedFwdNet to a NNet file
-function writeNnet(ffnet::FeedFwdNet, saveto="$(homedir())/dump/hello.nnet")
+function writeNnet(ffnet::FeedFwdNet, nnet_file="$(homedir())/dump/hello.nnet")
   xdims = ffnet.xdims
-  nnet_file = saveto
   open(nnet_file, "w") do f
     # Component 1
     write(f, "// Dummy header\n")
@@ -104,4 +103,11 @@ function writeNnet(ffnet::FeedFwdNet, saveto="$(homedir())/dump/hello.nnet")
     # Done
   end
 end
+
+function writeOnnx(ffnet::FeedFwdNet, onnx_file="$(homedir())/dump/hello.onnx")
+  nnet_file = tempname()
+  writeNnet(ffnet, nnet_file)
+  nnet2onnx(nnet_file, onnx_file)
+end
+
 

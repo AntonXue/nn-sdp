@@ -48,7 +48,7 @@ def find_bounds(onnx_file, x1min, x1max):
 
   # Bounds calculation
   lb, ub = model.compute_bounds(x=(my_input,), method="IBP")
-  return lb, ub
+  return lb.tolist(), ub.tolist()
 
 '''
 # ONNX_FILE = "/home/antonxue/dump/W5-D5.onnx"

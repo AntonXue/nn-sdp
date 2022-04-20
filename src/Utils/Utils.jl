@@ -21,9 +21,8 @@ EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
 # Load stuff
 include(joinpath(EXTS_DIR, "nnet_parser.jl"))
 include(joinpath(EXTS_DIR, "vnnlib_parser.jl"))
-include("load_network.jl");
-include("load_specs.jl");
-include("load_query.jl");
+include("network_files.jl");
+include("query_files.jl");
 
 pyplot()
 
@@ -181,7 +180,8 @@ export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys
-export loadFromNnet, loadFromOnnx, loadFromFile, onnx2ffnet, loadVnnlib
+export loadFromNnet, loadFromOnnx, loadFromFile, onnx2nnet, loadVnnlib
+export writeNnet, writeOnnx
 export loadQueries
 
 end # End Module

@@ -25,4 +25,9 @@ function findFeedFwdNetBounds(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64)
   if !(EXTS_DIR in PyVector(pyimport("sys")."path"))
     pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
   end
+
+
+  # Write the ffnet to an onnx file
+  onnx_file = tempname()
+  writeOnnx(ffnet, onnx_file)
 end
