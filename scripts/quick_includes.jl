@@ -4,6 +4,7 @@ using LinearAlgebra
 using ArgParse
 using Printf
 using Dates
+using PyCall
 
 include("../src/NnSdp.jl"); using .NnSdp
 const nn = NnSdp
@@ -56,4 +57,14 @@ xfs = randomTrajectories(10000, ffnet, x1min, x1max)
 plt = plotBoundingPolys(xfs, labeled_polys)
 =#
 
+rand_nnet = "/home/antonxue/dump/rand.nnet"
+rand_onnx = "/home/antonxue/dump/rand.onnx"
+rand_ffnet = Utils.randomNetwork([2;3;4;5;4;3;2])
+Utils.writeNnet(rand_ffnet, rand_nnet)
+Utils.nnet2onnx(rand_nnet, rand_onnx)
+
+EXTS_DIR = "/home/antonxue/nn-sdp/exts"
+pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
+
+bridge = pyimport("auto_lirpa_bridge")
 

@@ -18,6 +18,9 @@ Pkg.add("CSV")
 # Some Conda-specific installations
 Pkg.add("Conda")
 import Conda
+Conda.add("appdirs")
+Conda.add("pytorch", channel="pytorch")
+Conda.add("torchvision", channel="pytorch")
 Conda.add("onnx")
 Conda.add("onnxruntime", channel="conda-forge")
 

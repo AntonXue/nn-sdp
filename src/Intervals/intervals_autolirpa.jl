@@ -1,4 +1,4 @@
-# Propagation with autolirpa
+using PyCall
 
 # Slice up the ffnet
 function sliceFeedFwdNet(ffnet::FeedFwdNet)
@@ -19,11 +19,10 @@ function sliceFeedFwdNet(ffnet::FeedFwdNet)
   return slices
 end
 
-# Write ffnet to .nnet format, and save the result to a tmp file
-function writeFeedFwdNet(ffnet::FeedFwdNet, saveto="$(homedir())/dump/hello.nnet")
-  nnet_file = tempname()
-  open(nnet_file, "w") do f
+# Calculate the bounds of a FeedFwdNet
+function findFeedFwdNetBounds(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64)
+  @assert length(x1min) == length(x1max)
+  if !(EXTS_DIR in PyVector(pyimport("sys")."path"))
+    pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
   end
 end
-
-

@@ -7,6 +7,9 @@ using Printf
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
 
+# External stuff
+EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
+
 # The result of interval propagation
 @with_kw struct IntervalInfo
   ffnet::FeedFwdNet

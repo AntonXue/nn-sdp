@@ -11,7 +11,9 @@ end
 # Convert an ONNX to an NNet file
 function onnx2nnet(onnx_file::String, nnet_file::String)
   # Load at path/to/EXTS_DIR/NNet
-  pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
+  if !(EXTS_DIR in PyVector(pyimport("sys")."path"))
+    pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
+  end
   nnet = pyimport("NNet")
   use_gz = split(onnx_file, ".")[end] == "gz"
   if use_gz
@@ -22,7 +24,9 @@ end
 
 # Convert from NNet to ONNX file
 function nnet2onnx(nnet_file::String, onnx_file::String)
-  pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
+  if !(EXTS_DIR in PyVector(pyimport("sys")."path"))
+    pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
+  end
   nnet = pyimport("NNet")
   nnet.nnet2onnx(nnet_file, onnxFile=onnx_file)
 end
@@ -47,7 +51,7 @@ function loadFromFile(file, activ::Activ = ReluActiv())
 end
 
 # Write FeedFwdNet to a NNet file
-function writeNNet(ffnet::FeedFwdNet, saveto="$(homedir())/dump/hello.nnet")
+function writeNnet(ffnet::FeedFwdNet, saveto="$(homedir())/dump/hello.nnet")
   xdims = ffnet.xdims
   nnet_file = saveto
   open(nnet_file, "w") do f
@@ -87,13 +91,13 @@ function writeNNet(ffnet::FeedFwdNet, saveto="$(homedir())/dump/hello.nnet")
       Mk, bk = ffnet.Ms[k][:, 1:end-1], ffnet.Ms[k][:, end]
       for i in 1:size(Mk)[1]
         for j in 1:size(Mk)[2]
-          write(f, @sprintf("%.5e,", Mk[i,j]))
+          write(f, "$(Mk[i,j]),")
         end
         write(f, "\n")
       end
 
       for i in 1:length(bk)
-        write(f, @sprintf("%.5e,\n", bk[i]))
+        write(f, "$(bk[i]),\n")
       end
     end
 
