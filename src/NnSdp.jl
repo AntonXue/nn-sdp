@@ -4,8 +4,9 @@ using Dates
 
 include("MyLinearAlgebra.jl");
 include("MyNeuralNetwork.jl");
-include("Qc/Qc.jl");
+include("Files/Files.jl");
 include("Intervals/Intervals.jl");
+include("Qc/Qc.jl");
 include("Methods/Methods.jl");
 include("Utils/Utils.jl");
 
@@ -13,6 +14,7 @@ using Reexport
 @reexport using .MyLinearAlgebra
 @reexport using .MyNeuralNetwork
 @reexport using .Qc
+@reexport using .Files
 @reexport using .Intervals
 @reexport using .Methods
 @reexport using .Utils
@@ -32,7 +34,8 @@ function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::
                          num_hplanes = 6, use_qc_sector = true)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
-  qc_activs = Utils.makeQcActivs(ffnet, x1min, x1max, β, use_qc_sector=use_qc_sector)
+  # Change the dependency on this one
+  qc_activs = Qc.makeQcActivs(ffnet, x1min, x1max, β, use_qc_sector=use_qc_sector)
 
   hplanes = Vector{Tuple{VecF64, Float64}}()
   solns = Vector{Any}()

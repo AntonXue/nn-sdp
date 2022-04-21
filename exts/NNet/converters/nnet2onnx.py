@@ -60,8 +60,8 @@ def nnet2onnx(nnetFile, onnxFile="", outputVar = "y_out", inputVar="X", normaliz
     model_def = helper.make_model(graph_proto)
 
     # Print statements
-    print("Converted NNet model at %s"%nnetFile)
-    print("    to an ONNX model at %s"%onnxFile)
+    # print("Converted NNet model at %s"%nnetFile)
+    # print("    to an ONNX model at %s"%onnxFile)
     
     # Additional print statements if desired
     #print("\nReadable GraphProto:\n")

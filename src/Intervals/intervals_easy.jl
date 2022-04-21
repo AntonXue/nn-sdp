@@ -19,7 +19,7 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)
-    Wk, bk = Mk[1:end, 1:end-1], Mk[1:end, end]
+    Wk, bk = Mk[:, 1:end-1], Mk[:, end]
     ykmin = (max.(Wk, 0) * xkmin) + (min.(Wk, 0) * xkmax) + bk
     ykmax = (max.(Wk, 0) * xkmax) + (min.(Wk, 0) * xkmin) + bk
 
@@ -33,7 +33,7 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
   end
 
   # Each is a list of tuple of vectors for flexibility; vcat as needed
-  return IntervalInfo(ffnet=ffnet, x_intvs=x_intvs, acx_intvs=acx_intvs)
+  return IntervalsInfo(ffnet=ffnet, x_intvs=x_intvs, acx_intvs=acx_intvs)
 end
 
 # Randomized propagation. Not sound
@@ -76,6 +76,6 @@ function intervalsRandomized(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet; N 
     push!(x_intvs, (xkmin, xkmax))
   end
   # Each is a list of tuple of vectors for flexibility; vcat as needed
-  return IntervalInfo(ffnet=ffnet, x_intvs=x_intvs, acx_intvs=acx_intvs)
+  return IntervalsInfo(ffnet=ffnet, x_intvs=x_intvs, acx_intvs=acx_intvs)
 end
 

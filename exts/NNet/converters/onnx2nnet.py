@@ -155,8 +155,8 @@ def onnx2nnet(onnxFile, inputMins=None, inputMaxes=None, means=None, ranges=None
         if ranges is None: ranges = (inputSize+1)*[1.0]
             
         # Print statements
-        print("Converted ONNX model at %s"%onnxFile)
-        print("    to an NNet model at %s"%nnetFile)
+        # print("Converted ONNX model at %s"%onnxFile)
+        # print("    to an NNet model at %s"%nnetFile)
         
         # Write NNet file
         writeNNet(weights,biases,inputMins,inputMaxes,means,ranges,nnetFile)

@@ -6,12 +6,13 @@ using Printf
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
+using ..Files
 
 # External stuff
 EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
 
 # The result of interval propagation
-@with_kw struct IntervalInfo
+@with_kw struct IntervalsInfo
   ffnet::FeedFwdNet
 
   # The ranges of each x
@@ -33,6 +34,6 @@ include("intervals_easy.jl")
 include("intervals_auto_lirpa.jl")
 
 export IntervalsInfo
-export intervalsWorstCase, intervalsRandomized
+export intervalsWorstCase, intervalsRandomized, intervalsAutoLirpa
 
 end

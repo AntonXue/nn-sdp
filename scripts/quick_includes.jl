@@ -35,7 +35,6 @@ mosek_opts =
 chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true)
 deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
 
-#=
 x1min, x1max = ones(2) .- 1e-2, ones(2) .+ 1e-2
 hplanes_nosec, solns_nosec = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0, use_qc_sector=false)
 hplanes0, solns0 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0)
@@ -55,13 +54,12 @@ labeled_polys =
 
 xfs = randomTrajectories(10000, ffnet, x1min, x1max)
 plt = plotBoundingPolys(xfs, labeled_polys)
-=#
 
 rand_nnet = "/home/antonxue/dump/rand.nnet"
 rand_onnx = "/home/antonxue/dump/rand.onnx"
 rand_ffnet = Utils.randomNetwork([2;3;4;5;4;3;2])
-Utils.writeNnet(rand_ffnet, rand_nnet)
-Utils.nnet2onnx(rand_nnet, rand_onnx)
+writeNnet(rand_ffnet, rand_nnet)
+nnet2onnx(rand_nnet, rand_onnx)
 
 EXTS_DIR = "/home/antonxue/nn-sdp/exts"
 pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)

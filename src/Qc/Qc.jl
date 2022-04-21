@@ -6,6 +6,7 @@ using Parameters
 
 using ..MyLinearAlgebra
 using ..MyNeuralNetwork
+using ..Intervals
 
 # Meta information necessary to construct each Qc
 abstract type QcInfo end
@@ -27,6 +28,7 @@ export QcInputBox, QcInputPoly
 export QcSafety, QcReach, QcReachHplane
 export QcActivBounded, QcActivSector
 export findSectorMinMax, makeQac, makeA, makeb, makeB
+export makeQcActivs
 export makeZin, makeZout, makeZac
 export findCliques
 
