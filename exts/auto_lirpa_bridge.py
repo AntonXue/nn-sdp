@@ -38,6 +38,7 @@ def find_bounds(onnx_file, x1min, x1max):
   assert len(x1min) == len(x1max)
   # Convert the input to torch tensors
   x1min, x1max = torch.tensor(x1min).float(), torch.tensor(x1max).float()
+  x1min, x1max = x1min.view(1, len(x1min)), x1max.view(1, len(x1max))
   xcenter = (x1max + x1min) / 2
   ptb = PerturbationLpNorm(x_L=x1min, x_U=x1max) # By default this is Linfty box
   my_input = BoundedTensor(xcenter, ptb)
@@ -47,10 +48,12 @@ def find_bounds(onnx_file, x1min, x1max):
   model = BoundedModule(pytorch_model, xcenter)
 
   # Bounds calculation
-  lb, ub = model.compute_bounds(x=(my_input,), method="IBP")
-  return lb.tolist(), ub.tolist()
+  # lb, ub = model.compute_bounds(x=(my_input,), method="IBP")
+  # return lb.tolist(), ub.tolist()
 
-'''
+  lb, ub = model.compute_bounds(x=(my_input,), method="CROWN")
+  return lb[0].tolist(), ub[0].tolist()
+
 # ONNX_FILE = "/home/antonxue/dump/W5-D5.onnx"
 ONNX_FILE = "/home/antonxue/dump/rand.onnx"
 
@@ -67,5 +70,4 @@ seqmods = list(pytorch_model.children())
 bounded = BoundedModule(pytorch_model, xcenter)
 
 nl1 = nn.Linear(in_features=3, out_features=5, bias=True)
-'''
 

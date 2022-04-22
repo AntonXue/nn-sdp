@@ -658,8 +658,10 @@ class BoundedModule(nn.Module):
                         # Patches mode. Use output channel size as the spec size. This still shares some alpha, but better than no sharing.
                         # The patch size is [out_ch, batch, out_h, out_w, in_ch, H, W]. We use out_ch as the output shape.
                         output_shape = node.patch_size[nj.name][0]
+                        # print(f'node {nj.name} {nj} use patch size {output_shape} patches size {node.patch_size[nj.name][0]}')
                     else:
                         output_shape = prod(nj.lower.shape[1:])
+                        # print(f'node {nj.name} {nj} use regular size {output_shape}')
                     start_nodes.append((nj.name, output_shape))
             node.init_opt_parameters(start_nodes)
             node.opt_start()
@@ -700,6 +702,7 @@ class BoundedModule(nn.Module):
         stop_criterion_func = opts['ob_stop_criterion_func']
         input_grad = opts['ob_input_grad']
         sparse_intermediate_bounds = self.bound_opts.get('sparse_intermediate_bounds', False)
+        # verbose = 1
 
         assert bound_lower != bound_upper, 'we can only optimize lower OR upper bound at one time'
         assert alpha or beta, "nothing to optimize, use compute bound instead!"
@@ -922,6 +925,7 @@ class BoundedModule(nn.Module):
                 for m in self.relus:
                     for m_start_node, v in m.alpha.items():
                         v.data = torch.clamp(v.data, 0., 1.)
+                        # print(f'layer {m.name} start_node {m_start_node} shape {v.size()} norm {v[:,:,0].abs().sum()} {v[:,:,-1].abs().sum()} {v.abs().sum()}')
                 # For tanh, we clip it in bound_ops because clipping depends. TODO: clipping should be a method in the BoundOptimizableActivation class.
                 # on pre-activation bounds
 
@@ -978,7 +982,7 @@ class BoundedModule(nn.Module):
 
         print("best_l after optimization:", best_l.sum().item(), "with beta sum per layer:", [p.sum().item() for p in betas])
         # np.save('solve_slope.npy', np.array(record))
-        print('alpha/beta optimization time:', time.time() - start)
+        print('optimal alpha/beta time:', time.time() - start)
         return best_ret
 
 
@@ -1001,6 +1005,7 @@ class BoundedModule(nn.Module):
     def get_unstable_locations(self, node, aux_reference_bounds):
         # FIXME (09/19): this is for ReLU only!
         unstable_masks = torch.logical_and(aux_reference_bounds[node.name][0] < 0, aux_reference_bounds[node.name][1] > 0)
+        # unstable_masks = torch.ones(dtype=torch.bool, size=(batch_size, dim), device=self.device)
         if unstable_masks.ndim > 2:
             # Flatten the conv layer shape.
             unstable_masks = unstable_masks.view(unstable_masks.size(0), -1)
@@ -1009,6 +1014,7 @@ class BoundedModule(nn.Module):
         # This is a 1-d indices, shared by all elements in this batch.
         unstable_idx = unstable_locs.nonzero().squeeze(1)
         unstable_size = unstable_idx.numel()
+        # print(f'layer {node.name} unstable {unstable_size} total {node.output_shape}')
         return unstable_idx, unstable_size
 
     def compute_bounds(self, x=None, aux=None, C=None, method='backward', IBP=False, forward=False, 
@@ -1173,7 +1179,7 @@ class BoundedModule(nn.Module):
 
         # check whether weights are perturbed and set nonlinear for the BoundMatMul operation
         for n in self._modules.values():
-            if isinstance(n, (BoundLinear, BoundConv, BoundBatchNormalization)):
+            if type(n) in [BoundLinear, BoundConv, BoundBatchNormalization]:
                 n.nonlinear = False
                 for l_name in n.input_name[1:]:
                     node = self._modules[l_name]
