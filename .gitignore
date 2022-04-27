@@ -37,4 +37,5 @@ bench/
 *.onnx
 *.vnnlib
 *.log
+*.swp
 

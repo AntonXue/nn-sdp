@@ -35,22 +35,25 @@ mosek_opts =
 chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true)
 deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
 
-x1min, x1max = ones(2) .- 1e-1, ones(2) .+ 1e-1
+x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 hplanes_nosec, solns_nosec = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0, use_qc_sector=false)
 hplanes0, solns0 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0)
 hplanes2, solns2 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 2)
 hplanes4, solns4 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 4)
-# hplanes6, solns6 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 6)
-# hplanes8, solns8 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 8)
-# hplanes10, solns10 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 10)
-# hplanes12, solns12 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 12)
+hplanes6, solns6 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 6)
+hplanes8, solns8 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 8)
+hplanes10, solns10 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 10)
+hplanes12, solns12 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 12)
 
 labeled_polys =
 [ ("nosec", hplanes_nosec),
   ("β=0", hplanes0),
   ("β=2", hplanes2),
   ("β=4", hplanes4),
-  # ("β=6", hplanes4),
+  ("β=6", hplanes6),
+  ("β=8", hplanes8),
+  ("β=10", hplanes10),
+  ("β=12", hplanes12),
 ]
 
 xfs = randomTrajectories(10000, ffnet, x1min, x1max)

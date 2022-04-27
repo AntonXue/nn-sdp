@@ -14,8 +14,13 @@ using ..MyNeuralNetwork
 using ..Qc
 using ..Methods
 using ..Intervals
+using ..Files
 
 pyplot()
+
+EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
+include(joinpath(EXTS_DIR, "vnnlib_parser.jl"))
+include("query_files.jl")
 
 # A general form of quadratic safety
 # a||x||^2 + b||f(x)||^2 + c <= 0
@@ -171,6 +176,8 @@ export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys
+
+export loadVnnlib, loadQueries
 
 end # End Module
 
