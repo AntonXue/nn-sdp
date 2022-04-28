@@ -5,7 +5,7 @@ from onnx import helper, numpy_helper, TensorProto
 from NNet.utils.readNNet import readNNet
 from NNet.utils.normalizeNNet import normalizeNNet
 
-def nnet2onnx(nnetFile, onnxFile="", outputVar = "y_out", inputVar="X", normalizeNetwork=False):
+def nnet2onnx(nnetFile, onnxFile="", outputVar = "y_out", inputVar="X", normalizeNetwork=False, activ="Relu"):
     '''
     Convert a .nnet file to onnx format
     Args:
@@ -52,7 +52,8 @@ def nnet2onnx(nnetFile, onnxFile="", outputVar = "y_out", inputVar="X", normaliz
             
         # Use Relu activation for all layers except the last layer
         if i<numLayers-1: 
-            operations.append(helper.make_node("Relu",["H%d"%i],["R%d"%i]))
+            # operations.append(helper.make_node("Relu",["H%d"%i],["R%d"%i]))
+            operations.append(helper.make_node(activ,["H%d"%i],["R%d"%i]))
             inputVar = "R%d"%i
     
     # Create the graph and model in onnx

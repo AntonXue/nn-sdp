@@ -8,9 +8,6 @@ using ..MyLinearAlgebra
 using ..MyNeuralNetwork
 using ..Files
 
-# External stuff
-EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
-
 # The result of interval propagation
 @with_kw struct IntervalsInfo
   ffnet::FeedFwdNet
@@ -25,8 +22,8 @@ EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
   # What is fed into each activation
   acx_intvs::Vector{PairVecF64}
   @assert length(acx_intvs) == ffnet.K-1
-  @assert all(ϕi -> length(ϕi) == 2, acx_intvs)
-  @assert all(ϕi -> length(ϕi[1]) == length(ϕi[2]), acx_intvs)
+  @assert all(acxi -> length(acxi) == 2, acx_intvs)
+  @assert all(acxi -> length(acxi[1]) == length(acxi[2]), acx_intvs)
   @assert all(k -> ffnet.xdims[k+1] == length(acx_intvs[k][1]), 1:ffnet.K-1)
 end
 
@@ -34,6 +31,7 @@ include("intervals_easy.jl")
 include("intervals_auto_lirpa.jl")
 
 export IntervalsInfo
-export intervalsWorstCase, intervalsRandomized, intervalsAutoLirpa
+export intervalsWorstCase, intervalsSampled, intervalsAutoLirpa
 
 end
+

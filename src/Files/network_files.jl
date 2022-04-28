@@ -1,5 +1,16 @@
 using PyCall
 
+# Load a dependency
+NNET_PARENT_DIR = joinpath(@__DIR__, "..", "..", "exts")
+include(joinpath(NNET_PARENT_DIR, "nnet_parser.jl"))
+
+# Set p bridge to NNet
+if !(NNET_PARENT_DIR in PyVector(pyimport("sys")."path"))
+  pushfirst!(PyVector(pyimport("sys")."path"), NNET_PARENT_DIR)
+end
+
+nnet_bridge = pyimport("NNet")
+
 # Load directly from an NNet file
 function loadFromNnet(nnet_file::String, activ::Activ = ReluActiv())
   nnet = NNet(nnet_file)
@@ -9,26 +20,27 @@ function loadFromNnet(nnet_file::String, activ::Activ = ReluActiv())
 end
 
 # Convert an ONNX to an NNet file
+# A NNet file assumes everything is a relu
 function onnx2nnet(onnx_file::String, nnet_file::String)
-  # Load at path/to/EXTS_DIR/NNet
-  if !(EXTS_DIR in PyVector(pyimport("sys")."path"))
-    pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
-  end
-  nnet = pyimport("NNet")
   use_gz = split(onnx_file, ".")[end] == "gz"
   if use_gz
     onnx_file = onnx_file[1:end-3]
   end
-  nnet.onnx2nnet(onnx_file, nnetFile=nnet_file)
+  nnet_bridge.onnx2nnet(onnx_file, nnetFile=nnet_file)
 end
 
 # Convert from NNet to ONNX file
-function nnet2onnx(nnet_file::String, onnx_file::String)
-  if !(EXTS_DIR in PyVector(pyimport("sys")."path"))
-    pushfirst!(PyVector(pyimport("sys")."path"), EXTS_DIR)
+# A NNet file does not have activation info, so we explicitly supply it
+function nnet2onnx(nnet_file::String, onnx_file::String, activ::Activ)
+  # These need to match the ONNX operator naming conventions
+  if activ isa ReluActiv
+    activ_str = "Relu"
+  elseif activ isa TanhActiv
+    activ_str = "Tanh"
+  else
+    error("Unsupported activation: $(ffnet.activ)")
   end
-  nnet = pyimport("NNet")
-  nnet.nnet2onnx(nnet_file, onnxFile=onnx_file)
+  nnet_bridge.nnet2onnx(nnet_file, onnxFile=onnx_file, activ=activ_str)
 end
 
 # Load an ONNX file by first converting it to a NNet file
@@ -42,7 +54,7 @@ end
 function loadFromFile(file, activ::Activ = ReluActiv())
   ext = split(file, ".")[end]
   if ext == "nnet"
-    return loadFromNnet(file)
+    return loadFromNnet(file, activ)
   elseif ext == "onnx"
     return loadFromOnnx(file)
   else
@@ -104,10 +116,10 @@ function writeNnet(ffnet::FeedFwdNet, nnet_file="$(homedir())/dump/hello.nnet")
   end
 end
 
+# Write a FeedFwdNet to an ONNX file
 function writeOnnx(ffnet::FeedFwdNet, onnx_file="$(homedir())/dump/hello.onnx")
   nnet_file = tempname()
   writeNnet(ffnet, nnet_file)
-  nnet2onnx(nnet_file, onnx_file)
+  nnet2onnx(nnet_file, onnx_file, ffnet.activ)
 end
-
 

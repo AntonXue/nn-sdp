@@ -37,7 +37,7 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
 end
 
 # Randomized propagation. Not sound
-function intervalsRandomized(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet; N = Int(1e6))
+function intervalsSampled(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet; N = Int(1e6))
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The activation function

@@ -18,6 +18,7 @@ Pkg.add("CSV")
 # Some Conda-specific installations
 Pkg.add("Conda")
 import Conda
+Conda.add("numpy")
 Conda.add("appdirs")
 Conda.add("pytorch", channel="pytorch")
 Conda.add("torchvision", channel="pytorch")
@@ -28,4 +29,9 @@ Conda.add("onnxruntime", channel="conda-forge")
 Pkg.add("PyCall")
 ENV["PYTHON"] = ""
 Pkg.build("PyCall")
+
+# Some pip-specific installations
+import PyCall
+run(`$(PyCall.python) -m pip install git+https://github.com/AntonXue/onnx2pytorch.git`)
+
 
