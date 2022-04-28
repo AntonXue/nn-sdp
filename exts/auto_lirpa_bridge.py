@@ -82,7 +82,7 @@ def find_bounds(onnx_file, x1min, x1max, method="CROWN"):
     else:
       next_mod = linear_succs[lin.name]
       if isinstance(next_mod, BoundRelu):
-        print("RELU STUFF")
+        # print("RELU STUFF")
         acy1, acy2 = np.maximum(0, acx_lb), np.maximum(0, acx_ub)
       elif isinstance(next_mod, BoundTanh):
         acy1, acy2 = np.tanh(acx_lb), np.tanh(acx_ub)
@@ -90,13 +90,18 @@ def find_bounds(onnx_file, x1min, x1max, method="CROWN"):
         acy1, acy2 = acx_lb, acx_ub
 
       acy_lb, acy_ub = np.minimum(acy1, acy2), np.maximum(acy1, acy2)
+      # acy_ub = acy_ub + np.ones(acy_ub.shape)
+      # print("TODO: artificially boosted acy_ub")
       x_intvs.append((acy_lb.tolist(), acy_ub.tolist()))
 
 
+
+  '''
   print("x_intvs is:")
   for lb, ub in x_intvs:
     print(f"lb: {lb}")
     print(f"ub: {ub}")
+  '''
 
   return x_intvs, model
 

@@ -57,10 +57,11 @@ function makeQcActivs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β; use_q
   qc_bounded = QcActivBounded(acydim=acdim, acymin=acymin, acymax=acymax)
   
   if use_qc_sector
+    @assert ffnet.activ isa ReluActiv || ffnet.activ isa TanhActiv
     sec_acxmin = vcat([acxi[1] for acxi in intv_info.acx_intvs]...)
     sec_acxmax = vcat([acxi[2] for acxi in intv_info.acx_intvs]...)
     smin, smax = findSectorMinMax(sec_acxmin, sec_acxmax, ffnet.activ)
-    qc_sector = QcActivSector(activ=ReluActiv(), acxdim=acdim, β=β, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
+    qc_sector = QcActivSector(activ=ffnet.activ, acxdim=acdim, β=β, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
     qc_activs = [qc_bounded; qc_sector]
   else

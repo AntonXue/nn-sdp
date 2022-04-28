@@ -36,7 +36,7 @@ chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true)
 deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
 
 x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
-# hplanes_nosec, solns_nosec = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0, use_qc_sector=false)
+hplanes_nosec, solns_nosec = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0, use_qc_sector=false)
 hplanes0, solns0 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0)
 hplanes2, solns2 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 2)
 #=
@@ -48,7 +48,7 @@ hplanes12, solns12 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 12)
 =#
 
 labeled_polys =
-[ # ("nosec", hplanes_nosec),
+[ ("nosec", hplanes_nosec),
   ("β=0", hplanes0),
   ("β=2", hplanes2),
   #=
