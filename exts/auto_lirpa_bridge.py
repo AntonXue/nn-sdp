@@ -41,8 +41,8 @@ def load_model_onnx(path, input_shape):
   seq_model = nn.Sequential(*new_modules)
   return seq_model
 
-# Call this function
-def find_bounds(onnx_file, x1min, x1max, method="CROWN"):
+# Find all the x_intvs at once
+def find_bounds_one_shot(onnx_file, x1min, x1max, method="CROWN"):
   assert len(x1min) == len(x1max)
   # Convert the input to torch tensors
   x1min, x1max = torch.tensor(x1min).float(), torch.tensor(x1max).float()
@@ -82,7 +82,6 @@ def find_bounds(onnx_file, x1min, x1max, method="CROWN"):
     else:
       next_mod = linear_succs[lin.name]
       if isinstance(next_mod, BoundRelu):
-        # print("RELU STUFF")
         acy1, acy2 = np.maximum(0, acx_lb), np.maximum(0, acx_ub)
       elif isinstance(next_mod, BoundTanh):
         acy1, acy2 = np.tanh(acx_lb), np.tanh(acx_ub)
@@ -90,20 +89,28 @@ def find_bounds(onnx_file, x1min, x1max, method="CROWN"):
         acy1, acy2 = acx_lb, acx_ub
 
       acy_lb, acy_ub = np.minimum(acy1, acy2), np.maximum(acy1, acy2)
-      # acy_ub = acy_ub + np.ones(acy_ub.shape)
-      # print("TODO: artificially boosted acy_ub")
       x_intvs.append((acy_lb.tolist(), acy_ub.tolist()))
 
-
-
-  '''
-  print("x_intvs is:")
-  for lb, ub in x_intvs:
-    print(f"lb: {lb}")
-    print(f"ub: {ub}")
-  '''
-
   return x_intvs, model
+
+# Find only the lower and upper-bounds on the output
+def find_bounds_output(onnx_file, x1min, x1max, method="CROWN"):
+  assert len(x1min) == len(x1max)
+  # Convert the input to torch tensors
+  x1min, x1max = torch.tensor(x1min).float(), torch.tensor(x1max).float()
+  x1min, x1max = x1min.view(1, len(x1min)), x1max.view(1, len(x1max))
+  xcenter = (x1max + x1min) / 2
+  ptb = PerturbationLpNorm(x_L=x1min, x_U=x1max) # By default this is Linfty box
+  my_input = BoundedTensor(xcenter, ptb)
+
+  # Construct the model
+  pytorch_model = load_model_onnx(onnx_file, x1min.size())
+  model = BoundedModule(pytorch_model, xcenter)
+
+  # Use this for its side effects of populating the lower and upper fields
+  lb, ub = model.compute_bounds(x=(my_input,), method=method)
+  return lb[0].tolist(), ub[0].tolist()
+
 
 '''
 # ONNX_FILE = "/home/antonxue/stuff/nn-sdp/bench/acas/ACASXU_run2a_1_1_batch_2000.onnx"

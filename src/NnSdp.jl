@@ -19,7 +19,6 @@ using Reexport
 @reexport using .Methods
 @reexport using .Utils
 
-
 # Default solver options
 DEFAULT_MOSEK_OPTS = Dict()
 

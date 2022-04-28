@@ -8,6 +8,12 @@ using ..MyLinearAlgebra
 using ..MyNeuralNetwork
 using ..Files
 
+# Different interval propagation methods
+abstract type IntervalsMethod end
+struct IntervalsWorstCase <: IntervalsMethod end
+struct IntervalsSampled <: IntervalsMethod end
+struct IntervalsAutoLirpa <: IntervalsMethod end
+
 # The result of interval propagation
 @with_kw struct IntervalsInfo
   ffnet::FeedFwdNet
@@ -30,8 +36,22 @@ end
 include("intervals_easy.jl")
 include("intervals_auto_lirpa.jl")
 
+# Do interval calculations based on the method
+function makeIntervalsInfo(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsAutoLirpa())
+  if method isa IntervalsWorstCase
+    return intervalsWorstCase(x1min, x1max, ffnet)
+  elseif method isa IntervalsSampled
+    return intervalsSampled(x1min, x1max, ffnet)
+  elseif method isa IntervalsAutoLirpa
+    return intervalsAutoLirpaSliced(x1min, x1max, ffnet)
+  else
+    error("Unrecognized method: $(method)")
+  end
+end
+
+export IntervalsMethod, IntervalsWorstCase, IntervalsSampled, IntervalsAutoLirpa
 export IntervalsInfo
-export intervalsWorstCase, intervalsSampled, intervalsAutoLirpa
+export makeIntervalsInfo
 
 end
 

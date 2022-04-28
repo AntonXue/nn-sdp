@@ -43,12 +43,8 @@ end
 
 # Run interval propagation and quickly generate qc_activs
 function makeQcActivs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β; use_qc_sector = true)
-  # intv_info = Intervals.intervalsWorstCase(x1min, x1max, ffnet)
-  # println("using worst case intervals")
-  # intv_info = Intervals.intervalsRandomized(x1min, x1max, ffnet)
-  # println("using sampled intervals")
-  intv_info = Intervals.intervalsAutoLirpa(x1min, x1max, ffnet)
-  println("using autolirpa intervals")
+  # Interval propagation
+  intv_info = Intervals.makeIntervalsInfo(x1min, x1max, ffnet)
   
   # Set up qc bounded
   acdim = sum(ffnet.xdims[2:end-1])

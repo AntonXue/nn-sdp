@@ -2,6 +2,7 @@
 # We want:
 #   Z = sum Eck' * Zk * Eck
 #   Zk = sum Eckj' * Ykj * Eckj
+# Each Yk has size (nk + n{k+1} + β + nK + 1) and is block-arrow shaped
 function find2StageCliques(β::Int, ffnet::FeedFwdNet)
   S(k) = (k == 0) ? 0 : sum(ffnet.zdims[1:k])
   p = 1
@@ -29,12 +30,17 @@ function find2StageCliques(β::Int, ffnet::FeedFwdNet)
     if k == 1
       Dk1 = VecInt(1:length(Ck))
       push!(cliques, (Ck, [Dk1]))
-    # Otherwise, only use the first n[k] + n[k+1] + β, and the affine part
+
+    # Otherwise do the two-stage decomposition
     else
+      # Dk1 consists of the first nk + n{k+1} + β part and the affine part
       Dk1_init = 1 : Ck_initdim
       Dk1_last = length(Ck)
       Dk1 = VecInt([Dk1_init; Dk1_last])
-      push!(cliques, (Ck, [Dk1]))
+
+      # Dk2 begins after nk + n{k+1} + β and goes until the end
+      Dk2 = VecInt(Ck_initdim+1 : length(Ck))
+      push!(cliques, (Ck, [Dk1, Dk2]))
     end
   end
 
@@ -53,7 +59,6 @@ end
 # Must have at least one QcInput
 # Must have at least one QcActiv
 # Must have exactly one QcOutput
-# Must include exactly one QcActivSector
 function isValidQcInfos(qcs::Vector{QcInfo})
   qc_ins = filter(qc -> qc isa QcInput, qcs)
   qc_acs = filter(qc -> qc isa QcActiv, qcs)
