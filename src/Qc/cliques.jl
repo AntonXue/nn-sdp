@@ -24,22 +24,23 @@ function find2StageCliques(β::Int, ffnet::FeedFwdNet)
     Ck_tail = Ck_tail1 : (Ck_tail1 + Ck_taildim - 1)
     @assert Ck_init[end] <= Ck_tail[1]
     Ck = VecInt([Ck_init; Ck_tail])
+    Ckdim = length(Ck)
 
     # Now calculate the Djs of each Ck
     # If k = 1, 
     if k == 1
-      Dk1 = VecInt(1:length(Ck))
+      Dk1 = VecInt(1:Ckdim)
       push!(cliques, (Ck, [Dk1]))
 
     # Otherwise do the two-stage decomposition
     else
       # Dk1 consists of the first nk + n{k+1} + β part and the affine part
       Dk1_init = 1 : Ck_initdim
-      Dk1_last = length(Ck)
+      Dk1_last = Ckdim
       Dk1 = VecInt([Dk1_init; Dk1_last])
 
       # Dk2 begins after nk + n{k+1} + β and goes until the end
-      Dk2 = VecInt(Ck_initdim+1 : length(Ck))
+      Dk2 = VecInt(Ck_initdim+1 : Ckdim)
       push!(cliques, (Ck, [Dk1, Dk2]))
     end
   end
