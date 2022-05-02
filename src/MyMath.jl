@@ -1,4 +1,4 @@
-module MyLinearAlgebra
+module MyMath
 
 using LinearAlgebra
 using SparseArrays

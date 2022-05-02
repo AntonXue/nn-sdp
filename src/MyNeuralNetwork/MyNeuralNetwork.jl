@@ -1,7 +1,7 @@
 module MyNeuralNetwork
 
 using Parameters
-using ..MyLinearAlgebra
+using ..MyMath
 
 # The type of neural activation
 abstract type Activ end
@@ -28,6 +28,10 @@ end
 
 export Activ, ReluActiv, TanhActiv
 export FeedFwdNet
+
+include("network_files.jl")
+export loadFromNnet, loadFromOnnx, loadFromFile
+export onnx2nnet, nnet2onnx, writeNnet, writeOnnx
 
 end
 

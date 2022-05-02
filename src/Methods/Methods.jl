@@ -8,7 +8,7 @@ using JuMP
 using Dualization
 using MosekTools
 
-using ..MyLinearAlgebra
+using ..MyMath
 using ..MyNeuralNetwork
 using ..Qc
 

@@ -2,19 +2,17 @@ module NnSdp
 
 using Dates
 
-include("MyLinearAlgebra.jl");
-include("MyNeuralNetwork.jl");
-include("Files/Files.jl");
+include("MyMath.jl");
+include("MyNeuralNetwork/MyNeuralNetwork.jl");
 include("Intervals/Intervals.jl");
 include("Qc/Qc.jl");
 include("Methods/Methods.jl");
 include("Utils/Utils.jl");
 
 using Reexport
-@reexport using .MyLinearAlgebra
+@reexport using .MyMath
 @reexport using .MyNeuralNetwork
 @reexport using .Qc
-@reexport using .Files
 @reexport using .Intervals
 @reexport using .Methods
 @reexport using .Utils

@@ -4,7 +4,7 @@ using LinearAlgebra
 using SparseArrays
 using Parameters
 
-using ..MyLinearAlgebra
+using ..MyMath
 using ..MyNeuralNetwork
 using ..Intervals
 

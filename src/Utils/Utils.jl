@@ -9,18 +9,15 @@ using Random
 using Plots
 using Printf
 
-using ..MyLinearAlgebra
+using ..MyMath
 using ..MyNeuralNetwork
 using ..Qc
 using ..Methods
 using ..Intervals
-using ..Files
 
 pyplot()
 
-EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
-include(joinpath(EXTS_DIR, "vnnlib_parser.jl"))
-include("query_files.jl")
+include("vnnlib_utils.jl")
 
 # A general form of quadratic safety
 # a||x||^2 + b||f(x)||^2 + c <= 0

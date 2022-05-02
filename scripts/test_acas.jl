@@ -34,9 +34,9 @@ args = parseArgs()
 mosek_opts = 
   Dict("QUIET" => true,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 1, # seconds
-       "INTPNT_CO_TOL_REL_GAP" => 1e-8,
-       "INTPNT_CO_TOL_PFEAS" => 1e-8,
-       "INTPNT_CO_TOL_DFEAS" => 1e-8)
+       "INTPNT_CO_TOL_REL_GAP" => 1e-6,
+       "INTPNT_CO_TOL_PFEAS" => 1e-6,
+       "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 
 deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts)

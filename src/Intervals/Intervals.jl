@@ -4,9 +4,8 @@ using LinearAlgebra
 using Parameters
 using Printf
 
-using ..MyLinearAlgebra
+using ..MyMath
 using ..MyNeuralNetwork
-using ..Files
 
 # Different interval propagation methods
 abstract type IntervalsMethod end
