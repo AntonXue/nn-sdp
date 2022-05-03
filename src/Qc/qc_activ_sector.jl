@@ -60,7 +60,7 @@ function makeQac(γac, qc::QcActivSector)
 end
 
 # Calculate smin and smax info given some interval information
-function findSectorMinMax(acxmin::VecF64, acxmax::VecF64, activ::Activ)
+function makeSectorMinMax(acxmin::VecF64, acxmax::VecF64, activ::Activ)
   @assert length(acxmin) == length(acxmax)
   ε = 1e-4
   if activ isa ReluActiv

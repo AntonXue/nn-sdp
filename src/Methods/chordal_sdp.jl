@@ -6,7 +6,6 @@ struct TwoStageRelaxed <: ChordalDecompMode end
 
 # Chordal-DeepSdp-specific options
 @with_kw struct ChordalSdpOptions <: QueryOptions
-  max_solve_time::Float64 = 60.0 * 20 # Time in seconds
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
   decomp_mode::ChordalDecompMode = OneStage()
@@ -33,7 +32,7 @@ function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
         # Break early if we're in relaxed mode, only take the first clique
         if opts.decomp_mode isa TwoStageRelaxed && i >= 1; break end
       end
-      Zk = sum(Fcs[j]' * Ys[j] * Fcs[j] for j in 1:length(Djs))
+      Zk = sum(Fcs[j]' * Ys[j] * Fcs[j] for j in 1:length(Ys))
     # In the non-two stage case, the original stuff
     else
       Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
@@ -68,7 +67,7 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   vars[:Z] = Z
 
   # Set up cliques
-  cliques = findCliques(query.qcs, query.ffnet)
+  cliques = makeCliques(query.qcs, query.ffnet)
   Zs, Ecs = setupCliques!(model, cliques, query, opts)
 
   # The equality constraint
@@ -81,7 +80,7 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
 end
 
 # Set up a reach query while specifying a generic objective function
-function setupReach!(model, obj_fun::Function, query::ReachQuery, opts::ChordalSdpOptions)
+function setupReach!(model, obj_func::Function, query::ReachQuery, opts::ChordalSdpOptions)
   setup_start_time = time()
   vars = Dict()
 
@@ -94,7 +93,7 @@ function setupReach!(model, obj_fun::Function, query::ReachQuery, opts::ChordalS
   # And also the Zout and also the objective
   γout = @variable(model, [1:query.qc_reach.vardim])
   @constraint(model, γout[1:query.qc_reach.vardim] .>= 0)
-  @objective(model, Min, obj_fun(γout))
+  @objective(model, Min, obj_func(γout))
   Zout = makeZout(γout, query.qc_reach, query.ffnet)
   vars[:γout] = γout
 
@@ -107,7 +106,7 @@ function setupReach!(model, obj_fun::Function, query::ReachQuery, opts::ChordalS
   vars[:Z] = Z
 
   # Set up cliques
-  cliques = findCliques(query.qcs, query.ffnet)
+  cliques = makeCliques(query.qcs, query.ffnet)
   Zs, Ecs = setupCliques!(model, cliques, query, opts)
 
   # The equality constraint

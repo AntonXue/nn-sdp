@@ -5,15 +5,16 @@ import Pkg
 
 # Install a bunch of packages
 Pkg.add("ArgParse")
-Pkg.add("Parameters")
-Pkg.add("Reexport")
-Pkg.add("JuMP")
+Pkg.add("CSV")
+Pkg.add("DataFrames")
 Pkg.add("Dualization")
+Pkg.add("JuMP")
+Pkg.add("MosekTools")
+Pkg.add("NaturalSort")
+Pkg.add("Parameters")
 Pkg.add("Plots")
 Pkg.add("PyPlot")
-Pkg.add("MosekTools")
-Pkg.add("DataFrames")
-Pkg.add("CSV")
+Pkg.add("Reexport")
 
 # Some Conda-specific installations
 Pkg.add("Conda")

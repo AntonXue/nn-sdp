@@ -65,6 +65,9 @@ function loadFromFile(file::String, activ::Activ = ReluActiv())
 end
 
 #= Load a relu network while scaling weights
+We scale such that each new Wk has opnorm
+  ||Wk|| = sqrt(ck * log ck / K), where ck = xdims[k] + xdims[k+1]
+
 Use a sequence of α[1], ..., α[K] such that
   Wk -> αk Wk,    bk -> prod(αs[1:k]) bk
 
@@ -74,14 +77,17 @@ Thus, f'(x') = f(x) iff x = prod(αs) x'
 
 Again, this only works for piecewise-linear activations like relu
 =#
-function loadFromFileReluScaled(file::String, Wk_opnorm::Float64)
+function loadFromFileReluScaled(file::String)
   ffnet = loadFromFile(file, ReluActiv())
-  Ws, bs = [M[:,1:end-1] for M in ffnet.Ms], [M[:,end] for M in ffnet.Ms]
-  αs = [Wk_opnorm / opnorm(W) for W in Ws]
-  scaled_Ws = [αs[k] * Ws[k] for k in 1:ffnet.K]
-  scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:ffnet.K]
-  scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:ffnet.K]
-  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=ffnet.xdims, Ms=scaled_Ms)
+  xdims, Ms, K = ffnet.xdims, ffnet.Ms, ffnet.K
+  Ws, bs = [M[:,1:end-1] for M in Ms], [M[:,end] for M in Ms]
+  tgt_func(ck) = sqrt(ck * log(ck) / K)
+  tgt_opnorms = [tgt_func(xdims[k]+xdims[k+1]) for k in 1:K]
+  αs = [tgt_opnorms[k] / opnorm(W) for (k, W) in enumerate(Ws)]
+  scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
+  scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
+  scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]
+  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=xdims, Ms=scaled_Ms)
   return scaled_ffnet, αs
 end
 

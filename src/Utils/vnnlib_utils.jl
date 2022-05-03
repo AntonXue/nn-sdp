@@ -65,7 +65,7 @@ end
 # Load hte queries in DNF form
 function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
-  ffnet, αs = Utils.loadFromFileReluScaled(network_file, 2.0)
+  ffnet, αs = Utils.loadFromFileReluScaled(network_file)
 
   dnf_queries = Vector{Vector{SafetyQuery}}()
   spec = loadVnnlib(vnnlib_file, ffnet, αs=αs)

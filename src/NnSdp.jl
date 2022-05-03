@@ -66,6 +66,7 @@ function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::
   return hplanes, solns
 end
 
+export solveQuery
 export findCircle, findReach2Dpoly
 
 end

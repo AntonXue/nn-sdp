@@ -43,8 +43,7 @@ end
 
 # Make a clique based on hot elements
 function Ec(elems::VecInt, N::Int)
-  @assert elems == unique(elems)
-  @assert elems == sort(elems)
+  @assert elems == unique(elems) == sort(elems)
   @assert length(elems) >= 1
   @assert 1 <= elems[1] && elems[end] <= N
   eis = [e(i, N)' for i in elems]

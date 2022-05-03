@@ -86,8 +86,8 @@ function runQuery(query::Query, opts::QueryOptions)
     _, vars, setup_time = setupSafety!(model, query, opts)
   elseif (query.qc_reach isa QcReachHplane || query.qc_reach isa QcReachCircle)
     # In this case the opt var is a 1-dim vector
-    obj_fun = x -> x[1]
-    _, vars, setup_time = setupReach!(model, obj_fun, query, opts)
+    obj_func = x -> x[1]
+    _, vars, setup_time = setupReach!(model, obj_func, query, opts)
   else
     error("\tunrecognized query: $(query)")
   end

@@ -1,6 +1,5 @@
 # DeepSdp-specific options
 @with_kw struct DeepSdpOptions <: QueryOptions
-  max_solve_time::Float64 = 60.0 * 20 # Time in seconds
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
   use_dual::Bool = false
@@ -36,7 +35,7 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
 end
 
 # Set up a reach query while specifying a generic objective function
-function setupReach!(model, obj_fun::Function, query::ReachQuery, opts::DeepSdpOptions)
+function setupReach!(model, obj_func::Function, query::ReachQuery, opts::DeepSdpOptions)
   setup_start_time = time()
   vars = Dict()
 
@@ -49,7 +48,7 @@ function setupReach!(model, obj_fun::Function, query::ReachQuery, opts::DeepSdpO
   # And also the Zout and also the objective
   γout = @variable(model, [1:query.qc_reach.vardim])
   @constraint(model, γout[1:query.qc_reach.vardim] .>= 0)
-  @objective(model, Min, obj_fun(γout))
+  @objective(model, Min, obj_func(γout))
   Zout = makeZout(γout, query.qc_reach, query.ffnet)
   vars[:γout] = γout
 

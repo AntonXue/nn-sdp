@@ -3,7 +3,7 @@
 #   Z = sum Eck' * Zk * Eck
 #   Zk = sum Eckj' * Ykj * Eckj
 # Each Yk has size (nk + n{k+1} + β + nK + 1) and is block-arrow shaped
-function find2StageCliques(β::Int, ffnet::FeedFwdNet)
+function makeStage2Cliques(β::Int, ffnet::FeedFwdNet)
   S(k) = (k == 0) ? 0 : sum(ffnet.zdims[1:k])
   p = 1
   for i in 1:ffnet.K
@@ -68,7 +68,7 @@ function isValidQcInfos(qcs::Vector{QcInfo})
 end
 
 # Given a bunch of qcs, return a Vector{VecInt} of their cliques
-function findCliques(qcs::Vector{QcInfo}, ffnet::FeedFwdNet)
+function makeCliques(qcs::Vector{QcInfo}, ffnet::FeedFwdNet)
   # Check validity, and that QcActivSector is among them
   @assert isValidQcInfos(qcs)
 
@@ -76,6 +76,6 @@ function findCliques(qcs::Vector{QcInfo}, ffnet::FeedFwdNet)
   qc_secs = filter(qc -> qc isa QcActivSector, qcs)
   β = (length(qc_secs) == 0) ? 0 : qc_secs[1].β
 
-  return find2StageCliques(β, ffnet)
+  return makeStage2Cliques(β, ffnet)
 end
 

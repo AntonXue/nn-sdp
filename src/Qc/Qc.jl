@@ -31,11 +31,11 @@ export scaleS, makeZout
 
 include("qc_activ.jl")
 export QcActivBounded, QcActivSector
-export findSectorMinMax, makeQac, makeA, makeb, makeB
+export makeSectorMinMax, makeQac, makeA, makeb, makeB
 export makeQcActivs, makeZac
 
 include("cliques.jl")
-export findCliques
+export makeCliques
 
 end
 

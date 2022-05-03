@@ -11,6 +11,8 @@ ALL_FILES = readdir(ACAS_DIR, join=true)
 ACAS_FILES = filter(f -> match(r".*.onnx", f) isa RegexMatch, ALL_FILES)
 SPEC_FILES = filter(f -> match(r".*.vnnlib", f) isa RegexMatch, ALL_FILES)
 
+
+
 # Argument parsing
 function parseArgs()
   argparse_settings = ArgParseSettings()
@@ -39,8 +41,10 @@ mosek_opts =
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 
+ffnet = loadFromOnnx(args["onnx"])
+
 deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts)
-chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, two_stage=true)
+chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, decomp_mode=TwoStage())
 
 # loadQueries(ACAS_FILES[1], SPEC_FILES[1], β)
 
