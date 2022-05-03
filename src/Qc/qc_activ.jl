@@ -66,13 +66,9 @@ function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β::
 end
 
 # TODO: add more varieties as needed
-function makeQcActivs(ffnet::FeedFwdNet, qcs::Vector{Symbol}=[:intvs]; x1min = nothing, x1max = nothing, β=nothing)
-  if (:bounded in qcs && :sector in qcs) || :intvs in qcs
-    @assert x1min isa VecF64 && x1max isa VecF64 && β isa Int
-    return makeQcActivsIntvs(ffnet, x1min, x1max, β)
-  else
-    error("unrecognized qcs: $(qcs)")
-  end
+function makeQcActivs(ffnet::FeedFwdNet; x1min = nothing, x1max = nothing, β=nothing)
+  @assert x1min isa VecF64 && x1max isa VecF64 && β isa Int
+  return makeQcActivsIntvs(ffnet, x1min, x1max, β)
 end
 
 

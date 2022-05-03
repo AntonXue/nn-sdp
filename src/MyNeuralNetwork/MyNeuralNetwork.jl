@@ -26,8 +26,27 @@ struct TanhActiv <: Activ end
   @assert all([size(Ms[k]) == (xdims[k+1], xdims[k]+1) for k in 1:K])
 end
 
+function makeActiv(activ::Activ)
+  if activ isa ReluActiv
+    return x -> max.(x, 0)
+  elseif activ isa TanhActiv
+    return x -> tanh.(x)
+  else
+    error("unrecognized activ: $(activ)")
+  end
+end
+
+# Evaluate the network
+function evalFeedFwdNet(ffnet::FeedFwdNet, x)
+  @assert length(x) == ffnet.xdims[1]
+  xk, ac = x, makeActiv(ffnet.activ)
+  for Mk in ffnet.Ms[1:end-1]; xk = ac(Mk * [xk; 1]) end
+  xk = ffnet.Ms[end] * [xk; 1]
+  return xk
+end
+
 export Activ, ReluActiv, TanhActiv
-export FeedFwdNet
+export FeedFwdNet, makeActiv, evalFeedFwdNet
 
 include("network_files.jl")
 export loadFromNnet, loadFromOnnx, loadFromFile

@@ -23,16 +23,16 @@ export QcInfo, QcInput, QcOutput, QcActiv
 include("qc_input.jl")
 export QcInputBox, QcInputPoly
 export QcInputBoxScaled, QcInputPolyScaled
+export makeZin
 
 include("qc_output.jl")
 export QcSafety, QcReach, QcReachHplane, QcReachCircle
-export scaleS
+export scaleS, makeZout
 
 include("qc_activ.jl")
 export QcActivBounded, QcActivSector
 export findSectorMinMax, makeQac, makeA, makeb, makeB
-export makeQcActivs
-export makeZin, makeZout, makeZac
+export makeQcActivs, makeZac
 
 include("cliques.jl")
 export findCliques

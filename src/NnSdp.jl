@@ -26,9 +26,24 @@ function solveQuery(query::Query, opts::QueryOptions)
   return soln
 end
 
+function findCircle(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::QueryOptions, β::Int)
+  # Calculate qc input first
+  qc_input = QcInputBox(x1min=x1min, x1max=x1max)
+  # Change the dependency on this one
+  qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
+
+  # The output
+  y0 = evalFeedFwdNet(ffnet, (x1max + x1min) / 2)
+  qc_circle = QcReachCircle(y0=y0)
+
+  reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_circle)
+  soln = Methods.runQuery(reach_query, opts)
+  return soln
+end
+
 # Check whether a network satisfies all the vnnlib stuff
 function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::QueryOptions, β::Int;
-                         num_hplanes = 6, use_qc_sector = true)
+                         num_hplanes = 6)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   # Change the dependency on this one
@@ -51,7 +66,7 @@ function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::
   return hplanes, solns
 end
 
-export findReach2Dpoly
+export findCircle, findReach2Dpoly
 
 end
 

@@ -62,22 +62,6 @@ function randomNetwork(xdims::VecInt; activ::Activ = ReluActiv(), σ::Float64 = 
   return FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
 end
 
-# Run a feedforward net on an initial input and give the output
-function runNetwork(x1::VecF64, ffnet::FeedFwdNet)
-  @assert length(x1) == ffnet.xdims[1]
-  function ϕ(x)
-    if ffnet.activ isa ReluActiv; return max.(x, 0)
-    elseif ffnet.activ isa TanhActiv; return tanh.(x)
-    else; error("unsupported network: " * string(ffnet))
-    end
-  end
-
-  xk = x1
-  for Mk in ffnet.Ms[1:end-1]; xk = ϕ(Mk * [xk; 1]) end
-  xk = ffnet.Ms[end] * [xk; 1]
-  return xk
-end
-
 # Generate trajectories from a unit box
 function randomTrajectories(N::Int, ffnet::FeedFwdNet, x1min, x1max)
   # Random.seed!(1234) # Let's move the call to this earlier
@@ -85,7 +69,7 @@ function randomTrajectories(N::Int, ffnet::FeedFwdNet, x1min, x1max)
   xgaps = x1max - x1min
   box01points = rand(ffnet.xdims[1], N)
   x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
-  xfs = [runNetwork(x1, ffnet) for x1 in x1s]
+  xfs = [evalFeedFwdNet(ffnet, x1) for x1 in x1s]
   return xfs
 end
 

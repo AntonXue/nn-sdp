@@ -57,21 +57,24 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
   xdims, zdims, K = ffnet.xdims, ffnet.zdims, ffnet.K
   if qc isa QcReachHplane
     @assert length(qc.normal) == xdims[K+1]
+    @assert qc.vardim == length(γout) == 1
     _S11 = spzeros(xdims[1], xdims[1])
     _S12 = spzeros(xdims[1], xdims[K+1])
     _S13 = spzeros(xdims[1])
     _S22 = spzeros(xdims[K+1], xdims[K+1])
     _S23 = qc.normal
     _S33 = -2 * γout
-    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33] 
+    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   elseif qc isa QcReachCircle
     @assert length(qc.y0) == xdims[K+1]
+    @assert qc.vardim == length(γout) == 1
     _S11 = spzeros(xdims[1], xdims[1])
     _S12 = spzeros(xdims[1], xdims[K+1])
     _S13 = spzeros(xdims[1])
-    _S22 = ones(xdims[K])
+    _S22 = I(xdims[K+1])
     _S23 = -qc.y0
-    _S33 = (qc.y0' * qc.y0 - γout)
+    _S33 = qc.y0' * qc.y0 - γout[1]
+    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   else
     error("unrecognized qc: $(qc)")
   end

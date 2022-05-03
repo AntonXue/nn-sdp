@@ -76,11 +76,51 @@ function setupZacs!(model, query::Query, opts::QueryOptions)
   return Zacs, vars
 end
 
-include("deep_sdp.jl")
-include("chordal_sdp.jl")
+# The interface to call; specialize opt-specific stuff as necessary
+function runQuery(query::Query, opts::QueryOptions)
+  total_start_time = time()
+  model = setupModel!(query, opts)
 
+  # Delegate the appropriate call depending on the kind of query
+  if query isa SafetyQuery
+    _, vars, setup_time = setupSafety!(model, query, opts)
+  elseif (query.qc_reach isa QcReachHplane || query.qc_reach isa QcReachCircle)
+    # In this case the opt var is a 1-dim vector
+    obj_fun = x -> x[1]
+    _, vars, setup_time = setupReach!(model, obj_fun, query, opts)
+  else
+    error("\tunrecognized query: $(query)")
+  end
+
+  # Get ready to return
+  summary, values, solve_time = solve!(model, vars, opts)
+  total_time = time() - total_start_time
+  if opts.verbose;
+    @printf("\tsetup: %.3f \tsolve: %.3f \ttotal: %.3f \tvalue: %.4e (%s)\n",
+            setup_time, solve_time, total_time,
+            objective_value(model), summary.termination_status)
+  end
+  return QuerySolution(
+    objective_value = objective_value(model),
+    values = values,
+    summary = summary,
+    termination_status = string(summary.termination_status),
+    total_time = total_time,
+    setup_time = setup_time,
+    solve_time = solve_time)
+end
+
+#
 export Query, SafetyQuery, ReachQuery, QueryOptions, QuerySolution
+
+include("deep_sdp.jl")
 export DeepSdpOptions, ChordalSdpOptions
+
+include("chordal_sdp.jl")
+export ChordalSdpOptions
+export ChordalDecompMode, OneStage, TwoStage, TwoStageRelaxed
+
+#
 export runQuery
 
 end

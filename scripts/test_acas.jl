@@ -40,7 +40,7 @@ mosek_opts =
 
 
 deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts)
-chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, two_stage_cliques=true)
+chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, two_stage=true)
 
 # loadQueries(ACAS_FILES[1], SPEC_FILES[1], β)
 
