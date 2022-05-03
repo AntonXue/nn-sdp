@@ -53,7 +53,7 @@ abstract type QueryOptions end
 end
 
 # Some common functionalities for different methods
-#
+
 # Set up the model
 function setupModel!(query::Query, opts::QueryOptions)
   model = opts.use_dual ? Model(dual_optimizer(Mosek.Optimizer)) : Model(Mosek.Optimizer)

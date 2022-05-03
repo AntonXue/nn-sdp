@@ -31,6 +31,7 @@ export FeedFwdNet
 
 include("network_files.jl")
 export loadFromNnet, loadFromOnnx, loadFromFile
+export loadFromFileReluScaled
 export onnx2nnet, nnet2onnx, writeNnet, writeOnnx
 
 end

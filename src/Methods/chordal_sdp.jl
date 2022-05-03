@@ -6,8 +6,6 @@
   mosek_opts::Dict{String, Any} = Dict()
   two_stage_cliques::Bool = false
   use_dual::Bool = false
-  nsd_margin::Float64 = 1e-2; # Z is NSD iff Z <= -nsd_margin I
-  @assert nsd_margin >= 0
   verbose::Bool = false
 end
 
@@ -23,8 +21,7 @@ function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
       for Dj in Djs
         Djdim = length(Dj)
         Yj = @variable(model, [1:Djdim, 1:Djdim], Symmetric)
-        # @constraint(model, -Yj in PSDCone())
-        @constraint(model, -(Yj + opts.nsd_margin * I) in PSDCone())
+        @constraint(model, -Yj in PSDCone())
         push!(Ys, Yj)
         push!(Fcs, Ec(Dj, Ckdim)) # Fcj
       end
@@ -32,8 +29,7 @@ function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
     # In the non-two stage case, the original stuff
     else
       Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
-      # @constraint(model, -Zk in PSDCone())
-      @constraint(model, -(Zk + opts.nsd_margin * I) in PSDCone())
+      @constraint(model, -Zk in PSDCone())
     end
     push!(Zs, Zk)
     push!(Ecs, Ec(Ck, Zdim)) # Eck

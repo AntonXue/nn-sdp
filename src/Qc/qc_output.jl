@@ -71,3 +71,22 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
   return Zout
 end
 
+# Apply scaling to S
+function scaleS(S, αs::VecF64, ffnet::FeedFwdNet)
+  @assert length(αs) == ffnet.K
+  α = prod(αs)
+  sdims = [ffnet.xdims[1]; ffnet.xdims[end]; 1]
+  F1 = E(1, sdims)
+  F2 = E(2, sdims)
+  F3 = E(3, sdims)
+  _S11 = F1 * S * F1' * α^2
+  _S12 = F1 * S * F2' * α
+  _S13 = F1 * S * F3' * α
+  _S22 = F2 * S * F2'
+  _S23 = F2 * S * F3'
+  _S33 = F3 * S * F3'
+  newS = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return newS
+end
+
+

@@ -1,4 +1,5 @@
 # File IO for neural network
+using LinearAlgebra
 using PyCall
 
 # Load a dependency
@@ -52,7 +53,7 @@ function loadFromOnnx(onnx_file::String, activ::Activ = ReluActiv())
 end
 
 # Check the extension and load accordingly
-function loadFromFile(file, activ::Activ = ReluActiv())
+function loadFromFile(file::String, activ::Activ = ReluActiv())
   ext = split(file, ".")[end]
   if ext == "nnet"
     return loadFromNnet(file, activ)
@@ -61,6 +62,27 @@ function loadFromFile(file, activ::Activ = ReluActiv())
   else
     error("Unrecognized file: $(file)")
   end
+end
+
+#= Load a relu network while scaling weights
+Use a sequence of α[1], ..., α[K] such that
+  Wk -> αk Wk,    bk -> prod(αs[1:k]) bk
+
+Let x' be an input to the scaled network f'
+Observe tha: f'(x) = prod(αs) f(x)
+Thus, f'(x') = f(x) iff x = prod(αs) x'
+
+Again, this only works for piecewise-linear activations like relu
+=#
+function loadFromFileReluScaled(file::String, Wk_opnorm::Float64)
+  ffnet = loadFromFile(file, ReluActiv())
+  Ws, bs = [M[:,1:end-1] for M in ffnet.Ms], [M[:,end] for M in ffnet.Ms]
+  αs = [Wk_opnorm / opnorm(W) for W in Ws]
+  scaled_Ws = [αs[k] * Ws[k] for k in 1:ffnet.K]
+  scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:ffnet.K]
+  scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:ffnet.K]
+  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=ffnet.xdims, Ms=scaled_Ms)
+  return scaled_ffnet, αs
 end
 
 # Write FeedFwdNet to a NNet file

@@ -46,18 +46,12 @@ chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, two_stage_cliques=tru
 
 β = 2
 
-queries = loadQueries(args["onnx"], args["vnnlib"], β)
+dnf = loadReluQueries(args["onnx"], args["vnnlib"], β)
 
-#=
-q1s = loadQueries(ACAS_FILES[1], SPEC_FILES[1], β)
-q2s = loadQueries(ACAS_FILES[1], SPEC_FILES[3], β)
-q3s = loadQueries(ACAS_FILES[1], SPEC_FILES[4], β)
-q4s = loadQueries(ACAS_FILES[1], SPEC_FILES[5], β)
-q5s = loadQueries(ACAS_FILES[1], SPEC_FILES[6], β)
-q6s = loadQueries(ACAS_FILES[1], SPEC_FILES[7], β)
-q7s = loadQueries(ACAS_FILES[1], SPEC_FILES[8], β)
-q8s = loadQueries(ACAS_FILES[1], SPEC_FILES[9], β)
-q9s = loadQueries(ACAS_FILES[1], SPEC_FILES[10], β)
-=#
+qs = vcat(dnf...)
+
+
+
+
 
 

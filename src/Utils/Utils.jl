@@ -174,7 +174,7 @@ export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolys
 
-export loadVnnlib, loadQueries
+export loadVnnlib, loadReluQueries
 
 end # End Module
 
