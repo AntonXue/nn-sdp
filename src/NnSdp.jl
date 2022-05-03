@@ -32,7 +32,7 @@ function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   # Change the dependency on this one
-  qc_activs = Qc.makeQcActivs(ffnet, x1min, x1max, β, use_qc_sector=use_qc_sector)
+  qc_activs = Qc.makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
 
   hplanes = Vector{Tuple{VecF64, Float64}}()
   solns = Vector{Any}()

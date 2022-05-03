@@ -72,7 +72,7 @@ function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   for conj in spec
     conj_queries = Vector{SafetyQuery}()
     for (qc_input, qc_safety) in conj
-      qc_activs = makeQcActivs(ffnet, qc_input.x1min, qc_input.x1max, β)
+      qc_activs = makeQcActivs(ffnet, x1min=qc_input.x1min, x1max=qc_input.x1max, β=β)
       safety_query = SafetyQuery(ffnet=ffnet, qc_input=qc_input, qc_safety=qc_safety, qc_activs=qc_activs)
       push!(conj_queries, safety_query)
     end

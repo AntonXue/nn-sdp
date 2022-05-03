@@ -25,7 +25,7 @@ export QcInputBox, QcInputPoly
 export QcInputBoxScaled, QcInputPolyScaled
 
 include("qc_output.jl")
-export QcSafety, QcReach, QcReachHplane
+export QcSafety, QcReach, QcReachHplane, QcReachCircle
 export scaleS
 
 include("qc_activ.jl")

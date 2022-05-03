@@ -41,8 +41,11 @@ function makeZac(γac, qc::QcActiv, ffnet::FeedFwdNet)
   return Zac
 end
 
-# Run interval propagation and quickly generate qc_activs
-function makeQcActivs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β; use_qc_sector = true)
+# Do all the QCs that we could possibly use
+function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β::Int)
+  @assert ffnet.activ isa ReluActiv || ffnet.activ isa TanhActiv
+  @assert length(x1min) == length(x1max)
+
   # Interval propagation
   intv_info = Intervals.makeIntervalsInfo(x1min, x1max, ffnet)
   
@@ -52,17 +55,24 @@ function makeQcActivs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β; use_q
   acymax = vcat([acyi[2] for acyi in intv_info.x_intvs[2:end-1]]...)
   qc_bounded = QcActivBounded(acydim=acdim, acymin=acymin, acymax=acymax)
   
-  if use_qc_sector
-    @assert ffnet.activ isa ReluActiv || ffnet.activ isa TanhActiv
-    sec_acxmin = vcat([acxi[1] for acxi in intv_info.acx_intvs]...)
-    sec_acxmax = vcat([acxi[2] for acxi in intv_info.acx_intvs]...)
-    smin, smax = findSectorMinMax(sec_acxmin, sec_acxmax, ffnet.activ)
-    qc_sector = QcActivSector(activ=ffnet.activ, acxdim=acdim, β=β, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
+  # Set up qc sector
+  sec_acxmin = vcat([acxi[1] for acxi in intv_info.acx_intvs]...)
+  sec_acxmax = vcat([acxi[2] for acxi in intv_info.acx_intvs]...)
+  smin, smax = findSectorMinMax(sec_acxmin, sec_acxmax, ffnet.activ)
+  qc_sector = QcActivSector(activ=ffnet.activ, acxdim=acdim, β=β, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
-    qc_activs = [qc_bounded; qc_sector]
-  else
-    qc_activs = [qc_bounded]
-  end
+  qc_activs = [qc_bounded; qc_sector]
   return qc_activs
 end
+
+# TODO: add more varieties as needed
+function makeQcActivs(ffnet::FeedFwdNet, qcs::Vector{Symbol}=[:intvs]; x1min = nothing, x1max = nothing, β=nothing)
+  if (:bounded in qcs && :sector in qcs) || :intvs in qcs
+    @assert x1min isa VecF64 && x1max isa VecF64 && β isa Int
+    return makeQcActivsIntvs(ffnet, x1min, x1max, β)
+  else
+    error("unrecognized qcs: $(qcs)")
+  end
+end
+
 
