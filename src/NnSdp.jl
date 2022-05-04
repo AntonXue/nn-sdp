@@ -36,7 +36,9 @@ function findCircle(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::Query
   y0 = evalFeedFwdNet(ffnet, (x1max + x1min) / 2)
   qc_circle = QcReachCircle(y0=y0)
 
-  reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_circle)
+  obj_func = x -> x[1]
+
+  reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_circle, obj_func=obj_func)
   soln = Methods.runQuery(reach_query, opts)
   return soln
 end
@@ -57,7 +59,8 @@ function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, opts::
     println("gonna run poly [$(i)/$(num_hplanes)] with normal θ = $(θ); now: $(now())")
     
     qc_reach = QcReachHplane(normal=normal)
-    reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_reach)
+    obj_func = x -> x[1]
+    reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_reach, obj_func=obj_func)
     soln = Methods.runQuery(reach_query, opts)
     push!(hplanes, (normal, soln.objective_value))
     push!(solns, soln)

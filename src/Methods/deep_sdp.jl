@@ -35,7 +35,7 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
 end
 
 # Set up a reach query while specifying a generic objective function
-function setupReach!(model, obj_func::Function, query::ReachQuery, opts::DeepSdpOptions)
+function setupReach!(model, query::ReachQuery, opts::DeepSdpOptions)
   setup_start_time = time()
   vars = Dict()
 
@@ -48,7 +48,7 @@ function setupReach!(model, obj_func::Function, query::ReachQuery, opts::DeepSdp
   # And also the Zout and also the objective
   γout = @variable(model, [1:query.qc_reach.vardim])
   @constraint(model, γout[1:query.qc_reach.vardim] .>= 0)
-  @objective(model, Min, obj_func(γout))
+  @objective(model, Min, query.obj_func(γout))
   Zout = makeZout(γout, query.qc_reach, query.ffnet)
   vars[:γout] = γout
 

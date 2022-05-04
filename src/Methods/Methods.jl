@@ -37,6 +37,8 @@ end
   qc_activs::Vector{QcActiv}
   @assert length(qc_activs) >= 1
   qcs::Vector{QcInfo} = [qc_input; qc_reach; qc_activs]
+  # Vector-input, real-valued objective for the minimization
+  obj_func::Function
 end
 
 abstract type QueryOptions end
@@ -86,8 +88,7 @@ function runQuery(query::Query, opts::QueryOptions)
     _, vars, setup_time = setupSafety!(model, query, opts)
   elseif (query.qc_reach isa QcReachHplane || query.qc_reach isa QcReachCircle)
     # In this case the opt var is a 1-dim vector
-    obj_func = x -> x[1]
-    _, vars, setup_time = setupReach!(model, obj_func, query, opts)
+    _, vars, setup_time = setupReach!(model, query, opts)
   else
     error("unrecognized query: $(query)")
   end
