@@ -40,7 +40,7 @@ function nnet2onnx(nnet_file::String, onnx_file::String, activ::Activ)
   elseif activ isa TanhActiv
     activ_str = "Tanh"
   else
-    error("Unsupported activation: $(ffnet.activ)")
+    error("unsupported activation: $(ffnet.activ)")
   end
   nnet_bridge.nnet2onnx(nnet_file, onnxFile=onnx_file, activ=activ_str)
 end
@@ -60,7 +60,7 @@ function loadFromFile(file::String, activ::Activ = ReluActiv())
   elseif ext == "onnx"
     return loadFromOnnx(file)
   else
-    error("Unrecognized file: $(file)")
+    error("unrecognized file: $(file)")
   end
 end
 

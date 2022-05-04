@@ -33,6 +33,7 @@ __pycache__/
 # Custom excludes
 data/
 bench/
+dump/
 *.nnet
 *.onnx
 *.vnnlib

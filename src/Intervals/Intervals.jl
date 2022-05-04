@@ -44,7 +44,7 @@ function makeIntervalsInfo(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet, meth
   elseif method isa IntervalsAutoLirpa
     return intervalsAutoLirpaSliced(x1min, x1max, ffnet)
   else
-    error("Unrecognized method: $(method)")
+    error("unrecognized method: $(method)")
   end
 end
 

@@ -2,18 +2,33 @@ using LinearAlgebra
 using Dates
 using NaturalSort
 using ArgParse
+using DataFrames
+using CSV
 
 include("../src/NnSdp.jl"); using .NnSdp
 
-# Where all the files are
+# The place where things are
+DUMP_DIR = joinpath(@__DIR__, "..", "dump")
 ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
-ALL_FILES = readdir(ACAS_DIR, join=true)
 
-ACAS_FILES = filter(f -> match(r".*.onnx", f) isa RegexMatch, ALL_FILES)
-ACAS_FILES = sort(ACAS_FILES, lt=natural)
+# The ACAS files
+ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.onnx")
+ACAS_FILES = [ind2acas(i,j) for i in 1:5 for j in 1:9]
+@assert length(ACAS_FILES) == 45
 
-SPEC_FILES = filter(f -> match(r".*.vnnlib", f) isa RegexMatch, ALL_FILES)
-SPEC_FILES = sort(SPEC_FILES, lt=natural)
+# The spec files
+ind2spec(i) = joinpath(ACAS_DIR, "prop_$(i).vnnlib")
+SPEC_FILES = [ind2spec(i) for i in 1:10]
+@assert length(SPEC_FILES) == 10
+
+# The pairs that we wanna check
+TABLE_PAIRS = [(ind2spec(5), ind2acas(1,1)),
+               (ind2spec(6), ind2acas(1,1)),
+               (ind2spec(9), ind2acas(3,3)),
+               (ind2spec(10), ind2acas(4,5))]
+
+# Some test pairs
+TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1,2,3] for k in [1]]
 
 #= Custom MOSEK options we'll use for this experiment.
 On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
@@ -28,56 +43,93 @@ ACAS_MOSEK_OPTS =
 # How large are we willing to have λmax(Z) be?
 NSD_TOL = 1e-4
 
-# Options to use
-chordalsdp_opts = ChordalSdpOptions(mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
 
 function isSolutionGood(soln::QuerySolution)
   return (soln.termination_status == "OPTIMAL"
           || eigmax(Matrix(soln.values[:Z])) <= NSD_TOL)
 end
 
-function extractAcasId(acas_file::String)
-end
-
-function extractPropId(prop_file::String)
-end
-
-
-
-#= Verify an acas network (*.onnx) and property (*.vnnlib) and track:
-  * ACAS file used
-  * Property tested
-  * Number of queries
-  * Avg time per successful query
-  * Verification result
+#= Verify a single network - spec instance
+Goes through each conjunction until one unanimously holds, then returns
+* All the query results tried so far
+* The total number of queries
+* Whether the spec holds
 =#
-function verifyAcasProp(acas_file::String, prop_file::String, opts::QueryOptions)
+function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions)
   β = 1 # To be parametrized, maybe
-  dnf_queries = loadReluQueries(acas_file, prop_file, β)
+  dnf_queries = loadReluQueries(acas_file, spec_file, β)
   num_queries = length(vcat(dnf_queries...))
 
-  prop_holds = false
+  spec_holds = false
   all_solns = Vector{Any}()
-  for conj in dnf_queries
+  for (conj_ind, conj) in enumerate(dnf_queries)
+    println("\tconjunction [$(conj_ind)/$(length(dnf_queries))] | now: $(now())")
     # Property holds when any conjunction is true
     conj_holds = true
-    for query in conj
+    for (query_ind, query) in enumerate(conj)
       soln = solveQuery(query, opts)
-      soln_good = isSolutionGood(soln)
-      conj_holds = conj_holds && soln_good # Update the conj truthiness
+      is_good = isSolutionGood(soln)
+      conj_holds = conj_holds && is_good # Update the conj truthiness
       push!(all_solns, soln)
+
+      println("\t\tsubquery [$(query_ind)/$(length(conj))] | time: $(soln.total_time)")
 
       # If this conj is false, we immediately break to look at the next conj
       if !conj_holds; break end
     end
 
     if conj_holds
-      prop_holds = true
+      spec_holds = true
       break
     end
     
   end
-  return all_solns, num_queries, prop_holds
+  return all_solns, num_queries, spec_holds
 end
 
+#= Verify an acas network (*.onnx) and spec (*.vnnlib) and track:
+  * ACAS file used
+  * Property tested
+  * Number of queries
+  * Avg time per successful query
+  * Verification result
+=#
+function verifyPairs(pairs, opts, saveto = joinpath(DUMP_DIR, "hello.csv"))
+  num_pairs = length(pairs)
+  df = DataFrame(acas=String[], spec=String[], holds=Bool[], num_queries=Int[], avg_time=Float64[])
+
+  for (i, (acas_file, spec_file)) in enumerate(pairs)
+    println("pair [$(i)/$(length(pairs))] | now: $(now())")
+    println("\tacas: $(acas_file)")
+    println("\tspec: $(spec_file)")
+
+    all_solns, num_queries, spec_holds = verifyAcasSpec(acas_file, spec_file, opts)
+
+    # Get ready to build an entry to the hist, starting with the acas and spec names
+    acas_name = basename(acas_file)
+    spec_name = basename(spec_file)
+    good_solns = filter(isSolutionGood, all_solns)
+    if good_solns == 0
+      avg_time = Inf # infinity time, maybe
+    else
+      avg_time = sum([s.total_time for s in good_solns]) / length(good_solns)
+    end
+
+    entry = (acas_name, spec_name, spec_holds, num_queries, avg_time)
+    push!(df, entry)
+    println("")
+
+    # For safety, we will re-save the DF every iteration
+    CSV.write(saveto, df)
+  end
+  return df
+end
+
+# Run everything
+
+
+# Here begins the stuff that we can customize and try things with
+
+# Options to use
+chordalsdp_opts = ChordalSdpOptions(mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
 

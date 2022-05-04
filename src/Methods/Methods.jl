@@ -89,14 +89,14 @@ function runQuery(query::Query, opts::QueryOptions)
     obj_func = x -> x[1]
     _, vars, setup_time = setupReach!(model, obj_func, query, opts)
   else
-    error("\tunrecognized query: $(query)")
+    error("unrecognized query: $(query)")
   end
 
   # Get ready to return
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
   if opts.verbose;
-    @printf("\tsetup: %.3f \tsolve: %.3f \ttotal: %.3f \tvalue: %.4e (%s)\n",
+    @printf("setup: %.3f \tsolve: %.3f \ttotal: %.3f \tvalue: %.4e (%s)\n",
             setup_time, solve_time, total_time,
             objective_value(model), summary.termination_status)
   end
@@ -118,7 +118,7 @@ export DeepSdpOptions, ChordalSdpOptions
 
 include("chordal_sdp.jl")
 export ChordalSdpOptions
-export ChordalDecompMode, OneStage, TwoStage, TwoStageRelaxed
+export DecompMode, OneStage, TwoStage, TwoStageRelaxed
 
 #
 export runQuery

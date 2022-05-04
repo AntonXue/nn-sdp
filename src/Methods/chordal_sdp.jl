@@ -1,14 +1,14 @@
 # Decomposition modes
-abstract type ChordalDecompMode end
-struct OneStage <: ChordalDecompMode end
-struct TwoStage <: ChordalDecompMode end
-struct TwoStageRelaxed <: ChordalDecompMode end
+abstract type DecompMode end
+struct OneStage <: DecompMode end
+struct TwoStage <: DecompMode end
+struct TwoStageRelaxed <: DecompMode end
 
 # Chordal-DeepSdp-specific options
 @with_kw struct ChordalSdpOptions <: QueryOptions
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
-  decomp_mode::ChordalDecompMode = OneStage()
+  decomp_mode::DecompMode = OneStage()
   use_dual::Bool = false
   verbose::Bool = false
 end
