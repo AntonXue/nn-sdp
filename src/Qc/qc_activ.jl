@@ -26,10 +26,10 @@ function makeB(ffnet::FeedFwdNet)
   return B
 end
 
-# Make the Zac; call this once for each Qac used
+# Make the Zac; call this once for each Q used
 function makeZac(γac, qc::QcActiv, ffnet::FeedFwdNet)
   @assert length(γac) == qc.vardim
-  Qac = makeQac(γac, qc)
+  Q = makeQ(γac, qc)
   _R11 = makeA(ffnet)
   _R12 = makeb(ffnet)
   _R21 = makeB(ffnet)
@@ -37,7 +37,7 @@ function makeZac(γac, qc::QcActiv, ffnet::FeedFwdNet)
   _R31 = zeros(1, size(_R21)[2])
   _R32 = 1
   R = [_R11 _R12; _R21 _R22; _R31 _R32]
-  Zac = R' * Qac * R
+  Zac = R' * Q * R
   return Zac
 end
 

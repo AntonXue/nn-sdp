@@ -19,8 +19,8 @@
   vardim::Int = (activ isa ReluActiv) ? _λdim + 2 * acxdim : _λdim
 end
 
-# The construction of Qac, which will be used in Zac
-function makeQac(γac, qc::QcActivSector)
+# The construction of Q, which will be used in Zac
+function makeQ(γac, qc::QcActivSector)
   @assert length(γac) == qc.vardim
   acxdim, β = qc.acxdim, qc.β
   initγac = γac[1:acxdim]

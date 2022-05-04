@@ -9,8 +9,8 @@
   vardim::Int = acydim
 end
 
-# The construction of Qac to be used in Zac
-function makeQac(γac, qc::QcActivBounded)
+# The construction of Q to be used in Zac
+function makeQ(γac, qc::QcActivBounded)
   @assert length(γac) == qc.vardim
   D = Diagonal(γac)
   _Q11 = spzeros(qc.acydim, qc.acydim)
