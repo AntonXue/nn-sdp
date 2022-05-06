@@ -54,10 +54,13 @@ function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::I
   Yc = yc * ones(1, length(ys))
   P = (Y - Yc) * (Y - Yc)'
 
+  # Remap the eigenvalues [λmin, λmax] onto a nicer interval [a, b], arbitrarily picked
+  a, b = 1, 4
+  eig = eigen(P)
+  λmin, λmax = minimum(eig.values), maximum(eig.values)
+  m(t) = (t - λmin) * ((b-a)/(λmax - λmin)) + a
 
-  λs = eigvals(P)
-  μ = (λs[1] + λs[end] + 1) / 2
-  P = P + μ* I
+  P = Symmetric(eig.vectors * Diagonal(m.(eig.values)) * eig.vectors')
   return P, yc
 end
 

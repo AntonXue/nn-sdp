@@ -58,6 +58,7 @@ plt = Utils.plotBoundingEllipses!(plt, xfs, ellipses)
 
 saveto = joinpath(homedir(), "dump", "reach-" * basename(args["nnet"]) * ".png")
 savefig(plt, saveto)
+println("saved to: $(saveto)")
 
 #=
 circle2 = findCircle(ffnet, x1min, x1max, chordalsdp_opts, 2)

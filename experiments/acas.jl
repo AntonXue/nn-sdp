@@ -29,6 +29,12 @@ TABLE_PAIRS = [(ind2acas(1,1), ind2spec(5)),  # Row 1
                (ind2acas(3,3), ind2spec(9)),  # Row 6
                (ind2acas(4,5), ind2spec(10))] # Row 7
 
+# The different property pairs
+PROP1_PAIRS = [(ind2acas(i,j), ind2spec(1)) for i in 1:5 for j in 1:9]
+PROP2_PAIRS = [(ind2acas(i,j), ind2spec(2)) for i in 1:5 for j in 1:9]
+PROP3_PAIRS = [(ind2acas(i,j), ind2spec(3)) for i in 1:5 for j in 1:9]
+PROP4_PAIRS = [(ind2acas(i,j), ind2spec(4)) for i in 1:5 for j in 1:9]
+
 # Some test pairs
 TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1,2,3] for k in [1]]
 
@@ -145,11 +151,19 @@ function verifyPairs(pairs, opts, saveto = joinpath(DUMP_DIR, "hello.csv"))
   return df
 end
 
-# Run everything
-
-
 # Here begins the stuff that we can customize and try things with
 
 # Options to use
 chordalsdp_opts = ChordalSdpOptions(mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
+
+function gotest()
+  saveto = joinpath(DUMP_DIR, "acas_test.csv")
+  verifyPairs(TEST_PAIRS, chordalsdp_opts, saveto)
+end
+
+function go1()
+  saveto = joinpath(DUMP_DIR, "acas_prop_1.csv")
+  verifyPairs(PROP1_PAIRS, chordalsdp_opts, saveto)
+end
+
 
