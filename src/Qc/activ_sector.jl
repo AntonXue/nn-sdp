@@ -3,11 +3,11 @@
   activ::Activ
   acxdim::Int
   β::Int
-  base_smin::Float64
-  base_smax::Float64
+  base_smin::Real
+  base_smax::Real
   # Default values; only need to specify the variables above this line
-  smin::VecF64 = ones(acxdim) * base_smin
-  smax::VecF64 = ones(acxdim) * base_smax
+  smin::VecReal = ones(acxdim) * base_smin
+  smax::VecReal = ones(acxdim) * base_smax
   @assert acxdim == length(smin) == length(smax)
   @assert 0 <= β
   @assert base_smin <= base_smax
@@ -60,13 +60,13 @@ function makeQ(γac, qc::QcActivSector)
 end
 
 # Calculate smin and smax info given some interval information
-function makeSectorMinMax(acxmin::VecF64, acxmax::VecF64, activ::Activ)
+function makeSectorMinMax(acxmin::VecReal, acxmax::VecReal, activ::Activ)
   @assert length(acxmin) == length(acxmax)
   ε = 1e-4
   if activ isa ReluActiv
     Ipos = findall(z -> z > ε, acxmin)
     Ineg = findall(z -> z < -ε, acxmax)
-    smin, smax = spzeros(length(acxmin)), ones(length(acxmax))
+    smin, smax = zeros(length(acxmin)), ones(length(acxmax))
     smin[Ipos] .= 1.0
     smax[Ineg] .= 0.0
     return smin, smax

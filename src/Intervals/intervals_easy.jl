@@ -1,5 +1,5 @@
 # Worst case propagation of a box
-function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
+function intervalsWorstCase(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The activation function
@@ -11,11 +11,11 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
   end
 
   # Each x[1], x[2], ..., x[K], x[K+1] of the network
-  x_intvs = Vector{PairVecF64}()
+  x_intvs = Vector{PairVecReal}()
   push!(x_intvs, (x1min, x1max))
 
   # The inputs to ϕ[1], ..., ϕ[K-1]
-  acx_intvs = Vector{PairVecF64}()
+  acx_intvs = Vector{PairVecReal}()
 
   xkmin, xkmax = x1min, x1max
   for (k, Mk) in enumerate(ffnet.Ms)
@@ -37,7 +37,7 @@ function intervalsWorstCase(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
 end
 
 # Randomized propagation. Not sound
-function intervalsSampled(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet; N = Int(1e6))
+function intervalsSampled(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet; N = Int(1e6))
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The activation function
@@ -54,11 +54,11 @@ function intervalsSampled(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet; N = I
   X1s = hcat([x1min + (p .* xgaps) for p in eachcol(points)]...)
 
   # Each x[1], x[2], ..., x[K], x[K+1] of the network
-  x_intvs = Vector{PairVecF64}()
+  x_intvs = Vector{PairVecReal}()
   push!(x_intvs, (x1min, x1max))
 
   # The inputs to ϕ[1], ..., ϕ[K-1]
-  acx_intvs = Vector{PairVecF64}()
+  acx_intvs = Vector{PairVecReal}()
 
   Xks = X1s
   for (k, Mk) in enumerate(ffnet.Ms)

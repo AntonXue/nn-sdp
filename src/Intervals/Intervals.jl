@@ -18,14 +18,14 @@ struct IntervalsAutoLirpa <: IntervalsMethod end
   ffnet::FeedFwdNet
 
   # The ranges of each x
-  x_intvs::Vector{PairVecF64}
+  x_intvs::Vector{PairVecReal}
   @assert length(x_intvs) == ffnet.K+1
   @assert all(xi -> length(xi) == 2, x_intvs)
   @assert all(xi -> length(xi[1]) == length(xi[2]), x_intvs)
   @assert all(k -> ffnet.xdims[k] == length(x_intvs[k][1]), 1:(ffnet.K+1))
 
   # What is fed into each activation
-  acx_intvs::Vector{PairVecF64}
+  acx_intvs::Vector{PairVecReal}
   @assert length(acx_intvs) == ffnet.K-1
   @assert all(acxi -> length(acxi) == 2, acx_intvs)
   @assert all(acxi -> length(acxi[1]) == length(acxi[2]), acx_intvs)
@@ -36,7 +36,7 @@ include("intervals_easy.jl")
 include("intervals_auto_lirpa.jl")
 
 # Do interval calculations based on the method
-function makeIntervalsInfo(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsAutoLirpa())
+function makeIntervalsInfo(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsAutoLirpa())
   if method isa IntervalsWorstCase
     return intervalsWorstCase(x1min, x1max, ffnet)
   elseif method isa IntervalsSampled

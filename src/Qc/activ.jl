@@ -42,7 +42,7 @@ function makeZac(γac, qc::QcActiv, ffnet::FeedFwdNet)
 end
 
 # Do all the QCs that we could possibly use
-function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, β::Int)
+function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int)
   @assert ffnet.activ isa ReluActiv || ffnet.activ isa TanhActiv
   @assert length(x1min) == length(x1max)
 
@@ -67,7 +67,7 @@ end
 
 # TODO: add more varieties as needed
 function makeQcActivs(ffnet::FeedFwdNet; x1min = nothing, x1max = nothing, β=nothing)
-  @assert x1min isa VecF64 && x1max isa VecF64 && β isa Int
+  @assert x1min isa VecReal && x1max isa VecReal && β isa Int
   return makeQcActivsIntvs(ffnet, x1min, x1max, β)
 end
 

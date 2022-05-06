@@ -28,7 +28,7 @@ function sliceFeedFwdNet(ffnet::FeedFwdNet)
 end
 
 # Calculate the bounds of a FeedFwdNet
-function autoLirpaBoundsOutput(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
+function autoLirpaBoundsOutput(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
   @assert length(x1min) == length(x1max)
   # Write the ffnet to an onnx file
   onnx_file = tempname()
@@ -38,16 +38,16 @@ function autoLirpaBoundsOutput(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
 end
 
 # Interval propagation where we slice the network
-function intervalsAutoLirpaSliced(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
+function intervalsAutoLirpaSliced(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
   ffnets = sliceFeedFwdNet(ffnet)
-  x_intvs = Vector{PairVecF64}()
+  x_intvs = Vector{PairVecReal}()
   push!(x_intvs, (x1min, x1max))
   for ggnet in ffnets
     lb, ub = autoLirpaBoundsOutput(x1min, x1max, ggnet)
     push!(x_intvs, (lb, ub))
   end
 
-  acx_intvs = Vector{PairVecF64}()
+  acx_intvs = Vector{PairVecReal}()
   for k in 1:ffnet.K-1
     Wk, bk = ffnet.Ms[k][:, 1:end-1], ffnet.Ms[k][:, end]
     xkmin, xkmax = x_intvs[k]
@@ -60,7 +60,7 @@ function intervalsAutoLirpaSliced(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNe
 end
 
 # Interval propagation where we use internal nodes to get x_intvs at once
-function intervalsAutoLirpaOneShot(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdNet)
+function intervalsAutoLirpaOneShot(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
   @assert length(x1min) == length(x1max)
 
   # Write the ffnet to an onnx file
@@ -69,7 +69,7 @@ function intervalsAutoLirpaOneShot(x1min::VecF64, x1max::VecF64, ffnet::FeedFwdN
   x_intvs, _ = auto_lirpa_bridge.find_bounds_one_shot(onnx_file, x1min, x1max)
 
   # Do the acx stuff
-  acx_intvs = Vector{PairVecF64}()
+  acx_intvs = Vector{PairVecReal}()
   for k in 1:ffnet.K-1
     Wk, bk = ffnet.Ms[k][:, 1:end-1], ffnet.Ms[k][:, end]
     xkmin, xkmax = x_intvs[k]

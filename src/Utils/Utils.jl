@@ -22,7 +22,7 @@ include("vnnlib.jl")
 include("plots.jl")
 
 # Generate a random network given the desired dimensions at each layer
-function randomNetwork(xdims::VecInt; activ::Activ = ReluActiv(), σ::Float64 = 1.0)
+function randomNetwork(xdims::VecInt; activ::Activ = ReluActiv(), σ = 1.0)
   @assert length(xdims) > 1
   Ms = [randn(xdims[k+1], xdims[k]+1) * σ for k in 1:(length(xdims) - 1)]
   return FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
@@ -44,31 +44,11 @@ function plotRandomTrajectories(N::Int, ffnet::FeedFwdNet, x1min, x1max; saveto=
   return xfs
 end
 
-# Find the vertices of a bunch of hyperplanes
-const Hplane = Tuple{VecF64, Float64}
-const Poly = Vector{Hplane}
-
-function polyVertices(poly::Poly)
-  hplanes = poly
-  augs = [hplanes; hplanes[1]; hplanes[2]]
-  verts = Vector{VecF64}()
-  for i in 1:(length(augs)-1)
-    n1, h1 = augs[i]
-    n2, h2 = augs[i+1]
-    x = [n1'; n2'] \ [h1; h2]
-    push!(verts, x)
-  end
-  vxs = [v[1] for v in verts]
-  vys = [v[2] for v in verts]
-  return vxs, vys
-end
-
-# Convert NNet to FeedFwdNet
 
 export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
-export plotBoundingPolys
+export plotBoundingPolygons!, plotBoundingEllipses!
 
 export loadVnnlib, loadReluQueries
 

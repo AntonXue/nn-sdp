@@ -28,7 +28,7 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
   indim, outdim = ffnet.xdims[1], ffnet.xdims[end]
 
   # Precalculate the scaling coefficient if one exists
-  @assert αs isa Nothing || (αs isa VecF64 && length(αs) == ffnet.K)
+  @assert αs isa Nothing || (αs isa VecReal && length(αs) == ffnet.K)
   α = (αs isa Nothing) ? Nothing : prod(αs)
 
   # A single term in a conj clause
@@ -42,7 +42,7 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
     lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]
 
     # Use a different QC depending on the scaling
-    if αs isa VecF64
+    if αs isa VecReal
       qc_input = QcInputBoxScaled(x1min=lb, x1max=ub, α=α)
     else
       qc_input = QcInputBox(x1min=lb, x1max=ub)
@@ -58,7 +58,7 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
       # Go through each row of Ay <= b and that is a conjunction
       for i in 1:length(b)
         S = hplaneS(A[i,:], b[i], ffnet)
-        if αs isa VecF64; S = scaleS(S, αs, ffnet) end
+        if αs isa VecReal; S = scaleS(S, αs, ffnet) end
         qc_safety = QcSafety(S=S)
         push!(conj_clause, (qc_input, qc_safety))
       end

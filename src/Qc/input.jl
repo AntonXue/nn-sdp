@@ -1,8 +1,8 @@
 
 # QC for box inputs
 @with_kw struct QcInputBox <: QcInput
-  x1min::VecF64
-  x1max::VecF64
+  x1min::VecReal
+  x1max::VecReal
   @assert length(x1min) == length(x1max)
   vardim::Int = length(x1min)
 end
@@ -11,26 +11,26 @@ end
 
 # Input box but with scaling
 @with_kw struct QcInputBoxScaled <: QcInput
-  x1min::VecF64
-  x1max::VecF64
-  α::Float64
+  x1min::VecReal
+  x1max::VecReal
+  α::Real
   @assert length(x1min) == length(x1max)
   vardim::Int = length(x1min)
 end
 
 # Qc for polytope inputs
 @with_kw struct QcInputPoly <: QcInput
-  H::MatF64
-  h::VecF64
+  H::MatReal
+  h::VecReal
   @assert size(H)[1] == length(h)
   vardim::Int = lenght(h)^2
 end
 
 # Qc for polytope inputs but with scaling
 @with_kw struct QcInputPolyScaled <: QcInput
-  H::MatF64
-  h::VecF64
-  α::Float64
+  H::MatReal
+  h::VecReal
+  α::Real
   @assert size(H)[1] == length(h)
   vardim::Int = lenght(h)^2
 end

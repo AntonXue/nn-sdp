@@ -1,7 +1,7 @@
 
 # Qc for safety
 @with_kw struct QcSafety <: QcOutput
-  S::Union{MatF64, SpMatF64}
+  S::SymReal
   @assert size(S) == size(S') # Is square
   vardim::Int = 0
 end
@@ -11,13 +11,13 @@ abstract type QcReach <: QcOutput end
 
 # Hyperplane reachability in particular
 @with_kw struct QcReachHplane <: QcReach
-  normal::VecF64
+  normal::VecReal
   vardim::Int = 1
 end
 
 # Reachability of form ||y - y0||^2 <= ρ, where ρ = r^2
 @with_kw struct QcReachCircle <: QcReach
-  y0::VecF64
+  y0::VecReal
   vardim::Int = 1
 end
 
@@ -25,8 +25,8 @@ end
 # Equivalently, the set: {y = ρP x + y0 : ||x||^2 <= 1},
 # where P is approximated from data, y0 is the center, and ρ the opt var
 @with_kw struct QcReachEllipsoid <: QcReach
-  invP::Union{MatF64, SpMatF64}
-  y0::VecF64
+  invP::SymReal
+  y0::VecReal
   vardim::Int = 1
 end
 
@@ -108,7 +108,7 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
 end
 
 # Apply scaling to S
-function scaleS(S, αs::VecF64, ffnet::FeedFwdNet)
+function scaleS(S, αs::VecReal, ffnet::FeedFwdNet)
   @assert length(αs) == ffnet.K
   α = prod(αs)
   sdims = [ffnet.xdims[1]; ffnet.xdims[end]; 1]

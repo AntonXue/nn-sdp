@@ -18,7 +18,7 @@ struct TanhActiv <: Activ end
   @assert length(xdims) >= 3
 
   # Each M[K] == [Wk bk]
-  Ms::Vector{MatF64}
+  Ms::Vector{MatReal}
   K::Int = length(Ms)
   @assert length(xdims) == K + 1
 

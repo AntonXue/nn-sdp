@@ -37,7 +37,7 @@ function hplaneS(normal, h, ffnet::FeedFwdNet)
 end
 
 # Uniformly sample a bunch of trajectories from an interval
-function sampleTrajs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, N::Int=100000)
+function sampleTrajs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=100000)
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
   xgaps = x1max - x1min
   box01points = rand(ffnet.xdims[1], N)
@@ -47,7 +47,7 @@ function sampleTrajs(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, N::Int=100
 end
 
 # Gives the covariance matrix Σ and y0 such that
-function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecF64, x1max::VecF64, N::Int=100000)
+function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=100000)
   ys = sampleTrajs(ffnet, x1min, x1max, N)
   y0 = sum(ys) / length(ys)
   Y = hcat(ys...)

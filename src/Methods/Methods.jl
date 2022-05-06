@@ -49,9 +49,9 @@ abstract type QueryOptions end
   values::B
   summary::C
   termination_status::D
-  total_time::Float64
-  setup_time::Float64
-  solve_time::Float64
+  total_time::Real
+  setup_time::Real
+  solve_time::Real
 end
 
 # Some common functionalities for different methods

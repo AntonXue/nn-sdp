@@ -1,6 +1,6 @@
 
 # Plot a bunch of 2D points and return the modified plot object
-function plotScatterPlots!(plt, points::Vector{VecF64}; kwargs...)
+function plotScatterPlots!(plt, points::Vector{<:VecReal}; kwargs...)
   @assert all(p -> length(p) == 2, points)
   xs, ys = [p[1] for p in points], [p[2] for p in points]
   scatter!(plt, xs, ys; kwargs...)
@@ -8,22 +8,22 @@ function plotScatterPlots!(plt, points::Vector{VecF64}; kwargs...)
 end
 
 # Plot a sequence of 2D points
-function plotSeqPoints!(plt, points::Vector{VecF64}; kwargs...)
+function plotSeqPoints!(plt, points::Vector{<:VecReal}; kwargs...)
   @assert all(p -> length(p) == 2, points)
   xs, ys = [p[1] for p in points], [p[2] for p in points]
   plot!(plt, xs, ys; kwargs...)
   return plt
 end
 
-const Hplane = Tuple{VecF64, Float64}
-const Polygon = Vector{Hplane}
+const Hplane = Tuple{<:VecReal, <:Real}
+const Polygon = Vector{<:Hplane}
 
 # Plot a 2D plot polygon defined as a sequence of hyperplanes
 function plotPolygon!(plt, poly::Polygon; kwargs...)
   hplanes = poly
   @assert all(hp -> length(hp[1]) == 2, hplanes)
   augs = [hplanes; hplanes[1]; hplanes[2]]
-  verts = Vector{VecF64}()
+  verts = Vector{VecReal}()
   for i in 1:(length(augs)-1)
     # Normal (n) and offset (h)
     n1, h1 = augs[i]
@@ -36,7 +36,7 @@ function plotPolygon!(plt, poly::Polygon; kwargs...)
 end
 
 # Plot a bunch of points and the respective polytopes
-function plotBoundingPolygons!(plt, points::Vector{VecF64}, polys::Vector{Polygon}; kwargs...)
+function plotBoundingPolygons!(plt, points::Vector{<:VecReal}, polys::Vector{<:Polygon}; kwargs...)
   @assert all(p -> length(p) == 2, points) # All points are 2D
   @assert all(hp -> length(hp[1]) == 2, polys) # All hplane normals are 2D
   @assert length(polys) >= 1 # At least one poly
@@ -66,7 +66,8 @@ function plotBoundingPolygons!(plt, points::Vector{VecF64}, polys::Vector{Polygo
   return plt
 end
 
-const Ellipse = Tuple{MatF64, VecF64}
+# We accept general square matrices here to make life easier
+const Ellipse = Tuple{<:MatReal, <:VecReal}
 
 # Plot the boundary of a 2D ellpse: {y = Px + y0 : ||x||^2 = 1}
 function plotEllipse!(plt, ellipse::Ellipse; kwargs...)
@@ -83,7 +84,7 @@ function plotEllipse!(plt, ellipse::Ellipse; kwargs...)
 end
 
 # Plot a bunch of points and the respective ellipses
-function plotBoundingEllipses!(plt, points::Vector{VecF64}, ellipses::Vector{Ellipse}; kwargs...)
+function plotBoundingEllipses!(plt, points::Vector{<:VecReal}, ellipses::Vector{<:Ellipse}; kwargs...)
   @assert all(p -> length(p) == 2, points) # All points are 2D
   @assert all(ellip -> size(ellip[1]) == (2,2), ellipses)
   @assert all(ellip -> length(ellip[2]) == 2, ellipses)

@@ -2,8 +2,8 @@
 # Make Q using bounds ϕlow and ϕhigh
 @with_kw struct QcActivBounded <: QcActiv
   acydim::Int
-  acymin::VecF64
-  acymax::VecF64
+  acymin::VecReal
+  acymax::VecReal
   @assert acydim == length(acymin) == length(acymax)
   @assert all(acymin .<= acymax)
   vardim::Int = acydim
