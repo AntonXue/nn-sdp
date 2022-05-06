@@ -22,10 +22,12 @@ SPEC_FILES = [ind2spec(i) for i in 1:10]
 @assert length(SPEC_FILES) == 10
 
 # The pairs that we wanna check
-TABLE_PAIRS = [(ind2spec(5), ind2acas(1,1)),
-               (ind2spec(6), ind2acas(1,1)),
-               (ind2spec(9), ind2acas(3,3)),
-               (ind2spec(10), ind2acas(4,5))]
+TABLE_PAIRS = [(ind2acas(1,1), ind2spec(5)),  # Row 1
+               (ind2acas(1,1), ind2spec(6)),  # Row 2, 3
+               (ind2acas(1,9), ind2spec(7)),  # Row 4
+               (ind2acas(2,9), ind2spec(8)),  # Row 5
+               (ind2acas(3,3), ind2spec(9)),  # Row 6
+               (ind2acas(4,5), ind2spec(10))] # Row 7
 
 # Some test pairs
 TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1,2,3] for k in [1]]
@@ -60,10 +62,12 @@ function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions
   dnf_queries = loadReluQueries(acas_file, spec_file, β)
   num_queries = length(vcat(dnf_queries...))
 
+  verif_status = :unknown
+
   spec_holds = false
   all_solns = Vector{Any}()
   for (conj_ind, conj) in enumerate(dnf_queries)
-    println("\tconjunction [$(conj_ind)/$(length(dnf_queries))] | now: $(now())")
+    println("\tconjunction [$(conj_ind)/$(length(dnf_queries))] has $(length(conj)) subqueries | now: $(now())")
     # Property holds when any conjunction is true
     conj_holds = true
     for (query_ind, query) in enumerate(conj)
@@ -72,19 +76,30 @@ function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions
       conj_holds = conj_holds && is_good # Update the conj truthiness
       push!(all_solns, soln)
 
-      println("\t\tsubquery [$(query_ind)/$(length(conj))] | time: $(soln.total_time)")
+      λmax = eigmax(Matrix(soln.values[:Z]))
+
+      println("\t\tsubquery [$(query_ind)/$(length(conj))] | time: $(soln.total_time) | result: $(soln.termination_status) | eigmax: $(λmax)")
 
       # If this conj is false, we immediately break to look at the next conj
-      if !conj_holds; break end
+      if !conj_holds
+        verif_status = :unsafe
+        break
+      end
     end
 
     if conj_holds
+      verif_status = :safe
       spec_holds = true
       break
     end
-    
   end
-  return all_solns, num_queries, spec_holds
+  
+
+  verif_total_time = sum([s.total_time for s in all_solns])
+  println("")
+  println("\tverification status: $(verif_status) | total time: $(verif_total_time)")
+
+  return all_solns, num_queries, verif_status
 end
 
 #= Verify an acas network (*.onnx) and spec (*.vnnlib) and track:
@@ -96,26 +111,31 @@ end
 =#
 function verifyPairs(pairs, opts, saveto = joinpath(DUMP_DIR, "hello.csv"))
   num_pairs = length(pairs)
-  df = DataFrame(acas=String[], spec=String[], holds=Bool[], num_queries=Int[], avg_time=Float64[])
+  df = DataFrame(acas=String[], spec=String[], verif_status=String[], num_queries=Int[], queries_ran=Int[], avg_query_time=Float64[], total_time=Float64[])
 
   for (i, (acas_file, spec_file)) in enumerate(pairs)
     println("pair [$(i)/$(length(pairs))] | now: $(now())")
     println("\tacas: $(acas_file)")
     println("\tspec: $(spec_file)")
 
-    all_solns, num_queries, spec_holds = verifyAcasSpec(acas_file, spec_file, opts)
+    all_solns, num_queries, verif_status = verifyAcasSpec(acas_file, spec_file, opts)
 
     # Get ready to build an entry to the hist, starting with the acas and spec names
     acas_name = basename(acas_file)
     spec_name = basename(spec_file)
     good_solns = filter(isSolutionGood, all_solns)
-    if good_solns == 0
-      avg_time = Inf # infinity time, maybe
+
+    if length(good_solns) == 0
+      avg_query_time = Inf # infinity time, maybe
     else
-      avg_time = sum([s.total_time for s in good_solns]) / length(good_solns)
+      avg_query_time = sum([gs.total_time for gs in good_solns]) / length(good_solns)
     end
 
-    entry = (acas_name, spec_name, spec_holds, num_queries, avg_time)
+    verif_status = String(verif_status)
+    queries_ran = length(all_solns)
+    total_time = sum([s.total_time for s in all_solns])
+
+    entry = (acas_name, spec_name, verif_status, num_queries, queries_ran, avg_query_time, total_time)
     push!(df, entry)
     println("")
 

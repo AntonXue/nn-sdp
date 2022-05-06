@@ -1,7 +1,7 @@
 using ..MyNeuralNetwork
 
-include("qc_activ_bounded.jl")
-include("qc_activ_sector.jl")
+include("activ_bounded.jl")
+include("activ_sector.jl")
 
 # Make the A matrix
 function makeA(ffnet::FeedFwdNet)

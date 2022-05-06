@@ -21,6 +21,15 @@ end
   vardim::Int = 1
 end
 
+# Reach ellipsoid of form ||P^{-1} (y - y0)||^2 <= ρ.
+# Equivalently, the set: {y = ρP x + y0 : ||x||^2 <= 1},
+# where P is approximated from data, y0 is the center, and ρ the opt var
+@with_kw struct QcReachEllipsoid <: QcReach
+  invP::Union{MatF64, SpMatF64}
+  y0::VecF64
+  vardim::Int = 1
+end
+
 # The R to be used in R' * S * R
 function makeSide(ffnet::FeedFwdNet)
   xdims, K = ffnet.xdims, ffnet.K
@@ -73,6 +82,16 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
     _S13 = spzeros(xdims[1])
     _S22 = I(xdims[K+1])
     _S23 = -qc.y0
+    _S33 = qc.y0' * qc.y0 - γout[1]
+    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  elseif qc isa QcReachEllipsoid
+    @assert length(qc.y0) == xdims[K+1]
+    @assert qc.vardim == length(γout) == 1
+    _S11 = spzeros(xdims[1], xdims[1])
+    _S12 = spzeros(xdims[1], xdims[K+1])
+    _S13 = spzeros(xdims[1])
+    _S22 = qc.invP' * qc.invP
+    _S23 = -qc.invP' * qc.y0
     _S33 = qc.y0' * qc.y0 - γout[1]
     S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   else

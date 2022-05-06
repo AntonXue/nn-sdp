@@ -10,7 +10,7 @@ NNet = pyimport("NNet")
 
 INPUT_DIM = 2
 OUTPUT_DIM = 2
-LAYER_DIMS = [5; 10; 15; 20]
+LAYER_DIMS = 5:5:50
 NUM_LAYERS = 5:5:50
 
 # Generate some randomized parameters
@@ -26,7 +26,7 @@ function makeRandomParams()
   params = Vector{Any}()
   for layer_dim in LAYER_DIMS
     for num_layers in NUM_LAYERS
-      σ = 2 / sqrt(layer_dim + num_layers)
+      σ = 2 / sqrt(layer_dim * log(layer_dim))
       input_dim = INPUT_DIM
       output_dim = OUTPUT_DIM
       xdims, Ws, bs = randomParams(input_dim, output_dim, layer_dim, num_layers, σ)

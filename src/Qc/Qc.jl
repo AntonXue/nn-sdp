@@ -20,16 +20,16 @@ const Clique = VecInt
 export Clique
 export QcInfo, QcInput, QcOutput, QcActiv
 
-include("qc_input.jl")
+include("input.jl")
 export QcInputBox, QcInputPoly
 export QcInputBoxScaled, QcInputPolyScaled
 export makeZin
 
-include("qc_output.jl")
-export QcSafety, QcReach, QcReachHplane, QcReachCircle
+include("output.jl")
+export QcSafety, QcReach, QcReachHplane, QcReachCircle, QcReachEllipsoid
 export scaleS, makeZout
 
-include("qc_activ.jl")
+include("activ.jl")
 export QcActivBounded, QcActivSector
 export makeSectorMinMax, makeQ, makeA, makeb, makeB
 export makeQcActivs, makeZac

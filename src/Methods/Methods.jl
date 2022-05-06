@@ -86,8 +86,7 @@ function runQuery(query::Query, opts::QueryOptions)
   # Delegate the appropriate call depending on the kind of query
   if query isa SafetyQuery
     _, vars, setup_time = setupSafety!(model, query, opts)
-  elseif (query.qc_reach isa QcReachHplane || query.qc_reach isa QcReachCircle)
-    # In this case the opt var is a 1-dim vector
+  elseif query isa ReachQuery
     _, vars, setup_time = setupReach!(model, query, opts)
   else
     error("unrecognized query: $(query)")

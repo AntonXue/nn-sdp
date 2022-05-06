@@ -9,8 +9,13 @@ const InputSafetyPair = Union{InputSafety, InputSafetyScaled}
 const ConjClause = Vector{InputSafetyPair}
 const DisjSpec = Vector{ConjClause}
 
-#= Gives a list of input-output safety constraints given the spec file.
-VNNLIB uses box inputs, and has output constrs of form Ay <= b
+#= The read_vnnlib_simple parser gives us a doubly-nested formula of form:
+
+  OR_{inbox} (OR_{A, b} (x in inbox AND Ay <= b))
+
+which we can flatten into a disjunctive normal form (dnf) of
+  
+  OR_{inbox, A, b} (x in inbox AND 
 
 Because DeepSDP can only assert one hyperplane constr at a time,
 we break the spec into a disjunctive normal form:
@@ -31,11 +36,9 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
   specs = read_vnnlib_simple(spec_file, indim, outdim)
   
   for input_output in specs
-    # Build a conjunction clause in each iteration
-    conj_clause = ConjClause()
-    
     # In each conj clause the input QC is shared
     inbox, outbox = input_output
+
     lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]
 
     # Use a different QC depending on the scaling
@@ -45,19 +48,22 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
       qc_input = QcInputBox(x1min=lb, x1max=ub)
     end
 
-    # Parse out constraints of form A y <= b
+    # Each element of outbox is a constraints of form A y <= b
     for out in outbox
+      conj_clause = ConjClause()
       A = hcat(out[1]...)'
       b = out[2]
       @assert size(A)[1] == length(b)
+
+      # Go through each row of Ay <= b and that is a conjunction
       for i in 1:length(b)
         S = hplaneS(A[i,:], b[i], ffnet)
         if αs isa VecF64; S = scaleS(S, αs, ffnet) end
         qc_safety = QcSafety(S=S)
         push!(conj_clause, (qc_input, qc_safety))
       end
+      push!(input_safety_dnf, conj_clause)
     end
-    push!(input_safety_dnf, conj_clause)
   end
   return input_safety_dnf
 end
