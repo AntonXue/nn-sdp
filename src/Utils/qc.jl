@@ -46,17 +46,18 @@ function sampleTrajs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=1
   return ys
 end
 
-# Gives the covariance matrix Σ and y0 such that
+# Gives the covariance matrix Σ and yc such that
 function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=100000)
   ys = sampleTrajs(ffnet, x1min, x1max, N)
-  y0 = sum(ys) / length(ys)
+  yc = sum(ys) / length(ys)
   Y = hcat(ys...)
-  Y0 = y0 * ones(1, length(ys))
-  P = (Y - Y0) * (Y - Y0)'
+  Yc = yc * ones(1, length(ys))
+  P = (Y - Yc) * (Y - Yc)'
+
 
   λs = eigvals(P)
-  μ = (λs[1] + λs[end]) / 2
+  μ = (λs[1] + λs[end] + 1) / 2
   P = P + μ* I
-  return P, y0
+  return P, yc
 end
 

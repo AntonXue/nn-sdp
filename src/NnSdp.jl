@@ -35,19 +35,19 @@ function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::
   qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
 
   # The output
-  P, y0 = Utils.approxEllipsoid(ffnet, x1min, x1max)
+  P, yc = Utils.approxEllipsoid(ffnet, x1min, x1max)
   println("P is: $(P)")
   println("with eigvals: $(eigvals(P))")
   invP = Symmetric(inv(P))
 
-  qc_ellipsoid = QcReachEllipsoid(invP=invP, y0=y0)
+  qc_ellipsoid = QcReachEllipsoid(invP=invP, yc=yc)
   obj_func = x -> x[1]
   reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_ellipsoid, obj_func=obj_func)
   soln = Methods.runQuery(reach_query, opts)
 
   ρ = sqrt(soln.values[:γout][1])
   newP = sqrt(ρ) * P
-  return newP, y0, soln
+  return newP, yc, soln
 end
 
 #
@@ -58,8 +58,8 @@ function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::Que
   qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
 
   # The output
-  y0 = evalFeedFwdNet(ffnet, (x1max + x1min) / 2)
-  qc_circle = QcReachCircle(y0=y0)
+  yc = evalFeedFwdNet(ffnet, (x1max + x1min) / 2)
+  qc_circle = QcReachCircle(yc=yc)
   obj_func = x -> x[1]
   reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_circle, obj_func=obj_func)
   soln = Methods.runQuery(reach_query, opts)

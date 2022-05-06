@@ -69,12 +69,12 @@ end
 # We accept general square matrices here to make life easier
 const Ellipse = Tuple{<:MatReal, <:VecReal}
 
-# Plot the boundary of a 2D ellpse: {y = Px + y0 : ||x||^2 = 1}
+# Plot the boundary of a 2D ellpse: {y = Px + yc : ||x||^2 = 1}
 function plotEllipse!(plt, ellipse::Ellipse; kwargs...)
-  P, y0 = ellipse
+  P, yc = ellipse
   @assert size(P) == (2, 2)
-  @assert length(y0) == 2
-  c(t) = P * [cos(t); sin(t)] + y0
+  @assert length(yc) == 2
+  c(t) = P * [cos(t); sin(t)] + yc
   c1(t) = c(t)[1]
   c2(t) = c(t)[2]
   ts = range(0, stop=2*π, length=10000)
@@ -100,13 +100,13 @@ function plotBoundingEllipses!(plt, points::Vector{<:VecReal}, ellipses::Vector{
   # Figure out the bounding regions
   λmaxs = [sqrt(eigmax(P' * P)) for (P, _) in ellipses]
   pxs = [p[1] for p in points]
-  ellipxmins = [y0[1] - (λmaxs[k]) for (k, (_, y0)) in enumerate(ellipses)]
-  ellipxmaxs = [y0[1] + (λmaxs[k]) for (k, (_, y0)) in enumerate(ellipses)]
+  ellipxmins = [yc[1] - (λmaxs[k]) for (k, (_, yc)) in enumerate(ellipses)]
+  ellipxmaxs = [yc[1] + (λmaxs[k]) for (k, (_, yc)) in enumerate(ellipses)]
   allxs = [pxs; ellipxmins; ellipxmaxs]
 
   pys = [p[2] for p in points]
-  ellipymins = [y0[2] - (λmaxs[k]) for (k, (_, y0)) in enumerate(ellipses)]
-  ellipymaxs = [y0[2] + (λmaxs[k]) for (k, (_, y0)) in enumerate(ellipses)]
+  ellipymins = [yc[2] - (λmaxs[k]) for (k, (_, yc)) in enumerate(ellipses)]
+  ellipymaxs = [yc[2] + (λmaxs[k]) for (k, (_, yc)) in enumerate(ellipses)]
   allys = [pys; ellipymins; ellipymaxs]
 
   xmin, xmax = minimum(allxs), maximum(allxs)

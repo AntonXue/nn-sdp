@@ -41,23 +41,25 @@ x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
 xfs = Utils.sampleTrajs(ffnet, x1min, x1max)
 
-P0, y0, soln0 = findEllipsoid(ffnet, x1min, x1max, chordalsdp_opts, 0)
+P0, yc, soln0 = findEllipsoid(ffnet, x1min, x1max, chordalsdp_opts, 0)
 P2, _, soln2 = findEllipsoid(ffnet, x1min, x1max, chordalsdp_opts, 2)
 P4, _, soln4 = findEllipsoid(ffnet, x1min, x1max, chordalsdp_opts, 4)
 P6, _, soln6 = findEllipsoid(ffnet, x1min, x1max, chordalsdp_opts, 6)
 P8, _, soln8 = findEllipsoid(ffnet, x1min, x1max, chordalsdp_opts, 8)
 
-ellipses = [(P0, y0),
-            (P2, y0),
-            (P4, y0),
-            (P6, y0),
-            (P8, y0)]
+ellipses = [(P0, yc),
+            (P2, yc),
+            (P4, yc),
+            (P6, yc),
+            (P8, yc)]
 
 plt = plot()
 plt = Utils.plotBoundingEllipses!(plt, xfs, ellipses)
 
-savefig(plt, "/home/antonxue/dump/foo.png")
+saveto = joinpath(homedir(), "dump", "reach-" * basename(args["nnet"]) * ".png")
+savefig(plt, saveto)
 
+#=
 circle2 = findCircle(ffnet, x1min, x1max, chordalsdp_opts, 2)
 hplanes_nosec, solns_nosec = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0)
 hplanes0, solns0 = findReach2Dpoly(ffnet, x1min, x1max, chordalsdp_opts, 0)
@@ -68,5 +70,6 @@ polys = [hplanes_nosec, hplanes0, hplanes2, hplanes4]
 
 plt = plot()
 plt = plotBoundingPolygons!(plt, xfs, polys)
+=#
 
 
