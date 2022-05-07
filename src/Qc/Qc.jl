@@ -22,7 +22,6 @@ export QcInfo, QcInput, QcOutput, QcActiv
 
 include("input.jl")
 export QcInputBox, QcInputPoly
-export QcInputBoxScaled, QcInputPolyScaled
 export makeZin
 
 include("output.jl")

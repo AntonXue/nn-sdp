@@ -35,16 +35,21 @@ args = parseArgs()
 
 mosek_opts = 
   Dict("QUIET" => true,
-       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 1, # seconds
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 5, # seconds
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 
-ffnet = loadFromOnnx(args["onnx"])
 
-deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts)
-chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, decomp_mode=TwoStage())
+ffnet = loadFromOnnx(args["onnx"])
+scffnet, αs = loadFromFileReluScaled(args["onnx"])
+alphas = αs
+α = prod(αs)
+alpha = α
+
+dopts = DeepSdpOptions(verbose=true, mosek_opts=mosek_opts)
+copts = ChordalSdpOptions(verbose=true, mosek_opts=mosek_opts, decomp_mode=TwoStage())
 
 # loadQueries(ACAS_FILES[1], SPEC_FILES[1], β)
 

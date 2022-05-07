@@ -34,9 +34,41 @@ mosek_opts =
 
 ffnet = loadFromNnet(args["nnet"], ReluActiv())
 # ffnet, αs = loadFromFileReluScaled(args["nnet"])
-chordalsdp_opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=TwoStage())
-deepsdp_opts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
+x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
+
+dopts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
+copts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=OneStage())
+c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=TwoStage())
+
+
+
+# Hyperplane reach
+qc_input = QcInputBox(x1min=x1min, x1max=x1max)
+qc_activs = Qc.makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=2)
+qc_reach = QcReachHplane(normal=[1; 1])
+obj_func = x -> x[1]
+reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_reach, obj_func=obj_func)
+
+dsolnh = Methods.runQuery(reach_query, dopts)
+csolnh = Methods.runQuery(reach_query, copts)
+c2solnh = Methods.runQuery(reach_query, c2opts)
+
+
+println("\n")
+
+dsoln = findCircle(ffnet, x1min, x1max, dopts, 1)
+csoln = findCircle(ffnet, x1min, x1max, copts, 1)
+c2soln = findCircle(ffnet, x1min, x1max, c2opts, 1)
+
+println("\n")
+
+_, _, dsolne = findEllipsoid(ffnet, x1min, x1max, dopts, 1)
+_, _, csolne = findEllipsoid(ffnet, x1min, x1max, copts, 1)
+_, _, c2solne = findEllipsoid(ffnet, x1min, x1max, c2opts, 1)
+
+
+#=
 x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
 xfs = Utils.sampleTrajs(ffnet, x1min, x1max)
@@ -59,6 +91,12 @@ plt = Utils.plotBoundingEllipses!(plt, xfs, ellipses)
 saveto = joinpath(homedir(), "dump", "reach-" * basename(args["nnet"]) * ".png")
 savefig(plt, saveto)
 println("saved to: $(saveto)")
+=#
+
+
+# dsoln = findCircle(ffnet, x1min, x1max, deepsdp_opts, 2)
+# csoln = findCircle(ffnet, x1min, x1max, chordalsdp_opts, 2)
+
 
 #=
 circle2 = findCircle(ffnet, x1min, x1max, chordalsdp_opts, 2)

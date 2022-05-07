@@ -73,7 +73,6 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
     _S22 = spzeros(xdims[K+1], xdims[K+1])
     _S23 = qc.normal
     _S33 = -2 * γout
-    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   elseif qc isa QcReachCircle
     @assert length(qc.yc) == xdims[K+1]
     @assert qc.vardim == length(γout) == 1
@@ -83,7 +82,6 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
     _S22 = I(xdims[K+1])
     _S23 = -qc.yc
     _S33 = qc.yc' * qc.yc - γout[1]
-    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   elseif qc isa QcReachEllipsoid
     @assert length(qc.yc) == xdims[K+1]
     @assert qc.vardim == length(γout) == 1
@@ -93,11 +91,11 @@ function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
     _S22 = qc.invP' * qc.invP
     _S23 = -qc.invP' * qc.yc
     _S33 = qc.yc' * qc.yc - γout[1]
-    S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   else
     error("unrecognized qc: $(qc)")
   end
 
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   E1 = E(1, zdims)
   EK = E(K, zdims)
   Ea = E(K+1, zdims)
@@ -115,12 +113,21 @@ function scaleS(S, αs::VecReal, ffnet::FeedFwdNet)
   F1 = E(1, sdims)
   F2 = E(2, sdims)
   F3 = E(3, sdims)
+  _S11 = F1 * S * F1'
+  _S12 = F1 * S * F2'
+  _S13 = F1 * S * F3'
+  _S22 = F2 * S * F2' / α^2
+  _S23 = F2 * S * F3' / α
+  _S33 = F3 * S * F3'
+
+  #=
   _S11 = F1 * S * F1' * α^2
   _S12 = F1 * S * F2' * α
   _S13 = F1 * S * F3' * α
   _S22 = F2 * S * F2'
   _S23 = F2 * S * F3'
   _S33 = F3 * S * F3'
+  =#
   newS = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return newS
 end

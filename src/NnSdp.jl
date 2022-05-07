@@ -23,9 +23,13 @@ DEFAULT_MOSEK_OPTS = Dict()
 
 # The generic formuation that everything ends up calling
 function solveQuery(query::Query, opts::QueryOptions)
+  println("now: $(now())")
   soln = Methods.runQuery(query, opts)
   return soln
 end
+
+precompile(solveQuery, (Query, DeepSdpOptions))
+precompile(solveQuery, (Query, ChordalSdpOptions))
 
 #
 function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::QueryOptions, β::Int)

@@ -36,14 +36,14 @@ PROP3_PAIRS = [(ind2acas(i,j), ind2spec(3)) for i in 1:5 for j in 1:9]
 PROP4_PAIRS = [(ind2acas(i,j), ind2spec(4)) for i in 1:5 for j in 1:9]
 
 # Some test pairs
-TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1,2,3] for k in [1]]
+TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1] for k in [1]]
 
 #= Custom MOSEK options we'll use for this experiment.
 On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
 =#
 ACAS_MOSEK_OPTS = 
   Dict("QUIET" => true,
-       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 5, # Time in seconds
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 4, # Time in seconds
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
@@ -63,8 +63,7 @@ Goes through each conjunction until one unanimously holds, then returns
 * The total number of queries
 * Whether the spec holds
 =#
-function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions)
-  β = 1 # To be parametrized, maybe
+function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions, β::Int)
   dnf_queries = loadReluQueries(acas_file, spec_file, β)
   num_queries = length(vcat(dnf_queries...))
 
@@ -115,7 +114,7 @@ end
   * Avg time per successful query
   * Verification result
 =#
-function verifyPairs(pairs, opts, saveto = joinpath(DUMP_DIR, "hello.csv"))
+function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.csv"))
   num_pairs = length(pairs)
   df = DataFrame(acas=String[], spec=String[], verif_status=String[], num_queries=Int[], queries_ran=Int[], avg_query_time=Float64[], total_time=Float64[])
 
@@ -124,7 +123,7 @@ function verifyPairs(pairs, opts, saveto = joinpath(DUMP_DIR, "hello.csv"))
     println("\tacas: $(acas_file)")
     println("\tspec: $(spec_file)")
 
-    all_solns, num_queries, verif_status = verifyAcasSpec(acas_file, spec_file, opts)
+    all_solns, num_queries, verif_status = verifyAcasSpec(acas_file, spec_file, opts, β)
 
     # Get ready to build an entry to the hist, starting with the acas and spec names
     acas_name = basename(acas_file)
@@ -154,16 +153,46 @@ end
 # Here begins the stuff that we can customize and try things with
 
 # Options to use
-chordalsdp_opts = ChordalSdpOptions(mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
+copts = ChordalSdpOptions(mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
 
-function gotest()
+function gotest(β::Int=2)
   saveto = joinpath(DUMP_DIR, "acas_test.csv")
-  verifyPairs(TEST_PAIRS, chordalsdp_opts, saveto)
+  verifyPairs(TEST_PAIRS, β, copts, saveto)
 end
 
-function go1()
-  saveto = joinpath(DUMP_DIR, "acas_prop_1.csv")
-  verifyPairs(PROP1_PAIRS, chordalsdp_opts, saveto)
+function go1(β::Int)
+  start_time = time()
+  saveto = joinpath(DUMP_DIR, "acas_prop1_beta$(β).csv")
+  df = verifyPairs(PROP1_PAIRS, β, copts, saveto)
+  println("took time: $(time() - start_time)")
+  return df
+end
+
+
+function go2(β::Int)
+  start_time = time()
+  saveto = joinpath(DUMP_DIR, "acas_prop2_beta$(β).csv")
+  df = verifyPairs(PROP2_PAIRS, β, copts, saveto)
+  println("took time: $(time() - start_time)")
+  return df
+end
+
+
+function go3(β::Int)
+  start_time = time()
+  saveto = joinpath(DUMP_DIR, "acas_prop3_beta$(β).csv")
+  df = verifyPairs(PROP3_PAIRS, β, copts, saveto)
+  println("took time: $(time() - start_time)")
+  return df
+end
+
+
+function go4(β::Int)
+  start_time = time()
+  saveto = joinpath(DUMP_DIR, "acas_prop4_beta$(β).csv")
+  df = verifyPairs(PROP4_PAIRS, β, copts, saveto)
+  println("took time: $(time() - start_time)")
+  return df
 end
 
 

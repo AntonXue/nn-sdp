@@ -3,9 +3,7 @@ EXTS_DIR = joinpath(@__DIR__, "..", "..", "exts")
 include(joinpath(EXTS_DIR, "vnnlib_parser.jl"))
 
 # The Vnnlib formulas are
-InputSafety = Tuple{QcInputBox, QcSafety}
-InputSafetyScaled = Tuple{QcInputBoxScaled, QcSafety}
-const InputSafetyPair = Union{InputSafety, InputSafetyScaled}
+const InputSafetyPair = Tuple{QcInputBox, QcSafety}
 const ConjClause = Vector{InputSafetyPair}
 const DisjSpec = Vector{ConjClause}
 
@@ -40,13 +38,7 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
     inbox, outbox = input_output
 
     lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]
-
-    # Use a different QC depending on the scaling
-    if αs isa VecReal
-      qc_input = QcInputBoxScaled(x1min=lb, x1max=ub, α=α)
-    else
-      qc_input = QcInputBox(x1min=lb, x1max=ub)
-    end
+    qc_input = QcInputBox(x1min=lb, x1max=ub)
 
     # Each element of outbox is a constraints of form A y <= b
     for out in outbox
@@ -58,8 +50,9 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
       # Go through each row of Ay <= b and that is a conjunction
       for i in 1:length(b)
         S = hplaneS(A[i,:], b[i], ffnet)
-        if αs isa VecReal; S = scaleS(S, αs, ffnet) end
-        qc_safety = QcSafety(S=S)
+        println("NOT SCALING S")
+        # if αs isa VecReal; S = scaleS(S, αs, ffnet) end
+        qc_safety = QcSafety(S=Symmetric(Matrix(S)))
         push!(conj_clause, (qc_input, qc_safety))
       end
       push!(input_safety_dnf, conj_clause)
@@ -71,7 +64,9 @@ end
 # Load hte queries in DNF form
 function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
-  ffnet, αs = Utils.loadFromFileReluScaled(network_file)
+  # ffnet, αs = Utils.loadFromFileReluScaled(network_file)
+  ffnet = Utils.loadFromFile(network_file)
+  αs = ones(ffnet.K)
 
   dnf_queries = Vector{Vector{SafetyQuery}}()
   spec = loadVnnlib(vnnlib_file, ffnet, αs=αs)
