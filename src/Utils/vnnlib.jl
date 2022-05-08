@@ -50,8 +50,10 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
       # Go through each row of Ay <= b and that is a conjunction
       for i in 1:length(b)
         S = hplaneS(A[i,:], b[i], ffnet)
-        println("NOT SCALING S")
-        # if αs isa VecReal; S = scaleS(S, αs, ffnet) end
+        if αs isa VecReal
+          println("SCALING S with αs = $(αs)")
+          S = scaleS(S, αs, ffnet)
+        end
         qc_safety = QcSafety(S=Symmetric(Matrix(S)))
         push!(conj_clause, (qc_input, qc_safety))
       end
@@ -65,6 +67,11 @@ end
 function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
   # ffnet, αs = Utils.loadFromFileReluScaled(network_file)
+  # ffnet, αs = MyNeuralNetwork.loadFromFileReluScaledStupid(network_file, 0.99) # eigmax 0.0001
+  # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 2) # Infeasible, eigmax 7.98
+  # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 4) # Slow progress, eigmax 0.798
+  # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 4)
+  #
   ffnet = Utils.loadFromFile(network_file)
   αs = ones(ffnet.K)
 

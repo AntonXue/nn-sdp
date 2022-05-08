@@ -3,7 +3,6 @@ module Methods
 
 using LinearAlgebra
 using Parameters 
-using Printf
 using JuMP
 using Dualization
 using MosekTools
@@ -96,9 +95,15 @@ function runQuery(query::Query, opts::QueryOptions)
   summary, values, solve_time = solve!(model, vars, opts)
   total_time = time() - total_start_time
   if opts.verbose;
-    @printf("setup: %.3f \tsolve: %.3f \ttotal: %.3f \tvalue: %.4e (%s)\n",
-            setup_time, solve_time, total_time,
-            objective_value(model), summary.termination_status)
+    setup_time_str = string(round(setup_time, digits=3))
+    solve_time_str = string(round(solve_time, digits=3))
+    total_time_str = string(round(total_time, digits=3))
+    obj_value_str = string(round(objective_value(model), digits=5))
+    obj_status_str = string(summary.termination_status)
+    λmaxZ_str = string(round(eigmax(Symmetric(Matrix(values[:Z]))), digits=6))
+    times_str = "setup: $(setup_time_str) \tsolve: $(solve_time_str) \ttotal: $(total_time_str)"
+    values_str = "obj value: $(obj_value_str) ($(obj_status_str)) \tλmaxZ: $(λmaxZ_str)"
+    println("$(times_str) \t$(values_str)")
   end
   return QuerySolution(
     objective_value = objective_value(model),

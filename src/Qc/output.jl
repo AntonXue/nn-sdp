@@ -114,10 +114,10 @@ function scaleS(S, αs::VecReal, ffnet::FeedFwdNet)
   F2 = E(2, sdims)
   F3 = E(3, sdims)
   _S11 = F1 * S * F1'
-  _S12 = F1 * S * F2'
+  _S12 = F1 * S * F2' * α
   _S13 = F1 * S * F3'
-  _S22 = F2 * S * F2' / α^2
-  _S23 = F2 * S * F3' / α
+  _S22 = F2 * S * F2' * α^2
+  _S23 = F2 * S * F3' * α
   _S33 = F3 * S * F3'
 
   #=

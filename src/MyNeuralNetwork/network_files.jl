@@ -91,6 +91,32 @@ function loadFromFileReluScaled(file::String)
   return scaled_ffnet, αs
 end
 
+# TODO: TESTING
+function loadFromFileReluScaledStupid(file::String, α)
+  ffnet = loadFromFile(file, ReluActiv())
+  xdims, Ms, K = ffnet.xdims, ffnet.Ms, ffnet.K
+  Ws, bs = [M[:,1:end-1] for M in Ms], [M[:,end] for M in Ms]
+  αs = ones(K) * α
+  scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
+  scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
+  scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]
+  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=xdims, Ms=scaled_Ms)
+  return scaled_ffnet, αs
+end
+
+# Scaled version of load where each Wk has a corresponding opnorm
+function loadFromFileReluFixedWknorm(nnet_filepath::String, Wk_opnorm)
+  ffnet = loadFromFile(nnet_filepath, ReluActiv())
+  Ws, bs = [M[:,1:end-1] for M in ffnet.Ms], [M[:,end] for M in ffnet.Ms]
+  αs = [Wk_opnorm / opnorm(W) for W in Ws]
+  scaled_Ws = [αs[k] * Ws[k] for k in 1:ffnet.K]
+  scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:ffnet.K]
+  scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:ffnet.K]
+  scaled_ffnet = FeedFwdNet(activ=ffnet.activ, xdims=ffnet.xdims, Ms=scaled_Ms)
+  return scaled_ffnet, αs
+end
+
+
 # Write FeedFwdNet to a NNet file
 function writeNnet(ffnet::FeedFwdNet, nnet_file="$(homedir())/dump/hello.nnet")
   xdims = ffnet.xdims

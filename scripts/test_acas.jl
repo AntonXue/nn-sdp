@@ -61,6 +61,8 @@ qs = vcat(dnf...)
 
 
 
+solns = [NnSdp.solveQuery(q, copts) for q in qs]
 
+soln = solns[1]
 
 

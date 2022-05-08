@@ -43,7 +43,7 @@ On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
 =#
 ACAS_MOSEK_OPTS = 
   Dict("QUIET" => true,
-       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 4, # Time in seconds
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 20, # Time in seconds
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
@@ -153,7 +153,8 @@ end
 # Here begins the stuff that we can customize and try things with
 
 # Options to use
-copts = ChordalSdpOptions(mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
+dopts = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
+copts = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 
 function gotest(β::Int=2)
   saveto = joinpath(DUMP_DIR, "acas_test.csv")
@@ -164,6 +165,7 @@ function go1(β::Int)
   start_time = time()
   saveto = joinpath(DUMP_DIR, "acas_prop1_beta$(β).csv")
   df = verifyPairs(PROP1_PAIRS, β, copts, saveto)
+  # df = verifyPairs(PROP1_PAIRS, β, dopts, saveto)
   println("took time: $(time() - start_time)")
   return df
 end
