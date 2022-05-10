@@ -2,7 +2,6 @@ module Intervals
 
 using LinearAlgebra
 using Parameters
-using Printf
 
 using ..MyMath
 using ..MyNeuralNetwork

@@ -64,6 +64,58 @@ function loadFromFile(file::String, activ::Activ = ReluActiv())
   end
 end
 
+# The scaling mode that happens
+abstract type ScalingMethod end
+struct NoScaling <: ScalingMethod end
+struct SmartScaling <: ScalingMethod end
+@with_kw struct FixedNormScaling <: ScalingMethod; Wk_opnorm::Real; end
+@with_kw struct FixedConstScaling <: ScalingMethod; α::Real; end
+
+
+#= Load a relu network while scaling weights
+Use a sequence of α[1], ..., α[K] such that
+  Wk -> αk Wk,    bk -> prod(αs[1:k]) bk
+
+Let x' be an input to the scaled network f'
+Observe that: f'(x) = prod(αs) f(x)
+
+Again, this only works for piecewise-linear activations like relu
+=#
+function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
+  ffnet = loadFromFile(file, ReluActiv())
+  xdims, Ms, K = ffnet.xdims, ffnet.Ms, ffnet.K
+  Ws, bs = [M[:,1:end-1] for M in Ms], [M[:,end] for M in Ms]
+
+  # Wk -> Wk with each α[k] = 1
+  if scaling isa NoScaling
+    αs = ones(K)
+  # ||Wk|| = sqrt(ck * log ck / K), where ck = xdims[k] + xdims[k+1]
+  elseif scaling isa SmartScaling
+    # tgt_func(ck) = sqrt(ck * log(ck) / K)
+    # tgt_func(ck) = 0.5 * sqrt(ck * log(ck) / K) # Almost
+    # tgt_func(ck) = 0.3 * sqrt(ck * log(ck) / K)
+    tgt_func(ck) = 0.2 * sqrt(ck * log(ck) / K)
+    tgt_opnorms = [tgt_func(xdims[k]+xdims[k+1]) for k in 1:K]
+    αs = [tgt_opnorms[k] / opnorm(W) for (k, W) in enumerate(Ws)]
+  # Some fixed ||Wk||
+  elseif scaling isa FixedNormScaling
+    αs = [scaling.Wk_opnorm / opnorm(W) for W in Ws]
+  # Some fixed α
+  elseif scaling isa FixedConstScaling
+    αs = scaling.α * ones(K)
+  else
+    error("unrecognized scaling method: $(scaling)")
+  end
+
+  println("scaling method: $(scaling)")
+
+  scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
+  scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
+  scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]
+  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=xdims, Ms=scaled_Ms)
+  return scaled_ffnet, αs
+end
+
 #= Load a relu network while scaling weights
 We scale such that each new Wk has opnorm
   ||Wk|| = sqrt(ck * log ck / K), where ck = xdims[k] + xdims[k+1]
@@ -77,6 +129,7 @@ Thus, f'(x') = f(x) iff x = prod(αs) x'
 
 Again, this only works for piecewise-linear activations like relu
 =#
+#=
 function loadFromFileReluScaled(file::String)
   ffnet = loadFromFile(file, ReluActiv())
   xdims, Ms, K = ffnet.xdims, ffnet.Ms, ffnet.K
@@ -115,6 +168,7 @@ function loadFromFileReluFixedWknorm(nnet_filepath::String, Wk_opnorm)
   scaled_ffnet = FeedFwdNet(activ=ffnet.activ, xdims=ffnet.xdims, Ms=scaled_Ms)
   return scaled_ffnet, αs
 end
+=#
 
 
 # Write FeedFwdNet to a NNet file

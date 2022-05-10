@@ -7,7 +7,6 @@ using SparseArrays
 using DelimitedFiles
 using Random
 using Plots
-using Printf
 
 using ..MyMath
 using ..MyNeuralNetwork

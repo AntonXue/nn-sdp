@@ -66,14 +66,19 @@ end
 # Load hte queries in DNF form
 function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
+
   # ffnet, αs = Utils.loadFromFileReluScaled(network_file)
   # ffnet, αs = MyNeuralNetwork.loadFromFileReluScaledStupid(network_file, 0.99) # eigmax 0.0001
   # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 2) # Infeasible, eigmax 7.98
   # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 4) # Slow progress, eigmax 0.798
   # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 4)
-  #
-  ffnet = Utils.loadFromFile(network_file)
-  αs = ones(ffnet.K)
+
+  # ffnet = Utils.loadFromFile(network_file)
+  # αs = ones(ffnet.K)
+
+  # ffnet, αs = loadFromFileScaled(network_file, FixedConstScaling(0.99))
+  # ffnet, αs = loadFromFileScaled(network_file, NoScaling())
+  ffnet, αs = loadFromFileScaled(network_file, SmartScaling()) # This almost works with 0.5 * sqrt(ck * log(ck))!
 
   dnf_queries = Vector{Vector{SafetyQuery}}()
   spec = loadVnnlib(vnnlib_file, ffnet, αs=αs)

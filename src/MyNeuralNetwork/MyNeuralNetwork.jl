@@ -50,8 +50,10 @@ export FeedFwdNet, makeActiv, evalFeedFwdNet
 
 include("network_files.jl")
 export loadFromNnet, loadFromOnnx, loadFromFile
-export loadFromFileReluScaled
 export onnx2nnet, nnet2onnx, writeNnet, writeOnnx
+
+export ScalingMode, NoScaling, SmartScaling, FixedNormScaling, FixedConstScaling
+export loadFromFileScaled
 
 end
 

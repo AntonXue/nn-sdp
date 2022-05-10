@@ -36,7 +36,14 @@ PROP3_PAIRS = [(ind2acas(i,j), ind2spec(3)) for i in 1:5 for j in 1:9]
 PROP4_PAIRS = [(ind2acas(i,j), ind2spec(4)) for i in 1:5 for j in 1:9]
 
 # Some test pairs
-TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1] for k in [1]]
+# TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1] for k in [1]]
+TEST_PAIRS = [
+              # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_a.vnnlib")
+              # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_c.vnnlib")
+               (ind2acas(4,5), ind2spec(10)), # Row 7
+               (ind2acas(3,3), ind2spec(9)),  # Row 6
+               (ind2acas(2,9), ind2spec(8)),  # Row 5
+             ]
 
 #= Custom MOSEK options we'll use for this experiment.
 On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
@@ -44,12 +51,22 @@ On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
 ACAS_MOSEK_OPTS = 
   Dict("QUIET" => true,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 20, # Time in seconds
-       "INTPNT_CO_TOL_REL_GAP" => 1e-6,
-       "INTPNT_CO_TOL_PFEAS" => 1e-6,
-       "INTPNT_CO_TOL_DFEAS" => 1e-6)
+       # "MSK_IPAR_INTPNT_SCALING" => 1,  # None
+       "MSK_IPAR_INTPNT_SCALING" => 2,  # Moderate (preferable, maybe)
+       # "MSK_IPAR_INTPNT_SCALING" => 3,  # Aggressive
+       "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-7,
+       # "MSK_IPAR_INTPNT_MAX_ITERATIONS" => 500,
+       "MSK_DPAR_DATA_SYM_MAT_TOL" => 1e-10,
+       "INTPNT_CO_TOL_REL_GAP" => 1e-9,
+       "INTPNT_CO_TOL_PFEAS" => 1e-9,
+       "INTPNT_CO_TOL_DFEAS" => 1e-9)
 
 # How large are we willing to have λmax(Z) be?
-NSD_TOL = 1e-4
+# NSD_TOL = 1e-4
+# NSD_TOL = 5e-3 # This is too high for the small table: everything is safe
+# NSD_TOL = 5e-4 # This is still too high: prop 8 network 2-9 is incorrectly marked safe
+# NSD_TOL = 1e-4 # Too high for prop 8 network 2-9?
+NSD_TOL = 1e-6
 
 
 function isSolutionGood(soln::QuerySolution)
@@ -118,6 +135,9 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
   num_pairs = length(pairs)
   df = DataFrame(acas=String[], spec=String[], verif_status=String[], num_queries=Int[], queries_ran=Int[], avg_query_time=Float64[], total_time=Float64[])
 
+  qdf = DataFrame(acas=String[], spec=String[], qnum=Int[], num_queries=Int[], time=Float64[], status=String[], eigmax=Float64[])
+  qdf_saveto = saveto * "-qdf.csv"
+
   for (i, (acas_file, spec_file)) in enumerate(pairs)
     println("pair [$(i)/$(length(pairs))] | now: $(now())")
     println("\tacas: $(acas_file)")
@@ -146,6 +166,15 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
 
     # For safety, we will re-save the DF every iteration
     CSV.write(saveto, df)
+
+    # Update the qdf
+    for (i, soln) in enumerate(all_solns)
+      eigmaxZ = eigmax(Symmetric(Matrix(soln.values[:Z])))
+      qentry = (acas_name, spec_name, i, num_queries, soln.total_time, soln.termination_status, eigmaxZ)
+      push!(qdf, qentry)
+    end
+    CSV.write(qdf_saveto, qdf)
+
   end
   return df
 end
@@ -156,9 +185,20 @@ end
 dopts = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 copts = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 
-function gotest(β::Int=2)
+function gotest(β::Int)
+  start_time = time()
   saveto = joinpath(DUMP_DIR, "acas_test.csv")
-  verifyPairs(TEST_PAIRS, β, copts, saveto)
+  df = verifyPairs(TEST_PAIRS, β, copts, saveto)
+  println("took time: $(time() - start_time)")
+  return df
+end
+
+function gotable(β::Int)
+  start_time = time()
+  saveto = joinpath(DUMP_DIR, "acas_table_beta$(β).csv")
+  df = verifyPairs(TABLE_PAIRS, β, copts, saveto)
+  println("took time: $(time() - start_time)")
+  return df
 end
 
 function go1(β::Int)
