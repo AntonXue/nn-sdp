@@ -7,9 +7,6 @@ const InputSafetyPair = Tuple{QcInputBox, QcSafety}
 const ConjClause = Vector{InputSafetyPair}
 const DisjSpec = Vector{ConjClause}
 
-const InputAbReaches = Tuple{QcInput, Matrix, Vector, Vector{QcReach}}
-const AbReachQueries = Tuple{Matrix, Vector, Vector{ReachQuery}}
-
 #= The read_vnnlib_simple parser gives us a doubly-nested formula of form:
 
   OR_{inbox} (OR_{A, b} (x in inbox AND Ay <= b))
@@ -55,6 +52,7 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
         S = hplaneS(A[i,:], b[i], ffnet)
         if αs isa VecReal
           println("SCALING S with αs = $(αs)")
+          println("α is: $(prod(αs))")
           S = scaleS(S, αs, ffnet)
         end
         qc_safety = QcSafety(S=Symmetric(Matrix(S)))
@@ -66,78 +64,11 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
   return input_safety_dnf
 end
 
-# Load reach queries based on the spec
-function loadVnnlibReach(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
-  indim, outdim = ffnet.xdims[1], ffnet.xdims[end]
-
-  # Precalculate the scaling coefficient if one exists
-  @assert αs isa Nothing || (αs isa VecReal && length(αs) == ffnet.K)
-  α = (αs isa Nothing) ? Nothing : prod(αs)
-
-  # A single term in a conj clause
-  input_Ab_reaches_dnf = Vector{InputAbReaches}()
-  specs = read_vnnlib_simple(spec_file, indim, outdim)
-  
-  for input_output in specs
-    # In each conj clause the input QC is shared
-    inbox, outbox = input_output
-
-    lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]
-    qc_input = QcInputBox(x1min=lb, x1max=ub)
-
-    # Each element of outbox is a constraints of form A y <= b
-    for out in outbox
-      A = hcat(out[1]...)'
-      b = out[2]
-      qc_reaches = Vector{QcReachHplane}()
-      # Find out which outputs we actually care about
-      rowhots = ones(size(A)[1])' * abs.(A) .> 0
-      println("row hots: $(rowhots)")
-      for (i, ishot) in enumerate(rowhots)
-        if ishot == 1
-          normal_top = zeros(outdim)
-          normal_top[i] = 1
-          qc_reach_top = QcReachHplane(normal=normal_top)
-
-          normal_bot = zeros(outdim)
-          normal_bot[i] = -1
-          qc_reach_bot = QcReachHplane(normal=normal_bot)
-
-          push!(qc_reaches, qc_reach_top)
-          push!(qc_reaches, qc_reach_bot)
-
-          println("normal_top: $(normal_top)")
-          println("normal_bot: $(normal_bot)")
-          println("")
-        end
-      end
-
-      # We need to generate two hplane queries for each hot index in the row
-      entry = (qc_input, A, b, qc_reaches)
-      push!(input_Ab_reaches_dnf, entry)
-    end
-  end
-  return input_Ab_reaches_dnf
-end
-
-
-
-# Load hte queries in DNF form
+# Load the queries in DNF form
 function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
-
-  # ffnet, αs = Utils.loadFromFileReluScaled(network_file)
-  # ffnet, αs = MyNeuralNetwork.loadFromFileReluScaledStupid(network_file, 0.99) # eigmax 0.0001
-  # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 2) # Infeasible, eigmax 7.98
-  # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 4) # Slow progress, eigmax 0.798
-  # ffnet, αs = MyNeuralNetwork.loadFromFileReluFixedWknorm(network_file, 4)
-
-  # ffnet = Utils.loadFromFile(network_file)
-  # αs = ones(ffnet.K)
-
-  # ffnet, αs = loadFromFileScaled(network_file, FixedConstScaling(0.99))
-  # ffnet, αs = loadFromFileScaled(network_file, NoScaling())
-  ffnet, αs = loadFromFileScaled(network_file, SmartScaling()) # This almost works with 0.5 * sqrt(ck * log(ck))!
+  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
+  # ffnet, αs = loadFromFileScaled(network_file, SmartScaling()) # This almost works with 0.5 * sqrt(ck * log(ck))!
 
   dnf_queries = Vector{Vector{SafetyQuery}}()
   spec = loadVnnlib(vnnlib_file, ffnet, αs=αs)
@@ -153,25 +84,94 @@ function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   return dnf_queries
 end
 
-function loadReluQueriesReach(network_file::String, vnnlib_file::String, β::Int)
-  @assert β >= 0
-  dnf_Ab_reachqs = Vector{AbReachQueries}()
+# Reachability query loading
+const SignedQcReach = Tuple{Int, Int, QcReachHplane} # y index, sign, reach
+const SignedReachQuery = Tuple{Int, Int, ReachQuery} # y index, sign, reach
+const AbSignedReachTuple = Tuple{Matrix, Vector, Vector{SignedReachQuery}}
 
-  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
-  input_Ab_reaches_dnf = loadVnnlibReach(vnnlib_file, ffnet, αs=αs)
-  for (qc_input, A, b, qc_reaches) in input_Ab_reaches_dnf
-    reachqs = Vector{ReachQuery}()
-    qc_activs = makeQcActivs(ffnet, x1min=qc_input.x1min, x1max=qc_input.x1max, β=β)
-    for qc_reach in qc_reaches
-      obj_func = x -> x[1]
-      reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_reach=qc_reach, qc_activs=qc_activs, obj_func=obj_func)
-      push!(reachqs, reach_query)
+# Load reach queries based on the spec
+function loadVnnlibReach(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
+  indim, outdim = ffnet.xdims[1], ffnet.xdims[end]
+
+  # Precalculate the scaling coefficient if one exists
+  @assert αs isa Nothing || (αs isa VecReal && length(αs) == ffnet.K)
+  α = (αs isa Nothing) ? Nothing : prod(αs)
+
+  # A single term in a conj clause
+  InputReachTuple = Tuple{QcInput, Matrix, Vector, Vector{SignedQcReach}}
+  reach_tuples = Vector{InputReachTuple}()
+  specs = read_vnnlib_simple(spec_file, indim, outdim)
+  
+  for input_output in specs
+    # In each conj clause the input QC is shared
+    inbox, outbox = input_output
+
+    lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]
+    qc_input = QcInputBox(x1min=lb, x1max=ub)
+
+    # Each element of outbox is a constraints of form A y <= b
+    for out in outbox
+      A = hcat(out[1]...)'
+      b = out[2]
+
+      println("A is:")
+      println(A)
+      println("b is:")
+      println(b)
+
+      signed_qc_reaches = Vector{SignedQcReach}()
+
+      for yind in 1:outdim
+        # If the ith column of A has pos elements, we have pos reach
+        #=
+        println("TODO: CHANGE THIS BACK!!!!!!!")
+        if sum(abs.(A[:,yind])) > 0
+          normal_pos = VecInt(e(yind, outdim))
+          push!(signed_qc_reaches, (yind, 1, QcReachHplane(normal=normal_pos)))
+          normal_neg = VecInt(-1 * e(yind, outdim))
+          push!(signed_qc_reaches, (yind, -1, QcReachHplane(normal=normal_neg)))
+        end
+        =#
+
+        if sum(A[:,yind] .> 0) > 0
+          normal_pos = VecInt(e(yind, outdim))
+          push!(signed_qc_reaches, (yind, 1, QcReachHplane(normal=normal_pos)))
+        end
+
+        # If there are negative elements, we have neg reach
+        if sum(A[:,yind] .< 0) > 0
+          normal_neg = VecInt(-1 * e(yind, outdim))
+          push!(signed_qc_reaches, (yind, -1, QcReachHplane(normal=normal_neg)))
+        end
+      end
+
+      # We need to generate two hplane queries for each hot index in the row
+      entry = (qc_input, A, b, signed_qc_reaches)
+      push!(reach_tuples, entry)
     end
-    push!(dnf_Ab_reachqs, (A, b, reachqs))
   end
-  return dnf_Ab_reachqs
+  return reach_tuples
 end
 
+# Load the reachability stuff
+function loadReluQueriesReach(network_file::String, vnnlib_file::String, β::Int)
+  @assert β >= 0
+  reachq_tuples = Vector{AbSignedReachTuple}()
+  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
+  # ffnet, αs = loadFromFileScaled(network_file, SmartScaling())
+  reach_tuples = loadVnnlibReach(vnnlib_file, ffnet, αs=αs)
+  for (qc_input, A, b, signed_qc_reaches) in reach_tuples
+    signed_reachqs = Vector{SignedReachQuery}()
+    qc_activs = makeQcActivs(ffnet, x1min=qc_input.x1min, x1max=qc_input.x1max, β=β)
+    for (yind, sgn, qc_reach) in signed_qc_reaches
+      obj_func = x -> x[1]
+      reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_reach=qc_reach, qc_activs=qc_activs, obj_func=obj_func)
+      push!(signed_reachqs, (yind, sgn, reach_query))
+    end
+    push!(reachq_tuples, (A, b, signed_reachqs))
+  end
+  return reachq_tuples, αs
+end
 
 
 

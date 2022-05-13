@@ -61,6 +61,8 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   # Then do the Zacs so we can set up Z
   Zacs, Zacvars = setupZacs!(model, query, opts)
   vars = merge(vars, Zacvars)
+  γacs = [vars[Symbol(:γac, i)] for i in 1:length(query.qc_activs)]
+  @objective(model, Min, sum(γin) + sum(sum(γac) for γac in γacs))
 
   # Big Z matrix
   Z = Zin + Zout + sum(Zacs)

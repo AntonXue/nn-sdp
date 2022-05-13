@@ -100,6 +100,13 @@ function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions
     # Property holds when any conjunction is true
     conj_holds = true
     for (query_ind, query) in enumerate(conj)
+
+      xfs = Utils.sampleTrajs(query.ffnet, query.qc_input.x1min, query.qc_input.x1max)
+      y1min = minimum(xf[1] for xf in xfs)
+      y1max = maximum(xf[1] for xf in xfs)
+      println("\t\tsampled y1min/y1max: ($(y1min), $(y1max))")
+
+
       println("\t\tsubquery [$(query_ind)/$(length(conj))] of $(basename(acas_file)) | $(basename(spec_file))")
       soln = solveQuery(query, opts)
       is_good = isSolutionGood(soln)
@@ -130,18 +137,6 @@ function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions
   println("\tverification status: $(verif_status) | total time: $(verif_total_time)")
 
   return all_solns, num_queries, verif_status
-end
-
-# Solve a reachability version of the spec
-function reachAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions, β::Int)
-  dnf_Ab_reachqs = loadReluQueriesReach(acas_file, spec_file, β)
-  for (A, b, reachqs) in dnf_Ab_reachqs
-    reach_solns = Vector{QuerySolution}()
-    for reachq in reachqs
-      soln = NnSdp.solveQuery(reachq, opts)
-      push!(reach_solns, soln)
-    end
-  end
 end
 
 #= Verify an acas network (*.onnx) and spec (*.vnnlib) and track:
@@ -199,6 +194,37 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
   return df
 end
 
+
+# Solve a reachability version of the spec
+function reachAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions, β::Int)
+  reachq_tuples, αs = loadReluQueriesReach(acas_file, spec_file, β)
+  α = prod(αs)
+  println("α is: $(α)")
+  for (A, b, signed_reachqs) in reachq_tuples
+    signed_reach_solns = Vector{QuerySolution}()
+    for (yind, sgn, reachq) in signed_reachqs
+      xfs = Utils.sampleTrajs(reachq.ffnet, reachq.x1min, reachq.x1max)
+      y1min = minimum(xf[1] for xf in xfs)
+      y1max = maximum(xf[1] for xf in xfs)
+      println("sampled y1min/y1max: ($(y1min), $(y1max))")
+
+
+      println("y$(yind) has sign $(sgn)")
+      soln = NnSdp.solveQuery(reachq, opts)
+      obj_val = soln.objective_value
+      println("y$(yind) raw obj: $(obj_val), normalized obj: $(obj_val / α)")
+      push!(signed_reach_solns, soln)
+      println("")
+    end
+  end
+
+  println("αs: $(αs)")
+  println("α: $(α)")
+end
+
+
+
+
 # Here begins the stuff that we can customize and try things with
 
 # Options to use
@@ -249,4 +275,5 @@ end
 
 ffnet11 = loadFromFile(ind2acas(1,1))
 
+SIMPLE_PROP10 = "/home/antonxue/stuff/test/a-b-crown/prop_10.vnnlib"
 

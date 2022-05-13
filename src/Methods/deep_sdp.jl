@@ -23,6 +23,8 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
   # Then do the Zacs
   Zacs, Zacvars = setupZacs!(model, query, opts)
   vars = merge(vars, Zacvars)
+  γacs = [vars[Symbol(:γac, i)] for i in 1:length(query.qc_activs)]
+  @objective(model, Min, sum(γin) + sum(sum(γac) for γac in γacs))
 
   # Now set up the LMI
   Z = Zin + Zout + sum(Zacs)
