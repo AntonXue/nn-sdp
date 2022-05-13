@@ -50,6 +50,7 @@ export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolygons!, plotBoundingEllipses!
 
 export loadVnnlib, loadReluQueries
+export loadVnnlbReach, loadReluQueriesReach
 
 end # End Module
 

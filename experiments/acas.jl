@@ -40,23 +40,30 @@ PROP4_PAIRS = [(ind2acas(i,j), ind2spec(4)) for i in 1:5 for j in 1:9]
 TEST_PAIRS = [
               # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_a.vnnlib")
               # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_c.vnnlib")
-               (ind2acas(4,5), ind2spec(10)), # Row 7
-               (ind2acas(3,3), ind2spec(9)),  # Row 6
-               (ind2acas(2,9), ind2spec(8)),  # Row 5
+              (ind2acas(1,1), ind2spec(1)),
+              # (ind2acas(1,2), ind2spec(1)),
+              # (ind2acas(1,3), ind2spec(1)),
+              # (ind2acas(1,4), ind2spec(1)),
+              # (ind2acas(1,5), ind2spec(1)),
+              (ind2acas(1,1), ind2spec(5)),
+              (ind2acas(4,5), ind2spec(10)), # Row 7
+              (ind2acas(1,1), ind2spec(6)),  # Row 2, 3
+               # (ind2acas(3,3), ind2spec(9)),  # Row 6
+               # (ind2acas(2,9), ind2spec(8)),  # Row 5
              ]
 
 #= Custom MOSEK options we'll use for this experiment.
 On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
 =#
 ACAS_MOSEK_OPTS = 
-  Dict("QUIET" => true,
-       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 20, # Time in seconds
+  Dict("QUIET" => false,
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 30, # Time in seconds
        # "MSK_IPAR_INTPNT_SCALING" => 1,  # None
        "MSK_IPAR_INTPNT_SCALING" => 2,  # Moderate (preferable, maybe)
        # "MSK_IPAR_INTPNT_SCALING" => 3,  # Aggressive
-       "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-7,
+       "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-6,
        # "MSK_IPAR_INTPNT_MAX_ITERATIONS" => 500,
-       "MSK_DPAR_DATA_SYM_MAT_TOL" => 1e-10,
+       # "MSK_DPAR_DATA_SYM_MAT_TOL" => 1e-10,
        "INTPNT_CO_TOL_REL_GAP" => 1e-9,
        "INTPNT_CO_TOL_PFEAS" => 1e-9,
        "INTPNT_CO_TOL_DFEAS" => 1e-9)
@@ -93,14 +100,16 @@ function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions
     # Property holds when any conjunction is true
     conj_holds = true
     for (query_ind, query) in enumerate(conj)
+      println("\t\tsubquery [$(query_ind)/$(length(conj))] of $(basename(acas_file)) | $(basename(spec_file))")
       soln = solveQuery(query, opts)
       is_good = isSolutionGood(soln)
       conj_holds = conj_holds && is_good # Update the conj truthiness
       push!(all_solns, soln)
 
       λmax = eigmax(Matrix(soln.values[:Z]))
+      λmin = eigmin(Matrix(soln.values[:Z]))
 
-      println("\t\tsubquery [$(query_ind)/$(length(conj))] | time: $(soln.total_time) | result: $(soln.termination_status) | eigmax: $(λmax)")
+      println("\t\ttime: $(soln.total_time) | result: $(soln.termination_status) | λs: ($(λmax), $(λmin))")
 
       # If this conj is false, we immediately break to look at the next conj
       if !conj_holds
@@ -115,13 +124,24 @@ function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions
       break
     end
   end
-  
 
   verif_total_time = sum([s.total_time for s in all_solns])
   println("")
   println("\tverification status: $(verif_status) | total time: $(verif_total_time)")
 
   return all_solns, num_queries, verif_status
+end
+
+# Solve a reachability version of the spec
+function reachAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions, β::Int)
+  dnf_Ab_reachqs = loadReluQueriesReach(acas_file, spec_file, β)
+  for (A, b, reachqs) in dnf_Ab_reachqs
+    reach_solns = Vector{QuerySolution}()
+    for reachq in reachqs
+      soln = NnSdp.solveQuery(reachq, opts)
+      push!(reach_solns, soln)
+    end
+  end
 end
 
 #= Verify an acas network (*.onnx) and spec (*.vnnlib) and track:
@@ -182,59 +202,51 @@ end
 # Here begins the stuff that we can customize and try things with
 
 # Options to use
-dopts = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
-copts = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
+# DOPTS = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
+DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
+# COPTS = ChordalSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
 
-function gotest(β::Int)
+function gotest(β::Int, opts)
   start_time = time()
   saveto = joinpath(DUMP_DIR, "acas_test.csv")
-  df = verifyPairs(TEST_PAIRS, β, copts, saveto)
+  # df = verifyPairs(TEST_PAIRS, β, COPTS, saveto)
+  df = verifyPairs(TEST_PAIRS, β, opts, saveto)
   println("took time: $(time() - start_time)")
   return df
 end
 
-function gotable(β::Int)
+function gotable(β::Int, opts)
   start_time = time()
   saveto = joinpath(DUMP_DIR, "acas_table_beta$(β).csv")
-  df = verifyPairs(TABLE_PAIRS, β, copts, saveto)
+  df = verifyPairs(TABLE_PAIRS, β, opts, saveto)
   println("took time: $(time() - start_time)")
   return df
 end
 
-function go1(β::Int)
+
+function goprop(k::Int, β::Int, opts=COPTS)
   start_time = time()
-  saveto = joinpath(DUMP_DIR, "acas_prop1_beta$(β).csv")
-  df = verifyPairs(PROP1_PAIRS, β, copts, saveto)
-  # df = verifyPairs(PROP1_PAIRS, β, dopts, saveto)
+  @assert k in [1,2,3,4]
+  if k == 1
+    prop_pairs = PROP1_PAIRS
+  elseif k == 2
+    prop_pairs = PROP2_PAIRS
+  elseif k == 3
+    prop_pairs = PROP3_PAIRS
+  elseif k == 4
+    prop_pairs = PROP4_PAIRS
+  else
+    error("not checking prop $(k) right now")
+  end
+  saveto = joinpath(DUMP_DIR, "acas_prop$(k)_beta$(β).csv")
+  df = verifyPairs(prop_pairs, β, opts, saveto)
   println("took time: $(time() - start_time)")
   return df
 end
 
 
-function go2(β::Int)
-  start_time = time()
-  saveto = joinpath(DUMP_DIR, "acas_prop2_beta$(β).csv")
-  df = verifyPairs(PROP2_PAIRS, β, copts, saveto)
-  println("took time: $(time() - start_time)")
-  return df
-end
 
-
-function go3(β::Int)
-  start_time = time()
-  saveto = joinpath(DUMP_DIR, "acas_prop3_beta$(β).csv")
-  df = verifyPairs(PROP3_PAIRS, β, copts, saveto)
-  println("took time: $(time() - start_time)")
-  return df
-end
-
-
-function go4(β::Int)
-  start_time = time()
-  saveto = joinpath(DUMP_DIR, "acas_prop4_beta$(β).csv")
-  df = verifyPairs(PROP4_PAIRS, β, copts, saveto)
-  println("took time: $(time() - start_time)")
-  return df
-end
+ffnet11 = loadFromFile(ind2acas(1,1))
 
 

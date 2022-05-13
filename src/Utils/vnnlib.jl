@@ -7,6 +7,9 @@ const InputSafetyPair = Tuple{QcInputBox, QcSafety}
 const ConjClause = Vector{InputSafetyPair}
 const DisjSpec = Vector{ConjClause}
 
+const InputAbReaches = Tuple{QcInput, Matrix, Vector, Vector{QcReach}}
+const AbReachQueries = Tuple{Matrix, Vector, Vector{ReachQuery}}
+
 #= The read_vnnlib_simple parser gives us a doubly-nested formula of form:
 
   OR_{inbox} (OR_{A, b} (x in inbox AND Ay <= b))
@@ -63,6 +66,62 @@ function loadVnnlib(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
   return input_safety_dnf
 end
 
+# Load reach queries based on the spec
+function loadVnnlibReach(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
+  indim, outdim = ffnet.xdims[1], ffnet.xdims[end]
+
+  # Precalculate the scaling coefficient if one exists
+  @assert αs isa Nothing || (αs isa VecReal && length(αs) == ffnet.K)
+  α = (αs isa Nothing) ? Nothing : prod(αs)
+
+  # A single term in a conj clause
+  input_Ab_reaches_dnf = Vector{InputAbReaches}()
+  specs = read_vnnlib_simple(spec_file, indim, outdim)
+  
+  for input_output in specs
+    # In each conj clause the input QC is shared
+    inbox, outbox = input_output
+
+    lb, ub = [b[1] for b in inbox], [b[2] for b in inbox]
+    qc_input = QcInputBox(x1min=lb, x1max=ub)
+
+    # Each element of outbox is a constraints of form A y <= b
+    for out in outbox
+      A = hcat(out[1]...)'
+      b = out[2]
+      qc_reaches = Vector{QcReachHplane}()
+      # Find out which outputs we actually care about
+      rowhots = ones(size(A)[1])' * abs.(A) .> 0
+      println("row hots: $(rowhots)")
+      for (i, ishot) in enumerate(rowhots)
+        if ishot == 1
+          normal_top = zeros(outdim)
+          normal_top[i] = 1
+          qc_reach_top = QcReachHplane(normal=normal_top)
+
+          normal_bot = zeros(outdim)
+          normal_bot[i] = -1
+          qc_reach_bot = QcReachHplane(normal=normal_bot)
+
+          push!(qc_reaches, qc_reach_top)
+          push!(qc_reaches, qc_reach_bot)
+
+          println("normal_top: $(normal_top)")
+          println("normal_bot: $(normal_bot)")
+          println("")
+        end
+      end
+
+      # We need to generate two hplane queries for each hot index in the row
+      entry = (qc_input, A, b, qc_reaches)
+      push!(input_Ab_reaches_dnf, entry)
+    end
+  end
+  return input_Ab_reaches_dnf
+end
+
+
+
 # Load hte queries in DNF form
 function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
@@ -93,6 +152,26 @@ function loadReluQueries(network_file::String, vnnlib_file::String, β::Int)
   end
   return dnf_queries
 end
+
+function loadReluQueriesReach(network_file::String, vnnlib_file::String, β::Int)
+  @assert β >= 0
+  dnf_Ab_reachqs = Vector{AbReachQueries}()
+
+  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
+  input_Ab_reaches_dnf = loadVnnlibReach(vnnlib_file, ffnet, αs=αs)
+  for (qc_input, A, b, qc_reaches) in input_Ab_reaches_dnf
+    reachqs = Vector{ReachQuery}()
+    qc_activs = makeQcActivs(ffnet, x1min=qc_input.x1min, x1max=qc_input.x1max, β=β)
+    for qc_reach in qc_reaches
+      obj_func = x -> x[1]
+      reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_reach=qc_reach, qc_activs=qc_activs, obj_func=obj_func)
+      push!(reachqs, reach_query)
+    end
+    push!(dnf_Ab_reachqs, (A, b, reachqs))
+  end
+  return dnf_Ab_reachqs
+end
+
 
 
 
