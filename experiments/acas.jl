@@ -6,9 +6,10 @@ using DataFrames
 using CSV
 
 include("../src/NnSdp.jl"); using .NnSdp
+include("vnnlib.jl")
 
 # The place where things are
-DUMP_DIR = joinpath(@__DIR__, "..", "dump")
+DUMP_DIR = joinpath(@__DIR__, "..", "dump", "acas")
 ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
 
 # The ACAS files
@@ -46,14 +47,14 @@ TEST_PAIRS = [
               # (ind2acas(1,3), ind2spec(1)),
               # (ind2acas(1,4), ind2spec(1)),
               # (ind2acas(1,5), ind2spec(1)),
-              # (ind2acas(1,1), ind2spec(5)),
-              # (ind2acas(4,5), ind2spec(10)), # Row 7
+              # (ind2acas(1,1), ind2spec(5)), # Row 1
               # (ind2acas(1,1), ind2spec(6)),  # Row 2, 3
-               # (ind2acas(3,3), ind2spec(9)),  # Row 6
-               # (ind2acas(2,9), ind2spec(8)),  # Row 5
-              (ind2acas(1,7), ind2spec(3)),
-              # (ind2acas(1,8), ind2spec(3)),
-              # (ind2acas(1,9), ind2spec(3)),
+              # (ind2acas(2,9), ind2spec(8)),  # Row 5
+               (ind2acas(3,3), ind2spec(9)), # Row 7
+               (ind2acas(4,5), ind2spec(10)), # Row 7
+              # (ind2acas(1,7), ind2spec(3)), # Should be unsafe
+              # (ind2acas(1,8), ind2spec(3)), # Should be unsafe
+              # (ind2acas(1,9), ind2spec(3)), # Should be unsafe
              ]
 
 #= Custom MOSEK options we'll use for this experiment.
@@ -78,7 +79,7 @@ ACAS_MOSEK_OPTS =
 # NSD_TOL = 5e-4 # This is still too high: prop 8 network 2-9 is incorrectly marked safe
 # NSD_TOL = 1e-4 # Too high for prop 8 network 2-9?
 # NSD_TOL = 1e-6
-NSD_TOL = 1e-4
+NSD_TOL = 5e-4
 
 
 function isSolutionGood(soln::QuerySolution)
@@ -93,49 +94,18 @@ Goes through each conjunction until one unanimously holds, then returns
 * Whether the spec holds
 =#
 function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::QueryOptions)
-  cnf_queries = loadReluQueries(acas_file, spec_file, β)
+  cnf_queries = loadReluQueriesCnf(acas_file, spec_file, β)
   num_queries = length(vcat(cnf_queries...))
 
   verif_status = :unknown
 
   spec_holds = true
   all_solns = Vector{Any}()
-  conj_holds = true
   for (disj_ind, disj_clause) in enumerate(cnf_queries)
     println("\tdisj [$(disj_ind)/$(length(cnf_queries))] has $(length(disj_clause)) subqueries | now: $(now())")
 
     disj_holds = false
     for (query_ind, query) in enumerate(disj_clause)
-      #=
-      xfs = Utils.sampleTrajs(query.ffnet, query.qc_input.x1min, query.qc_input.x1max)
-      ymax = maximum(xfs)
-      ymin = minimum(xfs)
-      println("\t\tsampled ymax: $(ymax)")
-      println("\t\tsampled ymin: $(ymin)")
-
-      # Are there any where y1 => y2?
-      y2diffs = [xf[2] - xf[1] for xf in xfs]
-      y2negs = sum(y2diffs .< 0)
-
-      # Are there any where y1 => y3?
-      y3diffs = [xf[3] - xf[1] for xf in xfs]
-      y3negs = sum(y3diffs .< 0)
-
-      # Are there any where y1 => y4?
-      y4diffs = [xf[4] - xf[1] for xf in xfs]
-      y4negs = sum(y4diffs .< 0)
-
-      # Are there any where y1 => y5?
-      y5diffs = [xf[5] - xf[1] for xf in xfs]
-      y5negs = sum(y5diffs .< 0)
-
-      println("y2negs: $(y2negs)")
-      println("y3negs: $(y3negs)")
-      println("y4negs: $(y4negs)")
-      println("y5negs: $(y5negs)")
-      =#
-
-
       println("\t\tsubquery [$(query_ind)/$(length(disj_clause))] of $(basename(acas_file)) | $(basename(spec_file))")
       soln = solveQuery(query, opts)
       is_good = isSolutionGood(soln)
@@ -162,6 +132,7 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
 
   verif_total_time = sum([s.total_time for s in all_solns])
   println("")
+  println("\tpair: $(acas_file) | $(spec_file)")
   println("\tverification status: $(verif_status) | total time: $(verif_total_time)")
 
   return all_solns, num_queries, verif_status
@@ -218,39 +189,15 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
     end
     CSV.write(qdf_saveto, qdf)
 
+    println("####################################################################")
+    println("####################################################################")
+    println("####################################################################")
+    println("####################################################################")
+    println("####################################################################")
+
   end
   return df
 end
-
-
-# Solve a reachability version of the spec
-function reachAcasSpec(acas_file::String, spec_file::String, β::Int, opts::QueryOptions)
-  reachq_tuples, αs = loadReluQueriesReach(acas_file, spec_file, β)
-  α = prod(αs)
-  println("α is: $(α)")
-  for (A, b, signed_reachqs) in reachq_tuples
-    signed_reach_solns = Vector{QuerySolution}()
-    for (yind, sgn, reachq) in signed_reachqs
-      xfs = Utils.sampleTrajs(reachq.ffnet, reachq.qc_input.x1min, reachq.qc_input.x1max)
-      y1min = minimum(xf[1] for xf in xfs)
-      y1max = maximum(xf[1] for xf in xfs)
-      println("sampled y1min/y1max: ($(y1min), $(y1max))")
-
-
-      println("y$(yind) has sign $(sgn)")
-      soln = NnSdp.solveQuery(reachq, opts)
-      obj_val = soln.objective_value
-      println("y$(yind) raw obj: $(obj_val), normalized obj: $(obj_val / α)")
-      push!(signed_reach_solns, soln)
-      println("")
-    end
-  end
-
-  println("αs: $(αs)")
-  println("α: $(α)")
-end
-
-
 
 
 # Here begins the stuff that we can customize and try things with

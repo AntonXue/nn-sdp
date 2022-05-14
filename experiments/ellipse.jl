@@ -10,7 +10,7 @@ using Plots
 include("../src/NnSdp.jl"); using .NnSdp
 const nn = NnSdp
 
-DUMP_DIR = joinpath(@__DIR__, "..", "dump")
+DUMP_DIR = joinpath(@__DIR__, "..", "dump", "ellipse")
 RAND_DIR = joinpath(@__DIR__, "..", "bench", "rand")
 
 

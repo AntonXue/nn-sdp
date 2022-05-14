@@ -17,7 +17,6 @@ using ..Intervals
 pyplot()
 
 include("qc.jl")
-include("vnnlib.jl")
 include("plots.jl")
 
 # Generate a random network given the desired dimensions at each layer
@@ -48,10 +47,6 @@ export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolygons!, plotBoundingEllipses!
-
-export loadVnnlibCnf, loadReluQueriesCnf
-export loadVnnlib, loadReluQueries
-export loadVnnlbReach, loadReluQueriesReach
 
 end # End Module
 
