@@ -14,16 +14,15 @@ RAND_DIR = joinpath(@__DIR__, "..", "bench", "rand")
 dims2rand(width, depth) = joinpath(RAND_DIR, "rand-I2-O2-W$(width)-D$(depth).nnet")
 
 DEPTHS = 5:5:50
-# W10_FILES = [dims2rand(10, d) for d in DEPTHS]
-W10_FILES = [dims2rand(10, d) for d in [5,10,15]]
+SMALL_FILES = [dims2rand(10, d) for d in [5, 10]]
+W10_FILES = [dims2rand(10, d) for d in DEPTHS]
 W20_FILES = [dims2rand(20, d) for d in DEPTHS]
 W30_FILES = [dims2rand(30, d) for d in DEPTHS]
 W40_FILES = [dims2rand(40, d) for d in DEPTHS]
 
-SMALL_FILES = [dims2rand(10, d) for d in [10, 15]]
 
-X1MIN = ones(2) .- 1e-1
-X1MAX = ones(2) .+ 1e-1
+X1MIN = 1e2 * ones(2) .- 5e-1
+X1MAX = 1e2 * ones(2) .+ 5e-1
 BETAS = [0, 1, 2, 3, 4, 5]
 NSD_TOL = 5e-4
 
@@ -50,7 +49,7 @@ function makeQuery(ffnet::FeedFwdNet, x1min::Vector, x1max::Vector, method::Symb
   if method == :deepsdp || method == :chordalsdp || method == :chordalsdp2
     qc_input = QcInputBox(x1min=x1min, x1max=x1max)
     qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
-    normal = Vector{Float64}(e(1, ffnet.xdims[end]))
+    normal = (1e2 * 2^log(ffnet.K)) * Vector{Float64}(e(1, ffnet.xdims[end]))
     qc_reach = QcReachHplane(normal=normal)
     obj_func = x -> x[1]
     query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_reach=qc_reach, qc_activs=qc_activs, obj_func=obj_func)
@@ -127,7 +126,14 @@ end
 # Stuff happens here
 printstyled("starting warmup\n", color=:green)
 warmup()
-printstyled("here took time: $(time() - script_start_time)\n\n\n", color=:green)
+printstyled("script start to here took time: $(time() - script_start_time)\n\n\n", color=:green)
+
+
+#=
+c_small_res = runFileBatch(SMALL_FILES, :chordalsdp)
+c2_small_res = runFileBatch(SMALL_FILES, :chordalsdp2)
+d_small_res = runFileBatch(SMALL_FILES, :deepsdp)
+=#
 
 # W10
 c_W10_res = runFileBatch(W10_FILES, :chordalsdp)
