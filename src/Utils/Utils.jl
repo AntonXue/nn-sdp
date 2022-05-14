@@ -49,6 +49,7 @@ export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
 export plotBoundingPolygons!, plotBoundingEllipses!
 
+export loadVnnlibCnf, loadReluQueriesCnf
 export loadVnnlib, loadReluQueries
 export loadVnnlbReach, loadReluQueriesReach
 

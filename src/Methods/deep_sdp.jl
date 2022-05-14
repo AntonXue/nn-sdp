@@ -8,9 +8,7 @@ end
 
 # Set up the model for safety verification (satisfiability)
 function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
-  setup_start_time = time()
   vars = Dict()
-
   # Make the Zin
   γin = @variable(model, [1:query.qc_input.vardim])
   @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
@@ -31,16 +29,12 @@ function setupSafety!(model, query::SafetyQuery, opts::DeepSdpOptions)
   @constraint(model, -Z in PSDCone())
   vars[:Z] = Z
 
-  # Compute statistics and return
-  setup_time = time() - setup_start_time
-  return model, vars, setup_time
+  return model, vars
 end
 
 # Set up a reach query while specifying a generic objective function
 function setupReach!(model, query::ReachQuery, opts::DeepSdpOptions)
-  setup_start_time = time()
   vars = Dict()
-
   # Make the Zin
   γin = @variable(model, [1:query.qc_input.vardim])
   @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
@@ -63,9 +57,7 @@ function setupReach!(model, query::ReachQuery, opts::DeepSdpOptions)
   @constraint(model, -Z in PSDCone())
   vars[:Z] = Z
 
-  # Calculate stuff and return
-  setup_time = time() - setup_start_time
-  return model, vars, setup_time
+  return model, vars
 end
 
 # Solve a model that is ready
@@ -74,6 +66,6 @@ function solve!(model, vars, opts::DeepSdpOptions)
   summary = solution_summary(model)
   values = Dict()
   for (k, v) in vars; values[k] = value.(v) end
-  return summary, values, summary.solve_time
+  return summary, values
 end
 

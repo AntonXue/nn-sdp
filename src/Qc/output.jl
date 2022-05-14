@@ -33,8 +33,8 @@ end
 # The R to be used in R' * S * R
 function makeSide(ffnet::FeedFwdNet)
   xdims, K = ffnet.xdims, ffnet.K
-  WK = ffnet.Ms[K][1:end, 1:end-1]
-  bK = ffnet.Ms[K][1:end, end]
+  WK = ffnet.Ms[K][:, 1:end-1]
+  bK = ffnet.Ms[K][:, end]
   _R11 = I(xdims[1])
   _R12 = spzeros(xdims[1], xdims[K])
   _R13 = spzeros(xdims[1])

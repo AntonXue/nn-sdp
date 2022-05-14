@@ -49,8 +49,8 @@ function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β
   # Interval propagation
   intv_info = Intervals.makeIntervalsInfo(x1min, x1max, ffnet)
 
-  # println("ymin = $(intv_info.x_intvs[end][1])")
-  # println("ymax = $(intv_info.x_intvs[end][2])")
+  println("ymax = $(intv_info.x_intvs[end][2])")
+  println("ymin = $(intv_info.x_intvs[end][1])")
   
   # Set up qc bounded
   acdim = sum(ffnet.xdims[2:end-1])

@@ -34,22 +34,26 @@ PROP1_PAIRS = [(ind2acas(i,j), ind2spec(1)) for i in 1:5 for j in 1:9]
 PROP2_PAIRS = [(ind2acas(i,j), ind2spec(2)) for i in 1:5 for j in 1:9]
 PROP3_PAIRS = [(ind2acas(i,j), ind2spec(3)) for i in 1:5 for j in 1:9]
 PROP4_PAIRS = [(ind2acas(i,j), ind2spec(4)) for i in 1:5 for j in 1:9]
+ALL_PROP_PAIRS = [PROP1_PAIRS; PROP2_PAIRS; PROP3_PAIRS; PROP4_PAIRS]
 
 # Some test pairs
 # TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1] for k in [1]]
 TEST_PAIRS = [
               # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_a.vnnlib")
               # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_c.vnnlib")
-              (ind2acas(1,1), ind2spec(1)),
+              # (ind2acas(1,1), ind2spec(1)),
               # (ind2acas(1,2), ind2spec(1)),
               # (ind2acas(1,3), ind2spec(1)),
               # (ind2acas(1,4), ind2spec(1)),
               # (ind2acas(1,5), ind2spec(1)),
-              (ind2acas(1,1), ind2spec(5)),
-              (ind2acas(4,5), ind2spec(10)), # Row 7
-              (ind2acas(1,1), ind2spec(6)),  # Row 2, 3
+              # (ind2acas(1,1), ind2spec(5)),
+              # (ind2acas(4,5), ind2spec(10)), # Row 7
+              # (ind2acas(1,1), ind2spec(6)),  # Row 2, 3
                # (ind2acas(3,3), ind2spec(9)),  # Row 6
                # (ind2acas(2,9), ind2spec(8)),  # Row 5
+              (ind2acas(1,7), ind2spec(3)),
+              # (ind2acas(1,8), ind2spec(3)),
+              # (ind2acas(1,9), ind2spec(3)),
              ]
 
 #= Custom MOSEK options we'll use for this experiment.
@@ -73,7 +77,8 @@ ACAS_MOSEK_OPTS =
 # NSD_TOL = 5e-3 # This is too high for the small table: everything is safe
 # NSD_TOL = 5e-4 # This is still too high: prop 8 network 2-9 is incorrectly marked safe
 # NSD_TOL = 1e-4 # Too high for prop 8 network 2-9?
-NSD_TOL = 1e-6
+# NSD_TOL = 1e-6
+NSD_TOL = 1e-4
 
 
 function isSolutionGood(soln::QuerySolution)
@@ -87,50 +92,73 @@ Goes through each conjunction until one unanimously holds, then returns
 * The total number of queries
 * Whether the spec holds
 =#
-function verifyAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions, β::Int)
-  dnf_queries = loadReluQueries(acas_file, spec_file, β)
-  num_queries = length(vcat(dnf_queries...))
+function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::QueryOptions)
+  cnf_queries = loadReluQueries(acas_file, spec_file, β)
+  num_queries = length(vcat(cnf_queries...))
 
   verif_status = :unknown
 
-  spec_holds = false
+  spec_holds = true
   all_solns = Vector{Any}()
-  for (conj_ind, conj) in enumerate(dnf_queries)
-    println("\tconjunction [$(conj_ind)/$(length(dnf_queries))] has $(length(conj)) subqueries | now: $(now())")
-    # Property holds when any conjunction is true
-    conj_holds = true
-    for (query_ind, query) in enumerate(conj)
+  conj_holds = true
+  for (disj_ind, disj_clause) in enumerate(cnf_queries)
+    println("\tdisj [$(disj_ind)/$(length(cnf_queries))] has $(length(disj_clause)) subqueries | now: $(now())")
 
+    disj_holds = false
+    for (query_ind, query) in enumerate(disj_clause)
+      #=
       xfs = Utils.sampleTrajs(query.ffnet, query.qc_input.x1min, query.qc_input.x1max)
-      y1min = minimum(xf[1] for xf in xfs)
-      y1max = maximum(xf[1] for xf in xfs)
-      println("\t\tsampled y1min/y1max: ($(y1min), $(y1max))")
+      ymax = maximum(xfs)
+      ymin = minimum(xfs)
+      println("\t\tsampled ymax: $(ymax)")
+      println("\t\tsampled ymin: $(ymin)")
+
+      # Are there any where y1 => y2?
+      y2diffs = [xf[2] - xf[1] for xf in xfs]
+      y2negs = sum(y2diffs .< 0)
+
+      # Are there any where y1 => y3?
+      y3diffs = [xf[3] - xf[1] for xf in xfs]
+      y3negs = sum(y3diffs .< 0)
+
+      # Are there any where y1 => y4?
+      y4diffs = [xf[4] - xf[1] for xf in xfs]
+      y4negs = sum(y4diffs .< 0)
+
+      # Are there any where y1 => y5?
+      y5diffs = [xf[5] - xf[1] for xf in xfs]
+      y5negs = sum(y5diffs .< 0)
+
+      println("y2negs: $(y2negs)")
+      println("y3negs: $(y3negs)")
+      println("y4negs: $(y4negs)")
+      println("y5negs: $(y5negs)")
+      =#
 
 
-      println("\t\tsubquery [$(query_ind)/$(length(conj))] of $(basename(acas_file)) | $(basename(spec_file))")
+      println("\t\tsubquery [$(query_ind)/$(length(disj_clause))] of $(basename(acas_file)) | $(basename(spec_file))")
       soln = solveQuery(query, opts)
       is_good = isSolutionGood(soln)
-      conj_holds = conj_holds && is_good # Update the conj truthiness
+      disj_holds = disj_holds || is_good
       push!(all_solns, soln)
 
       λmax = eigmax(Matrix(soln.values[:Z]))
       λmin = eigmin(Matrix(soln.values[:Z]))
-
       println("\t\ttime: $(soln.total_time) | result: $(soln.termination_status) | λs: ($(λmax), $(λmin))")
 
-      # If this conj is false, we immediately break to look at the next conj
-      if !conj_holds
-        verif_status = :unsafe
-        break
-      end
+      # If any query in the disjunctive clause holds, the clause is immediately satisfied
+      if disj_holds; break end
     end
 
-    if conj_holds
-      verif_status = :safe
-      spec_holds = true
+    # If this disjunctive clause does not hold, then the overall cnf spec is not valid
+    if !disj_holds
+      spec_holds = false
+      verif_status = :unsafe
       break
     end
   end
+
+  if spec_holds; verif_status = :safe end
 
   verif_total_time = sum([s.total_time for s in all_solns])
   println("")
@@ -158,7 +186,7 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
     println("\tacas: $(acas_file)")
     println("\tspec: $(spec_file)")
 
-    all_solns, num_queries, verif_status = verifyAcasSpec(acas_file, spec_file, opts, β)
+    all_solns, num_queries, verif_status = verifyAcasSpec(acas_file, spec_file, β, opts)
 
     # Get ready to build an entry to the hist, starting with the acas and spec names
     acas_name = basename(acas_file)
@@ -196,14 +224,14 @@ end
 
 
 # Solve a reachability version of the spec
-function reachAcasSpec(acas_file::String, spec_file::String, opts::QueryOptions, β::Int)
+function reachAcasSpec(acas_file::String, spec_file::String, β::Int, opts::QueryOptions)
   reachq_tuples, αs = loadReluQueriesReach(acas_file, spec_file, β)
   α = prod(αs)
   println("α is: $(α)")
   for (A, b, signed_reachqs) in reachq_tuples
     signed_reach_solns = Vector{QuerySolution}()
     for (yind, sgn, reachq) in signed_reachqs
-      xfs = Utils.sampleTrajs(reachq.ffnet, reachq.x1min, reachq.x1max)
+      xfs = Utils.sampleTrajs(reachq.ffnet, reachq.qc_input.x1min, reachq.qc_input.x1max)
       y1min = minimum(xf[1] for xf in xfs)
       y1max = maximum(xf[1] for xf in xfs)
       println("sampled y1min/y1max: ($(y1min), $(y1max))")
@@ -236,7 +264,6 @@ COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=
 function gotest(β::Int, opts)
   start_time = time()
   saveto = joinpath(DUMP_DIR, "acas_test.csv")
-  # df = verifyPairs(TEST_PAIRS, β, COPTS, saveto)
   df = verifyPairs(TEST_PAIRS, β, opts, saveto)
   println("took time: $(time() - start_time)")
   return df
@@ -275,5 +302,7 @@ end
 
 ffnet11 = loadFromFile(ind2acas(1,1))
 
+SIMPLE_PROP1 = "/home/antonxue/stuff/test/a-b-crown/prop_1.vnnlib"
+SIMPLE_PROP5 = "/home/antonxue/stuff/test/a-b-crown/prop_5.vnnlib"
 SIMPLE_PROP10 = "/home/antonxue/stuff/test/a-b-crown/prop_10.vnnlib"
 

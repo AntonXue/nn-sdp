@@ -106,8 +106,7 @@ function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
     error("unrecognized scaling method: $(scaling)")
   end
 
-  println("scaling method: $(scaling)")
-
+  println("scaling method: $(scaling)\n with α: $(prod(αs)) and αs: $(αs)")
   scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
   scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
   scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]

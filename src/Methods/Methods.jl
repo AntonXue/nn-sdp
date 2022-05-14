@@ -83,16 +83,19 @@ function runQuery(query::Query, opts::QueryOptions)
   model = setupModel!(query, opts)
 
   # Delegate the appropriate call depending on the kind of query
+  setup_start_time = time()
   if query isa SafetyQuery
-    _, vars, setup_time = setupSafety!(model, query, opts)
+    _, vars = setupSafety!(model, query, opts)
   elseif query isa ReachQuery
-    _, vars, setup_time = setupReach!(model, query, opts)
+    _, vars = setupReach!(model, query, opts)
   else
     error("unrecognized query: $(query)")
   end
+  setup_time = time() - setup_start_time
 
   # Get ready to return
-  summary, values, solve_time = solve!(model, vars, opts)
+  summary, values = solve!(model, vars, opts)
+  solve_time = summary.solve_time
   total_time = time() - total_start_time
   if opts.verbose;
     setup_time_str = string(round(setup_time, digits=3))

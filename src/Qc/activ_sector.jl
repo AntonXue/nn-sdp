@@ -49,10 +49,10 @@ function makeQ(γac, qc::QcActivSector)
   if qc.activ isa ReluActiv
     λend = qc._λdim
     ηstart, ηend = (qc._λdim + 1), (qc._λdim + qc.acxdim)
-    νstart, νend = (qc._λdim + qc.acxdim + 1), qc.vardim
+    νstart, νend = ηend + 1, qc.vardim
     η = γac[ηstart:ηend]
     ν = γac[νstart:νend]
-    _Q13 = -qc.smin .* η - qc.smax .* ν
+    _Q13 = -smin .* η - smax .* ν
     _Q23 = η + ν
   end
 
