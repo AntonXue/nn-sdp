@@ -6,7 +6,7 @@ using DataFrames
 using CSV
 
 include("../src/NnSdp.jl"); using .NnSdp
-include("vnnlib.jl")
+include("vnnlib_utils.jl")
 
 # The place where things are
 DUMP_DIR = joinpath(@__DIR__, "..", "dump", "acas")

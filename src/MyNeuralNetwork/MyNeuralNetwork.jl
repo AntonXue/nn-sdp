@@ -52,7 +52,7 @@ include("network_files.jl")
 export loadFromNnet, loadFromOnnx, loadFromFile
 export onnx2nnet, nnet2onnx, writeNnet, writeOnnx
 
-export ScalingMode, NoScaling, SmartScaling, FixedNormScaling, FixedConstScaling
+export ScalingMode, NoScaling, SqrtLogScaling, FixedNormScaling, FixedConstScaling
 export loadFromFileScaled
 
 end

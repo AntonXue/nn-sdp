@@ -23,7 +23,7 @@ DEFAULT_MOSEK_OPTS = Dict()
 
 # The generic formuation that everything ends up calling
 function solveQuery(query::Query, opts::QueryOptions)
-  println("now: $(now())")
+  println("NnSdp.solveQuery: $(now())")
   soln = Methods.runQuery(query, opts)
   return soln
 end

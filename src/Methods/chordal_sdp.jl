@@ -74,7 +74,7 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
   @constraint(model, Z .== Zksum)
 
-  return model, vars, setup_time
+  return model, vars
 end
 
 # Set up a reach query while specifying a generic objective function
@@ -110,7 +110,7 @@ function setupReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
   @constraint(model, Z .== Zksum)
 
-  return model, vars, setup_time
+  return model, vars
 end
 
 # Solve a model that is ready

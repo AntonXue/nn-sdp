@@ -67,7 +67,7 @@ end
 # The scaling mode that happens
 abstract type ScalingMethod end
 struct NoScaling <: ScalingMethod end
-struct SmartScaling <: ScalingMethod end
+struct SqrtLogScaling <: ScalingMethod end
 @with_kw struct FixedNormScaling <: ScalingMethod; Wk_opnorm::Real; end
 @with_kw struct FixedConstScaling <: ScalingMethod; α::Real; end
 
@@ -90,7 +90,7 @@ function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
   if scaling isa NoScaling
     αs = ones(K)
   # ||Wk|| = sqrt(ck * log ck / K), where ck = xdims[k] + xdims[k+1]
-  elseif scaling isa SmartScaling
+  elseif scaling isa SqrtLogScaling
     # tgt_func(ck) = sqrt(ck * log(ck) / K)
     tgt_func(ck) = 0.5 * sqrt(ck * log(ck) / K) # Almost
     # tgt_func(ck) = 0.3 * sqrt(ck * log(ck) / K)
@@ -106,7 +106,6 @@ function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
     error("unrecognized scaling method: $(scaling)")
   end
 
-  println("scaling method: $(scaling)\n with α: $(prod(αs)) and αs: $(αs)")
   scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
   scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
   scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]
