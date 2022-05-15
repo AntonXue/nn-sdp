@@ -21,10 +21,12 @@ Pkg.add("Conda")
 import Conda
 Conda.add("numpy")
 Conda.add("appdirs")
+Conda.add("packaging")
 Conda.add("pytorch", channel="pytorch")
 Conda.add("torchvision", channel="pytorch")
 Conda.add("onnx")
 Conda.add("onnxruntime", channel="conda-forge")
+Conda.add("mosek", channel="mosek")
 
 # Set up PyCall and have it point to Conda
 Pkg.add("PyCall")
