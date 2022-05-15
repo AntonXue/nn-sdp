@@ -1,7 +1,10 @@
 import Pkg
 
 # Make sure MOSEK license
-@assert isfile(joinpath(homedir(), "mosek", "mosek.lic"))
+mosek_lic_exists = isfile(joinpath(homedir(), "mosek", "mosek.lic"))
+if !mosek_lic_exists
+  error("~/mosek/mosek.lic does not exist")
+end
 
 # Install a bunch of packages
 Pkg.add("ArgParse")
@@ -36,5 +39,24 @@ Pkg.build("PyCall")
 # Some pip-specific installations
 import PyCall
 run(`$(PyCall.python) -m pip install git+https://github.com/AntonXue/onnx2pytorch.git`)
+
+### Set up the directories
+
+# Make some directories if they don't yet exist
+BENCH_DIR = joinpath(@__DIR__, "..", "bench")
+BENCH_ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
+BENCH_RAND_DIR = joinpath(@__DIR__, "..", "bench", "rand")
+mkpath(BENCH_ACAS_DIR)
+mkpath(BENCH_RAND_DIR)
+
+DUMP_DIR = joinpath(@__DIR__, "..", "dump")
+DUMP_SPARSITY_DIR = joinpath(@__DIR__, "..", "dump", "sparsity")
+DUMP_ACAS_DIR = joinpath(@__DIR__, "..", "dump", "acas")
+DUMP_REACH_DIR = joinpath(@__DIR__, "..", "dump", "reach")
+DUMP_SCALE_DIR = joinpath(@__DIR__, "..", "dump", "scale")
+mkpath(DUMP_SPARSITY_DIR)
+mkpath(DUMP_ACAS_DIR)
+mkpath(DUMP_REACH_DIR)
+mkpath(DUMP_SCALE_DIR)
 
 

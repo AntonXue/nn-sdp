@@ -21,8 +21,8 @@ W30_FILES = [dims2rand(30, d) for d in DEPTHS]
 W40_FILES = [dims2rand(40, d) for d in DEPTHS]
 
 
-X1MIN = 1e2 * ones(2) .- 5e-1
-X1MAX = 1e2 * ones(2) .+ 5e-1
+X1MIN = ones(2) .- 5e-1
+X1MAX = ones(2) .+ 5e-1
 BETAS = [0, 1, 2, 3, 4, 5]
 NSD_TOL = 5e-4
 
@@ -43,25 +43,8 @@ DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=SCALE_MOSEK_OPTS)
 COPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=OneStage())
 C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=TwoStage())
 
-# Call this to make a query
-function makeQuery(ffnet::FeedFwdNet, x1min::Vector, x1max::Vector, method::Symbol; β=nothing)
-  # If we're using one of our methods, the query construction is consistent
-  if method == :deepsdp || method == :chordalsdp || method == :chordalsdp2
-    qc_input = QcInputBox(x1min=x1min, x1max=x1max)
-    qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
-    normal = (1e2 * 2^log(ffnet.K)) * Vector{Float64}(e(1, ffnet.xdims[end]))
-    qc_reach = QcReachHplane(normal=normal)
-    obj_func = x -> x[1]
-    query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_reach=qc_reach, qc_activs=qc_activs, obj_func=obj_func)
-  # For other ones we need to special case
-  else
-    error("unrecognized method: $(method)")
-  end
-  return query
-end
-
 # Run a particular width-depth configuration
-function runFileOurStyle(network_file::String, method::Symbol; dosave::Bool=true)
+function runFileOurStyle(network_file::String, x1min::VecReal, x1max::VecReal, βs, method::Symbol; dosave::Bool = true)
   # Figure out the queries we need to run
   if method == :deepsdp; opts = DOPTS
   elseif method == :chordalsdp; opts = COPTS
@@ -69,15 +52,14 @@ function runFileOurStyle(network_file::String, method::Symbol; dosave::Bool=true
   else; error("unrecognized method: $(method)")
   end
 
-  ffnet, αs = loadFromFileScaled(network_file, SqrtLogScaling())
-  β_query_pairs = [(β, makeQuery(ffnet, X1MIN, X1MAX, method, β=β)) for β in BETAS]
-
-  # Now run each query
+  # ffnet, αs = loadFromFileScaled(network_file, SqrtLogScaling())
+  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
   saveto = joinpath(DUMP_DIR, "$(string(method))-$(basename(network_file)).csv")
   df = DataFrame(beta=Int[], total_secs=Real[], obj_val=Real[], term_status=String[], eigmax=Real[])
-  for (β, query) in β_query_pairs
+  # Now run each query
+  for β in βs
     println("Running $(basename(network_file)) | $(method) | β: $(β)")
-    soln = NnSdp.solveQuery(query, opts)
+    _, _, soln = NnSdp.findEllipsoid(ffnet, x1min, x1max, β, opts)
     total_secs = soln.total_time
     obj_val = soln.objective_value
     status = soln.termination_status
@@ -93,9 +75,9 @@ function runFileOurStyle(network_file::String, method::Symbol; dosave::Bool=true
 end
 
 # Call this
-function runFile(network_file::String, method::Symbol; dosave::Bool=true)
+function runFile(network_file::String, x1min::VecReal, x1max::VecReal, βs, method::Symbol; dosave::Bool = true)
   if method == :deepsdp || method == :chordalsdp || method == :chordalsdp2
-    df = runFileOurStyle(network_file, method, dosave=dosave)
+    df = runFileOurStyle(network_file, x1min, x1max, βs, method, dosave=dosave)
   else
     error("unrecognized method: $(method)")
   end
@@ -103,12 +85,13 @@ function runFile(network_file::String, method::Symbol; dosave::Bool=true)
 end
 
 # Run a bunch of files
-function runFileBatch(network_files::Vector{String}, method::Symbol)
+function runFileBatch(network_files::Vector{String}, method::Symbol;
+                      x1min = X1MIN, x1max = X1MAX, βs = BETAS)
   res = Vector{Any}()
   for file in network_files
     printstyled("file: $(file)\n", color=:green)
     start_time = time()
-    df = runFile(file, method)
+    df = runFile(file, x1min, x1max, βs, method)
     run_time = time() - start_time
     entry = (file, df, run_time)
     println("\n")
@@ -117,9 +100,9 @@ function runFileBatch(network_files::Vector{String}, method::Symbol)
 end
 
 function warmup()
-  runFile(dims2rand(5,5), :deepsdp, dosave=false)
-  # runFile(dims2rand(5,5), :chordalsdp, dosave=false)
-  runFile(dims2rand(5,5), :chordalsdp2, dosave=false)
+  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :deepsdp, dosave=false)
+  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :chordalsdp, dosave=false)
+  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :chordalsdp2, dosave=false)
 end
 
 
@@ -130,27 +113,27 @@ printstyled("script start to here took time: $(time() - script_start_time)\n\n\n
 
 
 #=
-c_small_res = runFileBatch(SMALL_FILES, :chordalsdp)
-c2_small_res = runFileBatch(SMALL_FILES, :chordalsdp2)
-d_small_res = runFileBatch(SMALL_FILES, :deepsdp)
+c_small_res = runFileBatch(SMALL_FILES, :chordalsdp, βs=0:1)
+c2_small_res = runFileBatch(SMALL_FILES, :chordalsdp2, βs=0:1)
+d_small_res = runFileBatch(SMALL_FILES, :deepsdp, βs=0:1)
 =#
 
-# W10
-c_W10_res = runFileBatch(W10_FILES, :chordalsdp)
+# c2
+
+# ChordalSdp2
 c2_W10_res = runFileBatch(W10_FILES, :chordalsdp2)
-d_W10_res = runFileBatch(W10_FILES, :deepsdp)
-
-
-# W20
-c_W20_res = runFileBatch(W20_FILES, :chordalsdp)
 c2_W20_res = runFileBatch(W20_FILES, :chordalsdp2)
+# c2_W30_res = runFileBatch(W30_FILES, :chordalsdp2)
+
+# ChordalSdp
+c_W10_res = runFileBatch(W10_FILES, :chordalsdp)
+c_W20_res = runFileBatch(W20_FILES, :chordalsdp)
+# c_W30_res = runFileBatch(W30_FILES, :chordalsdp)
+
+# DeepSdp
+d_W10_res = runFileBatch(W10_FILES, :deepsdp)
 d_W20_res = runFileBatch(W20_FILES, :deepsdp)
-
-
-# W30
-c_W30_res = runFileBatch(W30_FILES, :chordalsdp)
-c2_W30_res = runFileBatch(W30_FILES, :chordalsdp2)
-d_W30_res = runFileBatch(W30_FILES, :deepsdp)
+# d_W30_res = runFileBatch(W30_FILES, :deepsdp)
 
 
 

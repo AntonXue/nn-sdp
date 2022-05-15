@@ -32,7 +32,7 @@ precompile(solveQuery, (Query, DeepSdpOptions))
 precompile(solveQuery, (Query, ChordalSdpOptions))
 
 #
-function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::QueryOptions, β::Int)
+function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, opts::QueryOptions)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   # Change the dependency on this one
@@ -40,8 +40,6 @@ function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::
 
   # The output
   P, yc = Utils.approxEllipsoid(ffnet, x1min, x1max)
-  println("P is: $(P)")
-  println("with eigvals: $(eigvals(P))")
   invP = Symmetric(inv(P))
 
   qc_ellipsoid = QcReachEllipsoid(invP=invP, yc=yc)
@@ -49,13 +47,13 @@ function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::
   reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_ellipsoid, obj_func=obj_func)
   soln = Methods.runQuery(reach_query, opts)
 
-  ρ = sqrt(soln.values[:γout][1])
+  ρ = soln.values[:γout][1]
   newP = sqrt(ρ) * P
   return newP, yc, soln
 end
 
 #
-function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::QueryOptions, β::Int)
+function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, opts::QueryOptions)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   # Change the dependency on this one
@@ -71,8 +69,7 @@ function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::Que
 end
 
 # Check whether a network satisfies all the vnnlib stuff
-function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, opts::QueryOptions, β::Int;
-                         num_hplanes = 6)
+function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, opts::QueryOptions; num_hplanes = 6)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   # Change the dependency on this one
