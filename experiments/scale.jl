@@ -56,16 +56,24 @@ function runFileOurStyle(network_file::String, x1min::VecReal, x1max::VecReal, �
   # ffnet, αs = loadFromFileScaled(network_file, SqrtLogScaling())
   ffnet, αs = loadFromFileScaled(network_file, NoScaling())
   saveto = joinpath(DUMP_DIR, "$(string(method))-$(basename(network_file)).csv")
-  df = DataFrame(beta=Int[], total_secs=Real[], obj_val=Real[], term_status=String[], eigmax=Real[])
+  df = DataFrame(beta=Int[],
+                 setup_secs=Real[],
+                 solve_secs=Real[],
+                 total_secs=Real[],
+                 obj_val=Real[],
+                 term_status=String[],
+                 eigmax=Real[])
   # Now run each query
   for β in βs
     println("Running $(basename(network_file)) | $(method) | β: $(β)")
     _, _, soln = NnSdp.findEllipsoid(ffnet, x1min, x1max, β, opts)
+    setup_secs = soln.setup_time
+    solve_secs = soln.solve_time
     total_secs = soln.total_time
     obj_val = soln.objective_value
     status = soln.termination_status
     λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
-    entry = (β, total_secs, obj_val, status, λmax)
+    entry = (β, setup_secs, solve_secs, total_secs, obj_val, status, λmax)
     push!(df, entry)
     if dosave
       CSV.write(saveto, df)

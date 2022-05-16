@@ -14,7 +14,7 @@ struct TwoStageRelaxed <: DecompMode end
 end
 
 # Do the cliques
-function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
+function setupZs!(model, cliques, query::Query, opts::ChordalSdpOptions)
   Zdim = sum(query.ffnet.zdims)
   Zs, Ecs = Vector{Any}(), Vector{Any}()
   for (Ck, Djs) in cliques
@@ -44,6 +44,46 @@ function setupCliques!(model, cliques, query::Query, opts::ChordalSdpOptions)
   return Zs, Ecs
 end
 
+# More efficient construction of Zksum
+function setupZksum!(model, query::Query, opts::ChordalSdpOptions)
+  ffnet = query.ffnet
+  zdims, K = query.ffnet.zdims, query.ffnet.K
+  Zdim = sum(zdims)
+  S(k) = (k == 0) ? 0 : sum(zdims[1:k])
+  Zksum = zeros(AffExpr, (Zdim, Zdim))
+  cliques = makeCliques(query.qcs, query.ffnet)
+  qc_sector = (filter(qc -> qc isa QcActivSector, query.qc_activs))[1]
+  β = qc_sector.β
+  Zs, Ecs = setupZs!(model, cliques, query, opts)
+  for (k, (Ck, _)) in enumerate(cliques)
+    Ckdim = length(Ck)
+    # For the last clique we just add it in
+    if k == length(cliques)
+      Zksum[end-Ckdim+1:end, end-Ckdim+1:end] += Zs[k]
+
+    # Otherwise we take apart Zk at specific index ranges to avoid doing multiplication
+    else
+      Zk11dim = Ckdim - zdims[K] - 1
+      Zk11 = Zs[k][1:Zk11dim, 1:Zk11dim]
+      Zk12 = Zs[k][1:Zk11dim, (Zk11dim+1):end]
+      Zk22 = Zs[k][(Zk11dim+1):end, (Zk11dim+1):end]
+
+      Ck_init1 = S(k-1) + 1
+      Ck_initdim = ffnet.zdims[k] + ffnet.zdims[k+1] + β
+      Ck_init = Ck_init1 : (Ck_init1 + Ck_initdim - 1)
+      Ck_tail1 = S(ffnet.K-1) + 1
+      Ck_taildim = ffnet.zdims[ffnet.K] + 1
+      Ck_tail = Ck_tail1 : (Ck_tail1 + Ck_taildim - 1)
+
+      Zksum[Ck_init, Ck_init] += Zk11
+      Zksum[Ck_init, Ck_tail] += Zk12
+      Zksum[Ck_tail, Ck_init] += Zk12'
+      Zksum[Ck_tail, Ck_tail] += Zk22
+    end
+  end
+  return Zksum
+end
+
 # Set up the model for safety verification (satisfiability)
 function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   vars = Dict()
@@ -66,9 +106,10 @@ function setupSafety!(model, query::SafetyQuery, opts::ChordalSdpOptions)
   Z = Zin + Zout + sum(Zacs)
   vars[:Z] = Z
 
+  #####################
   # Set up cliques
   cliques = makeCliques(query.qcs, query.ffnet)
-  Zs, Ecs = setupCliques!(model, cliques, query, opts)
+  Zs, Ecs = setupZs!(model, cliques, query, opts)
 
   # The equality constraint
   Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
@@ -79,6 +120,8 @@ end
 
 # Set up a reach query while specifying a generic objective function
 function setupReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
+  init_time = time()
+
   vars = Dict()
 
   # Make the Zin
@@ -101,14 +144,30 @@ function setupReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   # Big Z matrix
   Z = Zin + Zout + sum(Zacs)
   vars[:Z] = Z
+  printstyled("tick A took time: $(time() - init_time)\n", color=:blue)
 
   # Set up cliques
+  #=
   cliques = makeCliques(query.qcs, query.ffnet)
-  Zs, Ecs = setupCliques!(model, cliques, query, opts)
+  Zs, Ecs = setupZs!(model, cliques, query, opts)
+  printstyled("tick B took time: $(time() - init_time)\n", color=:blue)
 
+  #################
   # The equality constraint
-  Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
+  Zksum = zeros(size(Z))
+  for k in 1:length(cliques)
+    # println("test: $(size(Ecs[k]' * Zs[k] * Ecs[k]))")
+    Zksum += Ecs[k]' * Zs[k] * Ecs[k]
+  end
+  # Zksum = sum(Ecs[k]' * Zs[k] * Ecs[k] for k in 1:length(cliques))
+  =#
+
+  Zksum = setupZksum!(model, query, opts)
+
+  ################
+  printstyled("tick C took time: $(time() - init_time)\n", color=:blue)
   @constraint(model, Z .== Zksum)
+  printstyled("tick D took time: $(time() - init_time)\n", color=:blue)
 
   return model, vars
 end
