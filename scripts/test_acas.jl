@@ -30,8 +30,8 @@ MOSEK_OPTS =
 
 
 DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=MOSEK_OPTS)
-COPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=OneStage())
-C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=TwoStage())
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=SingleDecomp())
+C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=DoubleDecomp())
 
 
 cnf_qs = loadReluQueriesCnf(ind2acas(1,9), ind2spec(7), 3)

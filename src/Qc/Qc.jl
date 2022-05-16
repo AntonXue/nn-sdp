@@ -14,10 +14,7 @@ abstract type QcInput <: QcInfo end
 abstract type QcActiv <: QcInfo end
 abstract type QcOutput <: QcInfo end
 
-const Clique = VecInt
-
 # Now that the QCinfo is defined, import the other constructions
-export Clique
 export QcInfo, QcInput, QcOutput, QcActiv
 
 include("input.jl")
@@ -32,9 +29,6 @@ include("activ.jl")
 export QcActivBounded, QcActivSector
 export makeSectorMinMax, makeQ, makeA, makeb, makeB
 export makeQcActivs, makeZac
-
-include("cliques.jl")
-export makeCliques
 
 end
 

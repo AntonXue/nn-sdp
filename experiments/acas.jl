@@ -182,8 +182,8 @@ end
 # Options to use
 # DOPTS = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
-COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=OneStage())
-C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=SingleDecomp())
+C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=DoubleDecomp())
 
 function gotest(β::Int, opts)
   start_time = time()
