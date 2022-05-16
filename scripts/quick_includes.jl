@@ -41,8 +41,12 @@ dopts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
 copts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=OneStage())
 c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=TwoStage())
 
+x1min = ones(2) .- 5e-1
+x1max = ones(2) .+ 5e-1
 
 
+
+#=
 # Hyperplane reach
 qc_input = QcInputBox(x1min=x1min, x1max=x1max)
 qc_activs = Qc.makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=2)
@@ -66,6 +70,7 @@ println("\n")
 _, _, dsolne = findEllipsoid(ffnet, x1min, x1max, dopts, 1)
 _, _, csolne = findEllipsoid(ffnet, x1min, x1max, copts, 1)
 _, _, c2solne = findEllipsoid(ffnet, x1min, x1max, c2opts, 1)
+=#
 
 
 #=
