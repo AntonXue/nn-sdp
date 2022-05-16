@@ -91,8 +91,8 @@ function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
     αs = ones(K)
   # ||Wk|| = sqrt(ck * log ck / K), where ck = xdims[k] + xdims[k+1]
   elseif scaling isa SqrtLogScaling
-    # tgt_func(ck) = sqrt(ck * log(ck) / K)
-    tgt_func(ck) = 0.5 * sqrt(ck * log(ck) / K)
+    tgt_func(ck) = sqrt(ck * log(ck) / K)
+    # tgt_func(ck) = 0.5 * sqrt(ck * log(ck) / K)
     # tgt_func(ck) = 0.3 * sqrt(ck * log(ck) / K)
     tgt_opnorms = [tgt_func(xdims[k]+xdims[k+1]) for k in 1:K]
     αs = [tgt_opnorms[k] / opnorm(W) for (k, W) in enumerate(Ws)]

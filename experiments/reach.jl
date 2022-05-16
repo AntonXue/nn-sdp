@@ -5,6 +5,8 @@ using Dates
 using PyCall
 
 using Plots
+using Random
+Random.seed!(1234)
 
 
 include("../src/NnSdp.jl"); using .NnSdp
