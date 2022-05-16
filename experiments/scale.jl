@@ -130,17 +130,17 @@ d_small_res = runFileBatch(SMALL_FILES, :deepsdp, βs=0:1)
 # c2
 
 # ChordalSdp2
-# c2_W10_res = runFileBatch(W10_FILES, :chordalsdp2)
-# c2_W20_res = runFileBatch(W20_FILES, :chordalsdp2)
+c2_W10_res = runFileBatch(W10_FILES, :chordalsdp2)
+c2_W20_res = runFileBatch(W20_FILES, :chordalsdp2)
 # c2_W30_res = runFileBatch(W30_FILES, :chordalsdp2)
 
 # ChordalSdp
-# c_W10_res = runFileBatch(W10_FILES, :chordalsdp)
-# c_W20_res = runFileBatch(W20_FILES, :chordalsdp)
+c_W10_res = runFileBatch(W10_FILES, :chordalsdp)
+c_W20_res = runFileBatch(W20_FILES, :chordalsdp)
 # c_W30_res = runFileBatch(W30_FILES, :chordalsdp)
 
 # DeepSdp
-# d_W10_res = runFileBatch(W10_FILES, :deepsdp)
+d_W10_res = runFileBatch(W10_FILES, :deepsdp)
 # d_W20_res = runFileBatch(W20_FILES, :deepsdp)
 # d_W30_res = runFileBatch(W30_FILES, :deepsdp)
 

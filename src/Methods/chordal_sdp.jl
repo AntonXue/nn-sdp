@@ -114,7 +114,6 @@ end
 # Set up a reach query while specifying a generic objective function
 function setupReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   vars = Dict()
-
   # Make the Zin
   γin = @variable(model, [1:query.qc_input.vardim])
   @constraint(model, γin[1:query.qc_input.vardim] .>= 0)
