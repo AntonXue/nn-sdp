@@ -5,64 +5,35 @@ using Dates
 using ArgParse
 
 include("../src/NnSdp.jl"); using .NnSdp
+include("../experiments/vnnlib_utils.jl")
 
+# The place where things are
+DUMP_DIR = joinpath(@__DIR__, "..", "dump", "acas")
 ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
-ALL_FILES = readdir(ACAS_DIR, join=true)
-ACAS_FILES = filter(f -> match(r".*.onnx", f) isa RegexMatch, ALL_FILES)
-SPEC_FILES = filter(f -> match(r".*.vnnlib", f) isa RegexMatch, ALL_FILES)
 
+# The ACAS files
+ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.onnx")
+ACAS_FILES = [ind2acas(i,j) for i in 1:5 for j in 1:9]
+@assert length(ACAS_FILES) == 45
 
+# The spec files
+ind2spec(i) = joinpath(ACAS_DIR, "prop_$(i).vnnlib")
+SPEC_FILES = [ind2spec(i) for i in 1:10]
+@assert length(SPEC_FILES) == 10
 
-# Argument parsing
-function parseArgs()
-  argparse_settings = ArgParseSettings()
-  @add_arg_table argparse_settings begin
-    "--nnet"
-      arg_type = String
-      help = "The NNet file to load"
-    "--onnx"
-      arg_type = String
-      help = "The ONNX file to load"
-    "--vnnlib"
-      arg_type = String
-      help = "The vnnlib specifications"
-  end
-  return parse_args(ARGS, argparse_settings)
-end
-
-args = parseArgs()
-
-
-mosek_opts = 
-  Dict("QUIET" => true,
-       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 5, # seconds
+MOSEK_OPTS =
+  Dict("QUIET" => false,
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 30, # seconds
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 
-
-ffnet = loadFromOnnx(args["onnx"])
-scffnet, αs = loadFromFileReluScaled(args["onnx"])
-alphas = αs
-α = prod(αs)
-alpha = α
-
-dopts = DeepSdpOptions(verbose=true, mosek_opts=mosek_opts)
-copts = ChordalSdpOptions(verbose=true, mosek_opts=mosek_opts, decomp_mode=TwoStage())
-
-# loadQueries(ACAS_FILES[1], SPEC_FILES[1], β)
-
-β = 2
-
-dnf = loadReluQueries(args["onnx"], args["vnnlib"], β)
-
-qs = vcat(dnf...)
+DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=MOSEK_OPTS)
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=OneStage())
+C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=TwoStage())
 
 
-
-solns = [NnSdp.solveQuery(q, copts) for q in qs]
-
-soln = solns[1]
-
+cnf_qs = loadReluQueriesCnf(ind2acas(1,9), ind2spec(7), 3)
+q11 = cnf_qs[1][1]
 

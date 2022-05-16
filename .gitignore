@@ -39,4 +39,5 @@ dump/
 *.vnnlib
 *.log
 *.swp
+experiments/.ipynb_checkpoints/
 

@@ -30,7 +30,8 @@ TABLE_PAIRS = [(ind2acas(1,1), ind2spec(5)),  # Row 1
                (ind2acas(1,9), ind2spec(7)),  # Row 4
                (ind2acas(2,9), ind2spec(8)),  # Row 5
                (ind2acas(3,3), ind2spec(9)),  # Row 6
-               (ind2acas(4,5), ind2spec(10))] # Row 7
+               (ind2acas(4,5), ind2spec(10))  # Row 7
+              ]
 
 # The different property pairs
 PROP1_PAIRS = [(ind2acas(i,j), ind2spec(1)) for i in 1:5 for j in 1:9]
@@ -41,21 +42,10 @@ ALL_PROP_PAIRS = [PROP1_PAIRS; PROP2_PAIRS; PROP3_PAIRS; PROP4_PAIRS]
 
 # Some test pairs
 TEST_PAIRS = [
-              # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_a.vnnlib")
-              # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_c.vnnlib")
-              # (ind2acas(1,1), ind2spec(1)),
-              # (ind2acas(1,2), ind2spec(1)),
-              # (ind2acas(1,3), ind2spec(1)),
-              # (ind2acas(1,4), ind2spec(1)),
-              # (ind2acas(1,5), ind2spec(1)),
-              # (ind2acas(1,1), ind2spec(5)), # Row 1
-              # (ind2acas(1,1), ind2spec(6)),  # Row 2, 3
-              # (ind2acas(2,9), ind2spec(8)),  # Row 5
-               (ind2acas(3,3), ind2spec(9)), # Row 7
-               (ind2acas(4,5), ind2spec(10)), # Row 7
-              # (ind2acas(1,7), ind2spec(3)), # Should be unsafe
-              # (ind2acas(1,8), ind2spec(3)), # Should be unsafe
-              # (ind2acas(1,9), ind2spec(3)), # Should be unsafe
+               (ind2acas(1,9), ind2spec(7)),  # Row 4
+               (ind2acas(2,9), ind2spec(8)),  # Row 5
+               (ind2acas(3,3), ind2spec(9)),  # Row 6
+               (ind2acas(4,5), ind2spec(10))  # Row 7
              ]
 
 # Custom MOSEK options we'll use for this experiment.
@@ -107,7 +97,7 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
 
       λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
       λmin = eigmin(Symmetric(Matrix(soln.values[:Z])))
-      println("\t\ttime: $(soln.total_time) | result: $(soln.termination_status) | λs: ($(λmax), $(λmin))")
+      println("\t\ttime: $(soln.total_time) | result: $(soln.termination_status) | λs: ($(λmax), $(λmin)) | good = $(is_good)")
 
       # If any query in the disjunctive clause holds, the clause is immediately satisfied
       if disj_holds; break end
