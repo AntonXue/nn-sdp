@@ -56,7 +56,7 @@ function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::I
 
   # Remap the eigenvalues [λmin, λmax] onto a nicer interval [a, b], arbitrarily picked
   a, b = 1, 4
-  eig = eigen(P)
+  eig = eigen(Symmetric(P))
   # If λmax / λmin >= b / a, ie P is too flat, then we rescale
   if maximum(eig.values) * a >= minimum(eig.values) * b
     λmin, λmax = minimum(eig.values), maximum(eig.values)

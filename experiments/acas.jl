@@ -77,7 +77,7 @@ NSD_TOL = 1e-4
 
 function isSolutionGood(soln::QuerySolution)
   return (soln.termination_status == "OPTIMAL"
-          || eigmax(Matrix(soln.values[:Z])) <= NSD_TOL)
+          || eigmax(Symmetric(Matrix(soln.values[:Z]))) <= NSD_TOL)
 end
 
 #= Verify a single network - spec instance
@@ -105,8 +105,8 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
       disj_holds = disj_holds || is_good
       push!(all_solns, soln)
 
-      λmax = eigmax(Matrix(soln.values[:Z]))
-      λmin = eigmin(Matrix(soln.values[:Z]))
+      λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
+      λmin = eigmin(Symmetric(Matrix(soln.values[:Z])))
       println("\t\ttime: $(soln.total_time) | result: $(soln.termination_status) | λs: ($(λmax), $(λmin))")
 
       # If any query in the disjunctive clause holds, the clause is immediately satisfied
