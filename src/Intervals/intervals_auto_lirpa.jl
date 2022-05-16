@@ -34,6 +34,9 @@ function autoLirpaBoundsOutput(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet
   onnx_file = tempname()
   writeOnnx(ffnet, onnx_file)
   lb, ub = auto_lirpa_bridge.find_bounds_output(onnx_file, x1min, x1max)
+  # We need to post-process this a little to account for numerical errors
+  lb = min.(lb, ub)
+  ub = max.(lb, ub)
   return lb, ub
 end
 
