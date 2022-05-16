@@ -47,6 +47,7 @@ function intervalsAutoLirpaSliced(x1min::VecReal, x1max::VecReal, ffnet::FeedFwd
   push!(x_intvs, (x1min, x1max))
   for ggnet in ffnets
     lb, ub = autoLirpaBoundsOutput(x1min, x1max, ggnet)
+    @assert all(lb .<= ub)
     push!(x_intvs, (lb, ub))
   end
 
@@ -56,6 +57,7 @@ function intervalsAutoLirpaSliced(x1min::VecReal, x1max::VecReal, ffnet::FeedFwd
     xkmin, xkmax = x_intvs[k]
     ykmin = (max.(Wk, 0) * xkmin) + (min.(Wk, 0) * xkmax) + bk
     ykmax = (max.(Wk, 0) * xkmax) + (min.(Wk, 0) * xkmin) + bk
+    @assert all(ykmin .<= ykmax)
     push!(acx_intvs, (ykmin, ykmax))
   end
 
