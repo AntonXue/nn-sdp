@@ -4,6 +4,8 @@ using NaturalSort
 using ArgParse
 using DataFrames
 using CSV
+using Random
+Random.seed!(1234)
 
 include("../src/NnSdp.jl"); using .NnSdp
 include("vnnlib_utils.jl")
@@ -38,7 +40,6 @@ PROP4_PAIRS = [(ind2acas(i,j), ind2spec(4)) for i in 1:5 for j in 1:9]
 ALL_PROP_PAIRS = [PROP1_PAIRS; PROP2_PAIRS; PROP3_PAIRS; PROP4_PAIRS]
 
 # Some test pairs
-# TEST_PAIRS = [(ind2acas(i,j), ind2spec(k)) for i in [1] for j in [1] for k in [1]]
 TEST_PAIRS = [
               # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_a.vnnlib")
               # (ind2acas(1,1), "/home/antonxue/stuff/test/a-b-crown/prop_6_c.vnnlib")
@@ -57,9 +58,7 @@ TEST_PAIRS = [
               # (ind2acas(1,9), ind2spec(3)), # Should be unsafe
              ]
 
-#= Custom MOSEK options we'll use for this experiment.
-On Mayur's machine a safe query should take <= 3 minutes with two-stage mode,
-=#
+# Custom MOSEK options we'll use for this experiment.
 ACAS_MOSEK_OPTS = 
   Dict("QUIET" => false,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 30, # Time in seconds
@@ -74,13 +73,7 @@ ACAS_MOSEK_OPTS =
        "INTPNT_CO_TOL_DFEAS" => 1e-9)
 
 # How large are we willing to have λmax(Z) be?
-# NSD_TOL = 1e-4
-# NSD_TOL = 5e-3 # This is too high for the small table: everything is safe
-# NSD_TOL = 5e-4 # This is still too high: prop 8 network 2-9 is incorrectly marked safe
-# NSD_TOL = 1e-4 # Too high for prop 8 network 2-9?
-# NSD_TOL = 1e-6
-NSD_TOL = 5e-4
-
+NSD_TOL = 1e-4
 
 function isSolutionGood(soln::QuerySolution)
   return (soln.termination_status == "OPTIMAL"
@@ -102,11 +95,11 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
   spec_holds = true
   all_solns = Vector{Any}()
   for (disj_ind, disj_clause) in enumerate(cnf_queries)
-    println("\tdisj [$(disj_ind)/$(length(cnf_queries))] has $(length(disj_clause)) subqueries | now: $(now())")
+    printstyled("\tdisj [$(disj_ind)/$(length(cnf_queries))] has $(length(disj_clause)) subqueries | now: $(now())\n", color=:green)
 
     disj_holds = false
     for (query_ind, query) in enumerate(disj_clause)
-      println("\t\tsubquery [$(query_ind)/$(length(disj_clause))] of $(basename(acas_file)) | $(basename(spec_file))")
+      printstyled("\t\tsubquery [$(query_ind)/$(length(disj_clause))] of $(basename(acas_file)) | $(basename(spec_file))\n", color=:blue)
       soln = solveQuery(query, opts)
       is_good = isSolutionGood(soln)
       disj_holds = disj_holds || is_good
@@ -132,8 +125,8 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
 
   verif_total_time = sum([s.total_time for s in all_solns])
   println("")
-  println("\tpair: $(acas_file) | $(spec_file)")
-  println("\tverification status: $(verif_status) | total time: $(verif_total_time)")
+  printstyled("\tpair: $(acas_file) | $(spec_file)\n", color=:green)
+  printstyled("\tverification status: $(verif_status) | total time: $(verif_total_time)\n", color=:green)
 
   return all_solns, num_queries, verif_status
 end
@@ -153,9 +146,9 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
   qdf_saveto = saveto * "-qdf.csv"
 
   for (i, (acas_file, spec_file)) in enumerate(pairs)
-    println("pair [$(i)/$(length(pairs))] | now: $(now())")
-    println("\tacas: $(acas_file)")
-    println("\tspec: $(spec_file)")
+    printstyled("pair [$(i)/$(length(pairs))] | now: $(now())\n", color=:green)
+    printstyled("\tacas: $(acas_file)\n", color=:green)
+    printstyled("\tspec: $(spec_file)\n", color=:green)
 
     all_solns, num_queries, verif_status = verifyAcasSpec(acas_file, spec_file, β, opts)
 
@@ -189,12 +182,6 @@ function verifyPairs(pairs, β::Int, opts, saveto = joinpath(DUMP_DIR, "hello.cs
     end
     CSV.write(qdf_saveto, qdf)
 
-    println("####################################################################")
-    println("####################################################################")
-    println("####################################################################")
-    println("####################################################################")
-    println("####################################################################")
-
   end
   return df
 end
@@ -205,8 +192,8 @@ end
 # Options to use
 # DOPTS = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
-COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
-# COPTS = ChordalSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=OneStage())
+C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=TwoStage())
 
 function gotest(β::Int, opts)
   start_time = time()
@@ -245,11 +232,4 @@ function goprop(k::Int, β::Int, opts=COPTS)
   return df
 end
 
-
-
-ffnet11 = loadFromFile(ind2acas(1,1))
-
-SIMPLE_PROP1 = "/home/antonxue/stuff/test/a-b-crown/prop_1.vnnlib"
-SIMPLE_PROP5 = "/home/antonxue/stuff/test/a-b-crown/prop_5.vnnlib"
-SIMPLE_PROP10 = "/home/antonxue/stuff/test/a-b-crown/prop_10.vnnlib"
 

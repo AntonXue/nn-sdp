@@ -38,13 +38,11 @@ function loadVnnlibCnf(spec_file::String, ffnet::FeedFwdNet; αs=nothing)
       b = out[2]
       @assert size(A)[1] == length(b)
       for i in 1:length(b)
-        println("A[$(i),:]: $(A[i,:]) \t b[$(i)] = $(b[i])")
         ε = 1e-4
         normal = -A[i,:]
         offset = -b[i] - ε
         S = hplaneS(normal, offset, ffnet)
         if αs isa VecReal
-          println("SCALING S with α=$(prod(αs)) αs=$(αs)")
           S = scaleS(S, αs, ffnet)
         end
         qc_safety = QcSafety(S=Symmetric(Matrix(S)))
