@@ -63,7 +63,8 @@ ACAS_MOSEK_OPTS =
        "INTPNT_CO_TOL_DFEAS" => 1e-9)
 
 # How large are we willing to have λmax(Z) be?
-NSD_TOL = 1e-4
+# NSD_TOL = 1e-4
+NSD_TOL = 5e-4
 
 function isSolutionGood(soln::QuerySolution)
   return (soln.termination_status == "OPTIMAL"
@@ -183,7 +184,7 @@ end
 # DOPTS = DeepSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS)
 COPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=SingleDecomp())
-C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=DoubleDecomp())
+C2OPTS = ChordalSdpOptions(use_dual=true, verbose=true, mosek_opts=ACAS_MOSEK_OPTS, decomp_mode=DoubleDecomp())
 
 function gotest(β::Int, opts)
   start_time = time()

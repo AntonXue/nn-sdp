@@ -142,12 +142,3 @@ function setupReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
   return model, vars
 end
 
-# Solve a model that is ready
-function solve!(model, vars, opts::ChordalSdpOptions)
-  optimize!(model)
-  summary = solution_summary(model)
-  values = Dict()
-  for (k, v) in vars; values[k] = value.(v) end
-  return summary, values
-end
-

@@ -43,11 +43,12 @@ end
 abstract type QueryOptions end
 
 # The solution that is to be output by an algorithm
-@with_kw struct QuerySolution{A,B,C,D}
-  objective_value::A
-  values::B
-  summary::C
-  termination_status::D
+@with_kw struct QuerySolution{A,B,C,D,E}
+  model::A
+  objective_value::B
+  values::C
+  summary::D
+  termination_status::E
   total_time::Real
   setup_time::Real
   solve_time::Real
@@ -75,6 +76,15 @@ function setupZacs!(model, query::Query, opts::QueryOptions)
     push!(Zacs, Zac)
   end
   return Zacs, vars
+end
+
+# Solve a model that is ready
+function solve!(model, vars, opts::QueryOptions)
+  optimize!(model)
+  summary = solution_summary(model, verbose=true)
+  values = Dict()
+  for (k, v) in vars; values[k] = value.(v) end
+  return summary, values
 end
 
 # The interface to call; specialize opt-specific stuff as necessary
@@ -110,6 +120,7 @@ function runQuery(query::Query, opts::QueryOptions)
     println("$(times_str) \t$(values_str)")
   end
   return QuerySolution(
+    model = model,
     objective_value = objective_value(model),
     values = values,
     summary = summary,
