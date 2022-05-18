@@ -15,7 +15,7 @@ DUMP_DIR = joinpath(@__DIR__, "..", "dump", "acas")
 ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
 
 # The ACAS files
-ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.onnx")
+ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.nnet")
 ACAS_FILES = [ind2acas(i,j) for i in 1:5 for j in 1:9]
 @assert length(ACAS_FILES) == 45
 
@@ -42,8 +42,8 @@ ALL_PROP_PAIRS = [PROP1_PAIRS; PROP2_PAIRS; PROP3_PAIRS; PROP4_PAIRS]
 
 # Some test pairs
 TEST_PAIRS = [
-               (ind2acas(1,9), ind2spec(7)),  # Row 4
-               (ind2acas(2,9), ind2spec(8)),  # Row 5
+               # (ind2acas(1,9), ind2spec(7)),  # Row 4
+               # (ind2acas(2,9), ind2spec(8)),  # Row 5
                (ind2acas(3,3), ind2spec(9)),  # Row 6
                (ind2acas(4,5), ind2spec(10))  # Row 7
              ]
@@ -52,19 +52,26 @@ TEST_PAIRS = [
 ACAS_MOSEK_OPTS = 
   Dict("QUIET" => false,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 30, # Time in seconds
-       # "MSK_IPAR_INTPNT_SCALING" => 1,  # None
-       "MSK_IPAR_INTPNT_SCALING" => 2,  # Moderate (preferable, maybe)
+       "MSK_IPAR_INTPNT_SCALING" => 1,  # None
+       # "MSK_IPAR_INTPNT_SCALING" => 2,  # Moderate (preferable, maybe)
        # "MSK_IPAR_INTPNT_SCALING" => 3,  # Aggressive
-       "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-6,
+       "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-7,
+       # "MSK_DPAR_INTPNT_TOL_PATH" => 1e-1,
+       # "MSK_DPAR_INTPNT_TOL_PSAFE" => 1e-1,
+       # "MSK_DPAR_INTPNT_TOL_DSAFE" => 1e-1,
        # "MSK_IPAR_INTPNT_MAX_ITERATIONS" => 500,
        # "MSK_DPAR_DATA_SYM_MAT_TOL" => 1e-10,
+       "MSK_DPAR_INTPNT_TOL_INFEAS" => 1e-8,
+       "MSK_DPAR_INTPNT_CO_TOL_INFEAS" => 1e-8,
        "INTPNT_CO_TOL_REL_GAP" => 1e-9,
        "INTPNT_CO_TOL_PFEAS" => 1e-9,
        "INTPNT_CO_TOL_DFEAS" => 1e-9)
 
 # How large are we willing to have λmax(Z) be?
-# NSD_TOL = 1e-4
-NSD_TOL = 5e-4
+NSD_TOL = 1e-4
+# NSD_TOL = 5e-4
+# NSD_TOL = 5e-3
+
 
 function isSolutionGood(soln::QuerySolution)
   return (soln.termination_status == "OPTIMAL"
@@ -78,6 +85,7 @@ Goes through each conjunction until one unanimously holds, then returns
 * Whether the spec holds
 =#
 function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::QueryOptions)
+  printstyled("Starting $(spec_file) | $(acas_file)\n", color=:red)
   cnf_queries = loadReluQueriesCnf(acas_file, spec_file, β)
   num_queries = length(vcat(cnf_queries...))
 
@@ -85,8 +93,8 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
 
   spec_holds = true
   all_solns = Vector{Any}()
-  for (disj_ind, disj_clause) in enumerate(cnf_queries)
-    printstyled("\tdisj [$(disj_ind)/$(length(cnf_queries))] has $(length(disj_clause)) subqueries | now: $(now())\n", color=:green)
+  for (conj_ind, disj_clause) in enumerate(cnf_queries)
+    printstyled("\tconj [$(conj_ind)/$(length(cnf_queries))] has $(length(disj_clause)) subqueries | now: $(now())\n", color=:green)
 
     disj_holds = false
     for (query_ind, query) in enumerate(disj_clause)
@@ -99,6 +107,7 @@ function verifyAcasSpec(acas_file::String, spec_file::String, β::Int, opts::Que
       λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
       λmin = eigmin(Symmetric(Matrix(soln.values[:Z])))
       println("\t\ttime: $(soln.total_time) | result: $(soln.termination_status) | λs: ($(λmax), $(λmin)) | good = $(is_good)")
+      println("\n\n")
 
       # If any query in the disjunctive clause holds, the clause is immediately satisfied
       if disj_holds; break end

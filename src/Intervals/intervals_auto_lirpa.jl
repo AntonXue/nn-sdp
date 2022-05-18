@@ -60,7 +60,6 @@ function intervalsAutoLirpaSliced(x1min::VecReal, x1max::VecReal, ffnet::FeedFwd
     @assert all(ykmin .<= ykmax)
     push!(acx_intvs, (ykmin, ykmax))
   end
-
   return IntervalsInfo(ffnet=ffnet, x_intvs=x_intvs, acx_intvs=acx_intvs) 
 end
 

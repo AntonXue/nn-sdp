@@ -7,6 +7,7 @@ using MosekTools
 
 
 include("../src/NnSdp.jl"); using .NnSdp
+include("../exts/nnet_parser.jl")
 include("../experiments/vnnlib_utils.jl")
 
 # The place where things are
@@ -14,7 +15,8 @@ DUMP_DIR = joinpath(@__DIR__, "..", "dump", "acas")
 ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
 
 # The ACAS files
-ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.onnx")
+# ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.onnx")
+ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.nnet")
 ACAS_FILES = [ind2acas(i,j) for i in 1:5 for j in 1:9]
 @assert length(ACAS_FILES) == 45
 
@@ -37,9 +39,39 @@ COPTS = ChordalSdpOptions(verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=Singl
 C2OPTS = ChordalSdpOptions(use_dual=true, verbose=true, mosek_opts=MOSEK_OPTS, decomp_mode=DoubleDecomp())
 
 
-cnf_qs = loadReluQueriesCnf(ind2acas(1,9), ind2spec(7), 3)
-q11 = cnf_qs[1][1]
+#=
+x1max = [-0.321785085; 0.063661977; -0.499204121; -0.227272727; -0.166666667]
+x1min = [-0.324274257; 0.031830989; -0.499999896; -0.5; -0.5]
+xgaps = x1max - x1min
+box01points = rand(5, 100000)
+x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
 
+ffnet = loadFromFile(ind2acas(1,1))
+
+intvs_info = makeIntervalsInfo(x1min, x1max, ffnet)
+x_intvs = intvs_info.x_intvs
+
+lirpa_bounds = [x_intvs[end][1] x_intvs[end][2]]
+
+xfs = Utils.sampleTrajs(ffnet, x1min, x1max)
+xfs_bounds = [minimum(xfs) maximum(xfs)]
+
+intv_info_sampled = Intervals.intervalsSampled(x1min, x1max, ffnet)
+xintvs_sampled = intv_info_sampled.x_intvs
+sampled_intv_bounds = [xintvs_sampled[end][1] xintvs_sampled[end][2]]
+
+ACAS11_NNET = "/home/antonxue/stuff/test/nnet/ACASXU_run2a_1_1_batch_2000.nnet"
+nnet_obj = NNet(ACAS11_NNET)
+=#
+
+cnf_qs = loadReluQueriesCnf(ind2acas(4,5), ind2spec(10), 2)
+q11 = cnf_qs[1][1]
+q21 = cnf_qs[2][1]
+q31 = cnf_qs[3][1]
+q41 = cnf_qs[4][1]
+
+# cnf_qs = loadReluQueriesCnf(ind2acas(1,9), ind2spec(7), 3)
+# q11 = cnf_qs[1][1]
 
 dsoln = NnSdp.solveQuery(q11, DOPTS)
 dγin = dsoln.values[:γin]

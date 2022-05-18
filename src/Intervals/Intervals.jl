@@ -36,6 +36,7 @@ include("intervals_auto_lirpa.jl")
 
 # Do interval calculations based on the method
 function makeIntervalsInfo(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsAutoLirpa())
+# function makeIntervalsInfo(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsSampled())
   if method isa IntervalsWorstCase
     return intervalsWorstCase(x1min, x1max, ffnet)
   elseif method isa IntervalsSampled
