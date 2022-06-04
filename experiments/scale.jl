@@ -13,19 +13,19 @@ include("../src/NnSdp.jl"); using .NnSdp
 # The place where things are
 DUMP_DIR = joinpath(@__DIR__, "..", "dump", "scale")
 RAND_DIR = joinpath(@__DIR__, "..", "bench", "rand")
-dims2rand(width, depth) = joinpath(RAND_DIR, "rand-I2-O2-W$(width)-D$(depth).nnet")
+dims2scale(width, depth) = joinpath(RAND_DIR, "scale-I2-O2-W$(width)-D$(depth).nnet")
 
 DEPTHS = 10:10:100
-# SMALL_FILES = [dims2rand(10, d) for d in [5, 10]]
-W10_FILES = [dims2rand(10, d) for d in DEPTHS]
-W20_FILES = [dims2rand(20, d) for d in DEPTHS]
-W30_FILES = [dims2rand(30, d) for d in DEPTHS]
-W40_FILES = [dims2rand(40, d) for d in DEPTHS]
+# SMALL_FILES = [dims2scale(10, d) for d in [5, 10]]
+W10_FILES = [dims2scale(10, d) for d in DEPTHS]
+W20_FILES = [dims2scale(20, d) for d in DEPTHS]
+W30_FILES = [dims2scale(30, d) for d in DEPTHS]
+W40_FILES = [dims2scale(40, d) for d in DEPTHS]
 
 
 X1MIN = ones(2) .- 5e-1
 X1MAX = ones(2) .+ 5e-1
-BETAS = [0, 1, 2, 3, 4, 5]
+BETAS = [0, 1, 2, 3, 4, 5, 6, 7]
 
 SCALE_MOSEK_OPTS = 
   Dict("QUIET" => true,
@@ -36,6 +36,7 @@ SCALE_MOSEK_OPTS =
        "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-6,
        # "MSK_IPAR_INTPNT_MAX_ITERATIONS" => 500,
        # "MSK_DPAR_DATA_SYM_MAT_TOL" => 1e-10,
+       "MSK_DPAR_DATA_SYM_MAT_TOL_HUGE" => 1e30,
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
@@ -109,9 +110,9 @@ function runFileBatch(network_files::Vector{String}, method::Symbol;
 end
 
 function warmup()
-  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :deepsdp, dosave=false)
-  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :chordalsdp, dosave=false)
-  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :chordalsdp2, dosave=false)
+  runFile(dims2scale(5,5), X1MIN, X1MAX, 1:2, :deepsdp, dosave=false)
+  runFile(dims2scale(5,5), X1MIN, X1MAX, 1:2, :chordalsdp, dosave=false)
+  runFile(dims2scale(5,5), X1MIN, X1MAX, 1:2, :chordalsdp2, dosave=false)
 end
 
 
@@ -141,7 +142,7 @@ c_W20_res = runFileBatch(W20_FILES, :chordalsdp)
 
 # DeepSdp
 d_W10_res = runFileBatch(W10_FILES, :deepsdp)
-# d_W20_res = runFileBatch(W20_FILES, :deepsdp)
+d_W20_res = runFileBatch(W20_FILES, :deepsdp)
 # d_W30_res = runFileBatch(W30_FILES, :deepsdp)
 
 

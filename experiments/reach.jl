@@ -13,29 +13,14 @@ include("../src/NnSdp.jl"); using .NnSdp
 const nn = NnSdp
 
 DUMP_DIR = joinpath(@__DIR__, "..", "dump", "reach")
-ACAS_DIR = joinpath(@__DIR__, "..", "bench", "acas")
-ind2acas(i,j) = joinpath(ACAS_DIR, "ACASXU_run2a_$(i)_$(j)_batch_2000.onnx")
-
-
-#=
-function parseArgs()
-  argparse_settings = ArgParseSettings()
-  @add_arg_table argparse_settings begin
-    "--nnet"
-      help = "the NNet file location"
-      arg_type = String
-      required = true
-  end
-  return parse_args(ARGS, argparse_settings)
-end
-
-args = parseArgs()
-=#
+RAND_DIR = joinpath(@__DIR__, "..", "bench", "rand")
+ind2reach(width,depth) = joinpath(RAND_DIR, "reach-I2-O2-W$(width)-D$(depth).nnet")
 
 REACH_MOSEK_OPTS = 
   Dict("QUIET" => false,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 1, # seconds
-        "MSK_IPAR_INTPNT_SCALING" => 2,
+       "MSK_IPAR_INTPNT_SCALING" => 1,
+       "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-8,
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
@@ -56,23 +41,26 @@ function solveAndPlotEllipses(network_file::String, x1min::Vector, x1max::Vector
   plt = plot()
   plt = Utils.plotBoundingEllipses!(plt, xfs2D, ellipses2D)
 
-  #=
+  β_strs = ["β = $(β)" for β in βs]
+  labels = ["sampled pts"; β_strs]
+  for (i, lbl) in enumerate(labels)
+    plt[1][i][:label] = lbl
+  end
+
+  plt = plot!(plt, legendfontsize=12)
   savefig(plt, saveto)
   println("saved to: $(saveto)")
-  return trips
-  =#
   return plt, trips
 end
 
-# x1min, x1max = ones(2) .- 1e-2, ones(2) .+ 1e-2
-x1min, x1max = ones(5) .- 5e-1, ones(5) .+ 5e-1
+x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
-# βs = [0, 2, 4, 6, 8, 10, 12, 14, 16]
-βs = [0, 2, 4]
+βs = [0, 2, 4, 6, 8, 10]
 
 # trips = solveAndPlotEllipses(args["nnet"], x1min, x1max, βs, DOPTS)
 
-plt, trips = solveAndPlotEllipses(ind2acas(1,1), x1min, x1max, βs, DOPTS)
+plt1, trips1 = solveAndPlotEllipses(ind2reach(10,10), x1min, x1max, βs, C2OPTS)
+plt2, trips2 = solveAndPlotEllipses(ind2reach(20,10), x1min, x1max, βs, C2OPTS)
 
 #=
 solveAndPlotEllipses(ind2acas(1,2), x1min, x1max, βs, DOPTS)
