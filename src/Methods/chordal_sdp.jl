@@ -19,22 +19,32 @@ end
 function setupZs!(model, cliques, query::Query, opts::ChordalSdpOptions)
   Zdim = sum(query.ffnet.zdims)
   Zs, Ecs = Vector{Any}(), Vector{Any}()
-  for (Ck, _, Djs) in cliques
+  for (Ck, _, Dks) in cliques
     Ckdim = length(Ck)
     # Use two-stage decomposition
     if opts.decomp_mode isa DoubleDecomp || opts.decomp_mode isa DoubleRelaxDecomp
-      Ys, Fcs = Vector{Any}(), Vector{Any}()
-      for (i, Dj) in enumerate(Djs)
-        Djdim = length(Dj)
-        Yj = @variable(model, [1:Djdim, 1:Djdim], Symmetric)
-        @constraint(model, -Yj in PSDCone())
-        push!(Ys, Yj)
-        push!(Fcs, Ec(Dj, Ckdim)) # Fcj
+      # This is the case for k == 1 and k == p
+      if length(Dks) == 1
+        @assert length(Dks[1]) == Ckdim
+        Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
+        @constraint(model, -Zk in PSDCone())
 
-        # Break early if we're in relaxed mode, only take the first clique
-        if opts.decomp_mode isa DoubleRelaxDecomp && i >= 1; break end
+      # Otherwise there are two parts to Y
+      else
+        @assert length(Dks) == 2
+        Dk1, Dk2 = Dks[1], Dks[2]
+        Dk1dim, Dk2dim = length(Dk1), length(Dk2)
+        Yk1 = @variable(model, [1:Dk1dim, 1:Dk1dim], Symmetric)
+        Yk2 = @variable(model, [1:Dk2dim, 1:Dk2dim], Symmetric)
+        @constraint(model, -Yk1 in PSDCone())
+        @constraint(model, -Yk2 in PSDCone())
+
+        Zk = zeros(AffExpr, (Ckdim, Ckdim))
+        Zk[Dk1, Dk1] += Yk1
+        Zk[Dk2, Dk2] += Yk2
+
       end
-      Zk = sum(Fcs[j]' * Ys[j] * Fcs[j] for j in 1:length(Ys))
+
     # In the non-two stage case, the original stuff
     else
       Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
