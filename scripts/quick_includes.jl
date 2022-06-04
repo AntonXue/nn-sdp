@@ -26,7 +26,7 @@ args = parseArgs()
 @printf("load done: %.3f\n", time() - start_time)
 
 mosek_opts = 
-  Dict("QUIET" => true,
+  Dict("QUIET" => false,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 1, # seconds
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
@@ -37,12 +37,31 @@ ffnet = loadFromNnet(args["nnet"], ReluActiv())
 x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
 
-dopts = DeepSdpOptions(mosek_opts=mosek_opts, verbose=true)
-copts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=OneStage())
-c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=TwoStage())
+DOPTS = DeepSdpOptions(use_dual=true, mosek_opts=mosek_opts, verbose=true)
+COPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=SingleDecomp())
+C2OPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=DoubleDecomp())
+
+x1min = ones(2) .- 5e-1
+x1max = ones(2) .+ 5e-1
 
 
+printstyled("WARMUP ROUND\n", color=:red)
+_, _, c2soln = findEllipsoid(ffnet, x1min, x1max, 2, C2OPTS)
 
+printstyled("******************************************************************\n", color=:red)
+printstyled("******************************************************************\n", color=:red)
+printstyled("******************************************************************\n", color=:red)
+
+printstyled("beginning DOPTS\n", color=:green)
+_, _, dsoln = findEllipsoid(ffnet, x1min, x1max, 2, DOPTS)
+
+printstyled("beginning COPTS\n", color=:green)
+_, _, csoln = findEllipsoid(ffnet, x1min, x1max, 2, COPTS)
+
+printstyled("beginning C2OPTS\n", color=:green)
+_, _, c2soln = findEllipsoid(ffnet, x1min, x1max, 2, C2OPTS)
+
+#=
 # Hyperplane reach
 qc_input = QcInputBox(x1min=x1min, x1max=x1max)
 qc_activs = Qc.makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=2)
@@ -66,6 +85,7 @@ println("\n")
 _, _, dsolne = findEllipsoid(ffnet, x1min, x1max, dopts, 1)
 _, _, csolne = findEllipsoid(ffnet, x1min, x1max, copts, 1)
 _, _, c2solne = findEllipsoid(ffnet, x1min, x1max, c2opts, 1)
+=#
 
 
 #=

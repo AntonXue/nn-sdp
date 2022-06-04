@@ -48,6 +48,7 @@ function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::In
   soln = Methods.runQuery(reach_query, opts)
 
   ρ = soln.values[:γout][1]
+  if ρ < 0; ρ = 0 end
   newP = sqrt(ρ) * P
   return newP, yc, soln
 end

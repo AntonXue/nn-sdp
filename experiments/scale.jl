@@ -5,26 +5,27 @@ using NaturalSort
 using ArgParse
 using DataFrames
 using CSV
+using Random
+Random.seed!(1234)
 
 include("../src/NnSdp.jl"); using .NnSdp
 
 # The place where things are
 DUMP_DIR = joinpath(@__DIR__, "..", "dump", "scale")
 RAND_DIR = joinpath(@__DIR__, "..", "bench", "rand")
-dims2rand(width, depth) = joinpath(RAND_DIR, "rand-I2-O2-W$(width)-D$(depth).nnet")
+dims2scale(width, depth) = joinpath(RAND_DIR, "scale-I2-O2-W$(width)-D$(depth).nnet")
 
-DEPTHS = 5:5:50
-SMALL_FILES = [dims2rand(10, d) for d in [5, 10]]
-W10_FILES = [dims2rand(10, d) for d in DEPTHS]
-W20_FILES = [dims2rand(20, d) for d in DEPTHS]
-W30_FILES = [dims2rand(30, d) for d in DEPTHS]
-W40_FILES = [dims2rand(40, d) for d in DEPTHS]
+DEPTHS = 10:10:100
+# SMALL_FILES = [dims2scale(10, d) for d in [5, 10]]
+W10_FILES = [dims2scale(10, d) for d in DEPTHS]
+W20_FILES = [dims2scale(20, d) for d in DEPTHS]
+W30_FILES = [dims2scale(30, d) for d in DEPTHS]
+W40_FILES = [dims2scale(40, d) for d in DEPTHS]
 
 
 X1MIN = ones(2) .- 5e-1
 X1MAX = ones(2) .+ 5e-1
-BETAS = [0, 1, 2, 3, 4, 5]
-NSD_TOL = 5e-4
+BETAS = [0, 1, 2, 3, 4, 5, 6, 7]
 
 SCALE_MOSEK_OPTS = 
   Dict("QUIET" => true,
@@ -35,13 +36,14 @@ SCALE_MOSEK_OPTS =
        "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-6,
        # "MSK_IPAR_INTPNT_MAX_ITERATIONS" => 500,
        # "MSK_DPAR_DATA_SYM_MAT_TOL" => 1e-10,
+       "MSK_DPAR_DATA_SYM_MAT_TOL_HUGE" => 1e30,
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=SCALE_MOSEK_OPTS)
-COPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=OneStage())
-C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=TwoStage())
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=SingleDecomp())
+C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=DoubleDecomp())
 
 # Run a particular width-depth configuration
 function runFileOurStyle(network_file::String, x1min::VecReal, x1max::VecReal, βs, method::Symbol; dosave::Bool = true)
@@ -55,16 +57,24 @@ function runFileOurStyle(network_file::String, x1min::VecReal, x1max::VecReal, �
   # ffnet, αs = loadFromFileScaled(network_file, SqrtLogScaling())
   ffnet, αs = loadFromFileScaled(network_file, NoScaling())
   saveto = joinpath(DUMP_DIR, "$(string(method))-$(basename(network_file)).csv")
-  df = DataFrame(beta=Int[], total_secs=Real[], obj_val=Real[], term_status=String[], eigmax=Real[])
+  df = DataFrame(beta=Int[],
+                 setup_secs=Real[],
+                 solve_secs=Real[],
+                 total_secs=Real[],
+                 obj_val=Real[],
+                 term_status=String[],
+                 eigmax=Real[])
   # Now run each query
   for β in βs
     println("Running $(basename(network_file)) | $(method) | β: $(β)")
     _, _, soln = NnSdp.findEllipsoid(ffnet, x1min, x1max, β, opts)
+    setup_secs = soln.setup_time
+    solve_secs = soln.solve_time
     total_secs = soln.total_time
     obj_val = soln.objective_value
     status = soln.termination_status
-    λmax = eigmax(Matrix(soln.values[:Z]))
-    entry = (β, total_secs, obj_val, status, λmax)
+    λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
+    entry = (β, setup_secs, solve_secs, total_secs, obj_val, status, λmax)
     push!(df, entry)
     if dosave
       CSV.write(saveto, df)
@@ -100,9 +110,9 @@ function runFileBatch(network_files::Vector{String}, method::Symbol;
 end
 
 function warmup()
-  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :deepsdp, dosave=false)
-  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :chordalsdp, dosave=false)
-  runFile(dims2rand(5,5), X1MIN, X1MAX, 1:2, :chordalsdp2, dosave=false)
+  runFile(dims2scale(5,5), X1MIN, X1MAX, 1:2, :deepsdp, dosave=false)
+  runFile(dims2scale(5,5), X1MIN, X1MAX, 1:2, :chordalsdp, dosave=false)
+  runFile(dims2scale(5,5), X1MIN, X1MAX, 1:2, :chordalsdp2, dosave=false)
 end
 
 

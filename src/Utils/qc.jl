@@ -37,7 +37,7 @@ function hplaneS(normal, h, ffnet::FeedFwdNet)
 end
 
 # Uniformly sample a bunch of trajectories from an interval
-function sampleTrajs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=100000)
+function sampleTrajs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N=Int(1e5))
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
   xgaps = x1max - x1min
   box01points = rand(ffnet.xdims[1], N)
@@ -47,7 +47,7 @@ function sampleTrajs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=1
 end
 
 # Gives the covariance matrix Σ and yc such that
-function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::Int=100000)
+function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N=Int(1e5))
   ys = sampleTrajs(ffnet, x1min, x1max, N)
   yc = sum(ys) / length(ys)
   Y = hcat(ys...)
@@ -56,7 +56,7 @@ function approxEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N::I
 
   # Remap the eigenvalues [λmin, λmax] onto a nicer interval [a, b], arbitrarily picked
   a, b = 1, 4
-  eig = eigen(P)
+  eig = eigen(Symmetric(P))
   # If λmax / λmin >= b / a, ie P is too flat, then we rescale
   if maximum(eig.values) * a >= minimum(eig.values) * b
     λmin, λmax = minimum(eig.values), maximum(eig.values)
