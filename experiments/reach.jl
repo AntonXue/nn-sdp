@@ -29,6 +29,7 @@ DOPTS = DeepSdpOptions(use_dual=true, mosek_opts=REACH_MOSEK_OPTS, verbose=true)
 C2OPTS = ChordalSdpOptions(mosek_opts=REACH_MOSEK_OPTS, verbose=true, decomp_mode=DoubleDecomp())
 
 function solveAndPlotEllipses(network_file::String, x1min::Vector, x1max::Vector, βs::VecInt, opts;
+                              legend_title="",
                               saveto = joinpath(DUMP_DIR, "reach-" * basename(network_file) * ".png"))
   @assert length(βs) >= 1
   ffnet = loadFromFile(network_file)
@@ -42,12 +43,13 @@ function solveAndPlotEllipses(network_file::String, x1min::Vector, x1max::Vector
   plt = Utils.plotBoundingEllipses!(plt, xfs2D, ellipses2D)
 
   β_strs = ["β = $(β)" for β in βs]
-  labels = ["sampled pts"; β_strs]
+  labels = ["sampled"; β_strs]
   for (i, lbl) in enumerate(labels)
     plt[1][i][:label] = lbl
   end
 
-  plt = plot!(plt, legendfontsize=12)
+  # plt = plot!(plt, legendtitle=legend_title)
+  plt = plot!(plt, xtickfontsize=12, ytickfontsize=12, legendfontsize=12)
   savefig(plt, saveto)
   println("saved to: $(saveto)")
   return plt, trips
@@ -59,8 +61,8 @@ x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
 # trips = solveAndPlotEllipses(args["nnet"], x1min, x1max, βs, DOPTS)
 
-plt1, trips1 = solveAndPlotEllipses(ind2reach(10,10), x1min, x1max, βs, C2OPTS)
-plt2, trips2 = solveAndPlotEllipses(ind2reach(20,10), x1min, x1max, βs, C2OPTS)
+plt1, trips1 = solveAndPlotEllipses(ind2reach(10,10), x1min, x1max, βs, C2OPTS, legend_title="W10-D10")
+plt2, trips2 = solveAndPlotEllipses(ind2reach(20,10), x1min, x1max, βs, C2OPTS, legend_title="W20-D10")
 
 #=
 solveAndPlotEllipses(ind2acas(1,2), x1min, x1max, βs, DOPTS)
