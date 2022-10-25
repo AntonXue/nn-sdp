@@ -1,14 +1,9 @@
-# Worst case propagation of a box
-function intervalsWorstCase(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
-  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
-  # The activation function
-  function ϕ(x)
-    if ffnet.activ == :relu; return max.(x, 0)
-    elseif ffnet.activ == :tanh; return tanh.(x)
-    else; error("unsupported network: $(ffnet)")
-    end
-  end
+# Worst case propagation of a box
+function makeIntervalsInfo(::IntervalsWorstCase, x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
+  @assert length(x1min) == length(x1max) == ffnet.xdims[1]
+  # The activation
+  ϕ = ffnet.activ_func
 
   # Each x[1], x[2], ..., x[K], x[K+1] of the network
   x_intvs = Vector{PairVecReal}()
@@ -37,16 +32,11 @@ function intervalsWorstCase(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
 end
 
 # Randomized propagation. Not sound
-function intervalsSampled(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet; N = Int(1e6))
+function makeIntervalsInfo(::IntervalsSampled, x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet; N = Int(1e6))
   @assert length(x1min) == length(x1max) == ffnet.xdims[1]
 
   # The activation function
-  function ϕ(x)
-    if ffnet.activ == :relu; return max.(x, 0)
-    elseif ffnet.activ == :tanh; return tanh.(x)
-    else; error("unsupported network: $(ffnet)")
-    end
-  end
+  ϕ = ffnet.activ_func
 
   # The gap
   xgaps = x1max - x1min

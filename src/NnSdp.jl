@@ -61,7 +61,7 @@ function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, 
   qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
 
   # The output
-  yc = evalFeedFwdNet(ffnet, (x1max + x1min) / 2)
+  yc = run(ffnet, (x1max + x1min) / 2)
   qc_circle = QcReachCircle(yc=yc)
   obj_func = x -> x[1]
   reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_circle, obj_func=obj_func)

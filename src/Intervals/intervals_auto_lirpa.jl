@@ -41,7 +41,7 @@ function autoLirpaBoundsOutput(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet
 end
 
 # Interval propagation where we slice the network
-function intervalsAutoLirpaSliced(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
+function makeIntervalsInfo(::IntervalsAutoLirpaSliced, x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
   ffnets = sliceFeedFwdNet(ffnet)
   x_intvs = Vector{PairVecReal}()
   push!(x_intvs, (x1min, x1max))
@@ -64,7 +64,7 @@ function intervalsAutoLirpaSliced(x1min::VecReal, x1max::VecReal, ffnet::FeedFwd
 end
 
 # Interval propagation where we use internal nodes to get x_intvs at once
-function intervalsAutoLirpaOneShot(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
+function makeIntervalsInfo(::IntervalsAutoLirpaOneShot, x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
   @assert length(x1min) == length(x1max)
 
   # Write the ffnet to an onnx file

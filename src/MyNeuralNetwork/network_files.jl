@@ -1,9 +1,11 @@
 # File IO for neural network
 using LinearAlgebra
 using PyCall
+using NaturalSort
 
 # Load a dependency
 NNET_PARENT_DIR = joinpath(@__DIR__, "..", "..", "exts")
+MODELS_DIR = joinpath(@__DIR__, "..", "..", "models")
 include(joinpath(NNET_PARENT_DIR, "nnet_parser.jl"))
 
 # Set p bridge to NNet
@@ -13,13 +15,10 @@ end
 
 nnet_bridge = pyimport("NNet")
 
-# Load directly from an NNet file
-function loadFromNnet(nnet_file::String, activ = :relu)
-  nnet = NNet(nnet_file)
-  Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
-  ffnet = FeedFwdNet(activ=activ, xdims=nnet.layerSizes, Ms=Ms)
-  return ffnet
-end
+abstract type FileFormat end
+struct NNetFormat <: FileFormat end
+struct OnnxFormat <: FileFormat end
+struct TorchFormat <: FileFormat end
 
 # Convert an ONNX to an NNet file
 # A NNet file assumes everything is a relu
@@ -33,35 +32,51 @@ end
 
 # Convert from NNet to ONNX file
 # A NNet file does not have activation info, so we explicitly supply it
-function nnet2onnx(nnet_file::String, onnx_file::String, activ::Symbol)
+function nnet2onnx(nnet_file::String, onnx_file::String, activ::Activ)
   # These need to match the ONNX operator naming conventions
-  if activ == :relu
-    activ_str = "Relu"
-  elseif activ == :tanh
-    activ_str = "Tanh"
-  else
-    error("unsupported activation: $(ffnet.activ)")
-  end
+  activ_str = activString(activ)
   nnet_bridge.nnet2onnx(nnet_file, onnxFile=onnx_file, activ=activ_str)
 end
 
-# Load an ONNX file by first converting it to a NNet file
-function loadFromOnnx(onnx_file::String, activ = :relu)
-  nnet_file = tempname()
-  onnx2nnet(onnx_file, nnet_file)
-  return loadFromNnet(nnet_file, activ)
+# Load from NNet
+function load(::NNetFormat, file::String; activ = ReluActiv())
+  nnet = NNet(file)
+  Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
+  ffnet = FeedFwdNet(activ=activ, xdims=nnet.layerSizes, Ms=Ms)
+  return ffnet
 end
 
-# Check the extension and load accordingly
-function loadFromFile(file::String, activ = :relu)
+# Load an ONNX file by first converting it to a NNet file
+function load(::OnnxFormat, file::String; activ = ReluActiv())
+  nnet_file = tempname()
+  onnx2nnet(file, nnet_file)
+  return load(NNetFormat(), nnet_file, activ)
+end
+
+# Load stuff from torch
+function load(::TorchFormat, file::String; activ = ReluActiv())
+  torch = pyimport("torch")
+  d = torch.load(file, torch.device("cpu"))
+  params = sort(collect(d), lt=(a,b) -> natural(a[1], b[1]))
+  bs = map(kv -> kv[2].numpy()*1.0, filter(kv -> occursin("bias", kv[1]), params))
+  Ws = map(kv -> kv[2].numpy()*1.0, filter(kv -> occursin("weight", kv[1]), params))
+  @assert length(bs) == length(Ws)
+  Ms = [[W b] for (W, b) in zip(Ws, bs)]
+  xdims = [size(W)[2] for W in Ws]
+  xdims = [xdims; size(bs[end])[1]]
+  ffnet = FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
+  return ffnet
+end
+
+# Guess the extension
+function load(file::String; activ=ReluActiv())
   ext = split(file, ".")[end]
-  if ext == "nnet"
-    return loadFromNnet(file, activ)
-  elseif ext == "onnx"
-    return loadFromOnnx(file)
-  else
-    error("unrecognized file: $(file)")
-  end
+  format = if ext == "nnet"; NNetFormat()
+           elseif ext == "onnx"; OnnxFormat()
+           elseif ext == "pt" || ext == "pth"; TorchFormat()
+           else error("unrecognized: $(file)")
+           end
+  return load(format, file, activ=activ)
 end
 
 # The scaling mode that happens
@@ -70,7 +85,6 @@ struct NoScaling <: ScalingMethod end
 struct SqrtLogScaling <: ScalingMethod end
 @with_kw struct FixedNormScaling <: ScalingMethod; Wk_opnorm::Real; end
 @with_kw struct FixedConstScaling <: ScalingMethod; α::Real; end
-
 
 #= Load a relu network while scaling weights
 Use a sequence of α[1], ..., α[K] such that
@@ -81,38 +95,43 @@ Observe that: f'(x) = prod(αs) f(x)
 
 Again, this only works for piecewise-linear activations like relu
 =#
-function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
-  ffnet = loadFromFile(file, :relu)
+function loadScaled(file::String, scaling_func::Function)
+  ffnet = load(file, activ=ReluActiv())
   xdims, Ms, K = ffnet.xdims, ffnet.Ms, ffnet.K
   Ws, bs = [M[:,1:end-1] for M in Ms], [M[:,end] for M in Ms]
-
-  # Wk -> Wk with each α[k] = 1
-  if scaling isa NoScaling
-    αs = ones(K)
-  # ||Wk|| = sqrt(ck * log ck / K), where ck = xdims[k] + xdims[k+1]
-  elseif scaling isa SqrtLogScaling
-    tgt_func(ck) = sqrt(ck * log(ck) / K)
-    # tgt_func(ck) = 0.5 * sqrt(ck * log(ck) / K)
-    # tgt_func(ck) = 0.3 * sqrt(ck * log(ck) / K)
-    tgt_opnorms = [tgt_func(xdims[k]+xdims[k+1]) for k in 1:K]
-    αs = [tgt_opnorms[k] / opnorm(W) for (k, W) in enumerate(Ws)]
-  # Some fixed ||Wk||
-  elseif scaling isa FixedNormScaling
-    αs = [scaling.Wk_opnorm / opnorm(W) for W in Ws]
-  # Some fixed α
-  elseif scaling isa FixedConstScaling
-    αs = scaling.α * ones(K)
-  else
-    error("unrecognized scaling method: $(scaling)")
-  end
-
+  αs = scaling_func(ffnet)
   scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
   scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
   scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]
-  scaled_ffnet = FeedFwdNet(activ=:relu, xdims=xdims, Ms=scaled_Ms)
+  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=xdims, Ms=scaled_Ms)
   return scaled_ffnet, αs
 end
 
+scalingFunc(::NoScaling) = ffnet -> ones(ffnet.K)
+scalingFunc(sc::FixedConstScaling) = ffnet -> sc.α * ones(ffnet.K)
+
+function scalingFunc(::SqrtLogScaling)
+  return ffnet ->
+    let
+      Ws, xdims, K = [M[:,1:end-1] for M in ffnet.Ms], ffnet.xdims, ffnet.K
+      tgt_func(ck) = sqrt(ck * log(ck) / K)
+      # tgt_func(ck) = 0.5 * sqrt(ck * log(ck) / K)
+      # tgt_func(ck) = 0.3 * sqrt(ck * log(ck) / K)
+      tgt_opnorms = [tgt_func(xdims[k]+xdims[k+1]) for k in 1:K]
+      return [tgt_opnorms[k] / opnorm(W) for (k, W) in enumerate(Ws)]
+    end
+end
+
+function scalingFunc(sc::FixedNormScaling)
+  return ffnet ->
+    let
+      Ws = [M[:,1:end-1] for M in ffnet.Ms]
+      return [sc.Wk_opnorm / opnorm(W) for W in Ws]
+    end
+end
+
+# Call this
+loadScaled(file, sc::ScalingMethod) = loadScaled(file, scalingFunc(sc))
 
 # Write FeedFwdNet to a NNet file
 function writeNnet(ffnet::FeedFwdNet, nnet_file="$(homedir())/dump/hello.nnet")

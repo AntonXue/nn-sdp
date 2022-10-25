@@ -43,7 +43,7 @@ end
 
 # Do all the QCs that we could possibly use
 function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int)
-  @assert ffnet.activ == :relu || ffnet.activ == :tanh
+  @assert ffnet.activ isa ReluActiv || ffnet.activ isa TanhActiv
   @assert length(x1min) == length(x1max)
 
   # Interval propagation

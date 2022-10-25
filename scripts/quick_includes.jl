@@ -32,8 +32,8 @@ mosek_opts =
        "INTPNT_CO_TOL_PFEAS" => 1e-6,
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
-ffnet = loadFromNnet(args["nnet"], ReluActiv())
-# ffnet, αs = loadFromFileReluScaled(args["nnet"])
+ffnet = load(args["nnet"], activ=ReluActiv())
+# ffnet, αs = loadScaled(args["nnet"], activ=ReluActiv())
 x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
 

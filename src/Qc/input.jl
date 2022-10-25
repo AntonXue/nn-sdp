@@ -12,28 +12,33 @@ end
   H::MatReal
   h::VecReal
   @assert size(H)[1] == length(h)
-  vardim::Int = lenght(h)^2
+  vardim::Int = length(h)^2
 end
 
-# Make different Zin depending on the QcInput
+# P derived from box
+function makeP(γin, qc::QcInputBox, ffnet::FeedFwdNet)
+  Γ = Diagonal(γin)
+  _P11 = -2 * Γ
+  _P12 = Γ * (qc.x1min + qc.x1max)
+  _P22 = -2 * qc.x1min' * Γ * qc.x1max
+  P = [_P11 _P12; _P12' _P22]
+  return P
+end
+
+# P derived from poly
+function makeP(γin, qc::QcInputPoly, ffnet::FeedFwdNet)
+  Γ = reshape(γin, length(qc), length(qc))
+  _P11 = H' * Γ * H
+  _P12 = -H' * Γ * h
+  _P22 = h' * Γ * h
+  P = [_P11 _P12; _P12' _P22]
+  return P
+end
+
+# The actual Zin
 function makeZin(γin, qc::QcInput, ffnet::FeedFwdNet)
   @assert length(γin) == qc.vardim
-  # Qc for boxes
-  if qc isa QcInputBox
-    Γ = Diagonal(γin)
-    _P11 = -2 * Γ
-    _P12 = Γ * (qc.x1min + qc.x1max)
-    _P22 = -2 * qc.x1min' * Γ * qc.x1max
-  # Qc for polytopes
-  elseif qc isa QcInputPoly
-    _P11 = H' * Γ * H
-    _P12 = -H' * Γ * h
-    _P22 = h' * Γ * h
-  else
-    error("unrecognized qc: $(qc)")
-  end
-
-  P = [_P11 _P12; _P12' _P22]
+  P = makeP(γin, qc, ffnet)
   E1 = E(1, ffnet.zdims)
   Ea = E(ffnet.K+1, ffnet.zdims)
   Ein = [E1; Ea]

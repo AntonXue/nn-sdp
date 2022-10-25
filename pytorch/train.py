@@ -27,7 +27,7 @@ def train_controller(ctrl_model, dynamics, epochs=32, nbatches=100, bsize=64, L=
 
   ctrl_model.train()
   ctrl_model.cuda()
-  lr = 1e-5
+  lr = 1e-4
   optimizer = torch.optim.Adam(ctrl_model.parameters(), lr=lr)
   print(f"Controller training start!")
   print(f"Epochs: {epochs} | num batches: {nbatches} | batch size: {bsize} | L: {L} | lr0: {lr}")
@@ -48,7 +48,7 @@ def train_controller(ctrl_model, dynamics, epochs=32, nbatches=100, bsize=64, L=
       avg_loss = loss_sum.item() / (i + 1.0)
       pbar.set_postfix(loss=str(round(avg_loss, 3)))
 
-    if ((ep + 1) % 4) == 0:
+    if ((ep + 1) % 2) == 0:
       torch.save(ctrl_model.state_dict(), saveto)
       print(f"saved model to {saveto} | now is {datetime.now()}")
 
@@ -65,7 +65,7 @@ def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=32, nbatche
   ctrl_model.cuda()
   ctrl_model.eval()
 
-  lr = 1e-5
+  lr = 1e-4
   optimizer = torch.optim.Adam(cart_model.parameters(), lr=lr)
   print(f"Closed-loop model training start!")
   print(f"Epochs: {epochs} | num batches: {nbatches} | batch size: {bsize} | L: {L} | lr0: {lr}")
@@ -87,7 +87,7 @@ def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=32, nbatche
       avg_loss = loss_sum.item() / (i + 1.0)
       pbar.set_postfix(loss=str(round(avg_loss, 3)))
 
-    if ((ep + 1) % 4) == 0:
+    if ((ep + 1) % 2) == 0:
       torch.save(cart_model.state_dict(), saveto)
       print(f"saved model to {saveto} | now is {datetime.now()}")
 

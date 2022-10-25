@@ -32,7 +32,7 @@ function solveAndPlotEllipses(network_file::String, x1min::Vector, x1max::Vector
                               legend_title="",
                               saveto = joinpath(DUMP_DIR, "reach-" * basename(network_file) * ".png"))
   @assert length(βs) >= 1
-  ffnet = loadFromFile(network_file)
+  ffnet = load(network_file)
   xfs = Utils.sampleTrajs(ffnet, x1min, x1max)
   xfs2D = [xf[1:2] for xf in xfs]
 

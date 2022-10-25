@@ -4,10 +4,21 @@ using Parameters
 using ..MyMath
 
 # The type of neural activation
+abstract type Activ end
+struct ReluActiv <: Activ end
+struct TanhActiv <: Activ end
+
+makeActiv(::ReluActiv) = return x -> max.(x, 0)
+makeActiv(::TanhActiv) = return x -> tanh.(x)
+makeActiv(::Activ) = error("not implemented")
+
+activString(::ReluActiv) = "Relu"
+activString(::TanhActiv) = "Tanh"
 
 # Parameters needed to define the feed-forward network
 @with_kw struct FeedFwdNet
-  activ::Symbol
+  activ::Activ
+  activ_func::Function = makeActiv(activ)
 
   # The state vector dimension at start of each layer
   xdims::VecInt
@@ -23,33 +34,23 @@ using ..MyMath
   @assert all([size(Ms[k]) == (xdims[k+1], xdims[k]+1) for k in 1:K])
 end
 
-function makeActiv(activ::Symbol)
-  if activ == :relu
-    return x -> max.(x, 0)
-  elseif activ == :tanh
-    return x -> tanh.(x)
-  else
-    error("unrecognized activ: $(activ)")
-  end
-end
-
 # Evaluate the network
-function evalFeedFwdNet(ffnet::FeedFwdNet, x)
+function run(ffnet::FeedFwdNet, x)
   @assert length(x) == ffnet.xdims[1]
-  xk, ac = x, makeActiv(ffnet.activ)
-  for Mk in ffnet.Ms[1:end-1]; xk = ac(Mk * [xk; 1]) end
+  xk = x
+  for Mk in ffnet.Ms[1:end-1]; xk = ffnet.activ_func(Mk * [xk; 1]) end
   xk = ffnet.Ms[end] * [xk; 1]
   return xk
 end
 
-export FeedFwdNet, makeActiv, evalFeedFwdNet
+export FeedFwdNet, makeActiv, run
 
 include("network_files.jl")
-export loadFromNnet, loadFromOnnx, loadFromFile
+export Activ, ReluActiv, TanhActiv
+export makeActiv, activString
+export load, loadScaled
 export onnx2nnet, nnet2onnx, writeNnet, writeOnnx
-
 export ScalingMode, NoScaling, SqrtLogScaling, FixedNormScaling, FixedConstScaling
-export loadFromFileScaled
 
 end
 

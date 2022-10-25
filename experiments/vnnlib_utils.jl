@@ -57,8 +57,8 @@ end
 # Load the queries in CNF form
 function loadReluQueriesCnf(network_file::String, vnnlib_file::String, β::Int)
   @assert β >= 0
-  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
-  # ffnet, αs = loadFromFileScaled(network_file, SqrtLogScaling())
+  ffnet, αs = loadScaled(network_file, NoScaling())
+  # ffnet, αs = loadScaled(network_file, SqrtLogScaling())
   cnf_queries = Vector{Vector{SafetyQuery}}()
   cnf_spec = loadVnnlibCnf(vnnlib_file, ffnet, αs=αs)
   for disj_clause in cnf_spec

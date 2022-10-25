@@ -20,7 +20,7 @@ include("qc.jl")
 include("plots.jl")
 
 # Generate a random network given the desired dimensions at each layer
-function randomNetwork(xdims::VecInt; activ = :relu, σ = 1.0)
+function randomNetwork(xdims::VecInt; activ = ReluActiv(), σ = 1.0)
   @assert length(xdims) > 1
   Ms = [randn(xdims[k+1], xdims[k]+1) * σ for k in 1:(length(xdims) - 1)]
   return FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)

@@ -54,8 +54,8 @@ function runFileOurStyle(network_file::String, x1min::VecReal, x1max::VecReal, �
   else; error("unrecognized method: $(method)")
   end
 
-  # ffnet, αs = loadFromFileScaled(network_file, SqrtLogScaling())
-  ffnet, αs = loadFromFileScaled(network_file, NoScaling())
+  # ffnet, αs = loadScaled(network_file, SqrtLogScaling())
+  ffnet, αs = loadScaled(network_file, NoScaling())
   saveto = joinpath(DUMP_DIR, "$(string(method))-$(basename(network_file)).csv")
   df = DataFrame(beta=Int[],
                  setup_secs=Real[],

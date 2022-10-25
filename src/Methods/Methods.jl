@@ -87,6 +87,10 @@ function solve!(model, vars, opts::QueryOptions)
   return summary, values
 end
 
+# Set up the safety / reach queries
+setupQuery!(model, query::SafetyQuery, opts) = setupSafety!(model, query, opts)
+setupQuery!(model, query::ReachQuery, opts) = setupReach!(model, query, opts)
+
 # The interface to call; specialize opt-specific stuff as necessary
 function runQuery(query::Query, opts::QueryOptions)
   total_start_time = time()
@@ -94,13 +98,7 @@ function runQuery(query::Query, opts::QueryOptions)
 
   # Delegate the appropriate call depending on the kind of query
   setup_start_time = time()
-  if query isa SafetyQuery
-    _, vars = setupSafety!(model, query, opts)
-  elseif query isa ReachQuery
-    _, vars = setupReach!(model, query, opts)
-  else
-    error("unrecognized query: $(query)")
-  end
+  _, vars = setupQuery!(model, query, opts)
   setup_time = time() - setup_start_time
 
   # Get ready to return

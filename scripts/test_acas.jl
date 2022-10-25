@@ -46,7 +46,7 @@ xgaps = x1max - x1min
 box01points = rand(5, 100000)
 x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
 
-ffnet = loadFromFile(ind2acas(1,1))
+ffnet = load(ind2acas(1,1))
 
 intvs_info = makeIntervalsInfo(x1min, x1max, ffnet)
 x_intvs = intvs_info.x_intvs

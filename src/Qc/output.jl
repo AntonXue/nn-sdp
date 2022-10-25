@@ -60,42 +60,56 @@ function makeZout(qc::QcSafety, ffnet::FeedFwdNet)
   return Zout
 end
 
-# Reach Zout
+# S for a hyperplane
+function makeS(γout, qc::QcReachHplane, ffnet::FeedFwdNet)
+  xdims, zdims, K = ffnet.xdims, ffnet.zdims, ffnet.K
+  @assert length(qc.normal) == xdims[K+1]
+  @assert qc.vardim == length(γout) == 1
+  _S11 = spzeros(xdims[1], xdims[1])
+  _S12 = spzeros(xdims[1], xdims[K+1])
+  _S13 = spzeros(xdims[1])
+  _S22 = spzeros(xdims[K+1], xdims[K+1])
+  _S23 = qc.normal
+  _S33 = -2 * γout
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return S
+end
+
+# S for a circle
+function makeS(γout, qc::QcReachCircle, ffnet::FeedFwdNet)
+  xdims, zdims, K = ffnet.xdims, ffnet.zdims, ffnet.K
+  @assert length(qc.yc) == xdims[K+1]
+  @assert qc.vardim == length(γout) == 1
+  _S11 = spzeros(xdims[1], xdims[1])
+  _S12 = spzeros(xdims[1], xdims[K+1])
+  _S13 = spzeros(xdims[1])
+  _S22 = I(xdims[K+1])
+  _S23 = -qc.yc
+  _S33 = qc.yc' * qc.yc - γout[1]
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return S
+end
+
+# S for an ellipsoid
+function makeS(γout, qc::QcReachEllipsoid, ffnet::FeedFwdNet)
+  xdims, zdims, K = ffnet.xdims, ffnet.zdims, ffnet.K
+  @assert length(qc.yc) == xdims[K+1]
+  @assert qc.vardim == length(γout) == 1
+  _S11 = spzeros(xdims[1], xdims[1])
+  _S12 = spzeros(xdims[1], xdims[K+1])
+  _S13 = spzeros(xdims[1])
+  _S22 = qc.invP' * qc.invP
+  _S23 = -qc.invP' * qc.yc
+  _S33 = qc.yc' * qc.yc - γout[1]
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return S
+end
+
+# The Zout for reach
 function makeZout(γout, qc::QcReach, ffnet::FeedFwdNet)
   @assert length(γout) == qc.vardim
+  S = makeS(γout, qc, ffnet)
   xdims, zdims, K = ffnet.xdims, ffnet.zdims, ffnet.K
-  if qc isa QcReachHplane
-    @assert length(qc.normal) == xdims[K+1]
-    @assert qc.vardim == length(γout) == 1
-    _S11 = spzeros(xdims[1], xdims[1])
-    _S12 = spzeros(xdims[1], xdims[K+1])
-    _S13 = spzeros(xdims[1])
-    _S22 = spzeros(xdims[K+1], xdims[K+1])
-    _S23 = qc.normal
-    _S33 = -2 * γout
-  elseif qc isa QcReachCircle
-    @assert length(qc.yc) == xdims[K+1]
-    @assert qc.vardim == length(γout) == 1
-    _S11 = spzeros(xdims[1], xdims[1])
-    _S12 = spzeros(xdims[1], xdims[K+1])
-    _S13 = spzeros(xdims[1])
-    _S22 = I(xdims[K+1])
-    _S23 = -qc.yc
-    _S33 = qc.yc' * qc.yc - γout[1]
-  elseif qc isa QcReachEllipsoid
-    @assert length(qc.yc) == xdims[K+1]
-    @assert qc.vardim == length(γout) == 1
-    _S11 = spzeros(xdims[1], xdims[1])
-    _S12 = spzeros(xdims[1], xdims[K+1])
-    _S13 = spzeros(xdims[1])
-    _S22 = qc.invP' * qc.invP
-    _S23 = -qc.invP' * qc.yc
-    _S33 = qc.yc' * qc.yc - γout[1]
-  else
-    error("unrecognized qc: $(qc)")
-  end
-
-  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   E1 = E(1, zdims)
   EK = E(K, zdims)
   Ea = E(K+1, zdims)
