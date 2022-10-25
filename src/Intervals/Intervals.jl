@@ -6,12 +6,6 @@ using Parameters
 using ..MyMath
 using ..MyNeuralNetwork
 
-# Different interval propagation methods
-abstract type IntervalsMethod end
-struct IntervalsWorstCase <: IntervalsMethod end
-struct IntervalsSampled <: IntervalsMethod end
-struct IntervalsAutoLirpa <: IntervalsMethod end
-
 # The result of interval propagation
 @with_kw struct IntervalsInfo
   ffnet::FeedFwdNet
@@ -35,20 +29,18 @@ include("intervals_easy.jl")
 include("intervals_auto_lirpa.jl")
 
 # Do interval calculations based on the method
-function makeIntervalsInfo(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsAutoLirpa())
-# function makeIntervalsInfo(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet, method::IntervalsMethod = IntervalsSampled())
-  if method isa IntervalsWorstCase
+function makeIntervalsInfo(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet, method = :intervals_autolirpa)
+  if method == :intervals_worst_case
     return intervalsWorstCase(x1min, x1max, ffnet)
-  elseif method isa IntervalsSampled
+  elseif method == :intervals_sampled
     return intervalsSampled(x1min, x1max, ffnet)
-  elseif method isa IntervalsAutoLirpa
+  elseif method == :intervals_autolirpa
     return intervalsAutoLirpaSliced(x1min, x1max, ffnet)
   else
     error("unrecognized method: $(method)")
   end
 end
 
-export IntervalsMethod, IntervalsWorstCase, IntervalsSampled, IntervalsAutoLirpa
 export IntervalsInfo
 export makeIntervalsInfo
 

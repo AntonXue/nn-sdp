@@ -4,13 +4,10 @@ using Parameters
 using ..MyMath
 
 # The type of neural activation
-abstract type Activ end
-struct ReluActiv <: Activ end
-struct TanhActiv <: Activ end
 
 # Parameters needed to define the feed-forward network
 @with_kw struct FeedFwdNet
-  activ::Activ
+  activ::Symbol
 
   # The state vector dimension at start of each layer
   xdims::VecInt
@@ -26,10 +23,10 @@ struct TanhActiv <: Activ end
   @assert all([size(Ms[k]) == (xdims[k+1], xdims[k]+1) for k in 1:K])
 end
 
-function makeActiv(activ::Activ)
-  if activ isa ReluActiv
+function makeActiv(activ::Symbol)
+  if activ == :relu
     return x -> max.(x, 0)
-  elseif activ isa TanhActiv
+  elseif activ == :tanh
     return x -> tanh.(x)
   else
     error("unrecognized activ: $(activ)")
@@ -45,7 +42,6 @@ function evalFeedFwdNet(ffnet::FeedFwdNet, x)
   return xk
 end
 
-export Activ, ReluActiv, TanhActiv
 export FeedFwdNet, makeActiv, evalFeedFwdNet
 
 include("network_files.jl")

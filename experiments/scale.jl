@@ -42,8 +42,8 @@ SCALE_MOSEK_OPTS =
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 DOPTS = DeepSdpOptions(use_dual=true, verbose=true, mosek_opts=SCALE_MOSEK_OPTS)
-COPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=SingleDecomp())
-C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=DoubleDecomp())
+COPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=:single_decomp)
+C2OPTS = ChordalSdpOptions(verbose=true, mosek_opts=SCALE_MOSEK_OPTS, decomp_mode=:double_decomp)
 
 # Run a particular width-depth configuration
 function runFileOurStyle(network_file::String, x1min::VecReal, x1max::VecReal, βs, method::Symbol; dosave::Bool = true)

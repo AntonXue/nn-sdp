@@ -1,16 +1,11 @@
 include("chordal_cliques.jl")
 
-# Decomposition modes
-abstract type DecompMode end
-struct SingleDecomp <: DecompMode end
-struct DoubleDecomp <: DecompMode end
-struct DoubleRelaxDecomp <: DecompMode end
-
 # Chordal-DeepSdp-specific options
 @with_kw struct ChordalSdpOptions <: QueryOptions
   include_default_mosek_opts::Bool = true
   mosek_opts::Dict{String, Any} = Dict()
-  decomp_mode::DecompMode = SingleDecomp()
+  # single_deocmp, double_decomp, double_relax_decomp
+  decomp_mode = :single_decomp
   use_dual::Bool = false
   verbose::Bool = false
 end
@@ -22,7 +17,7 @@ function setupZs!(model, cliques, query::Query, opts::ChordalSdpOptions)
   for (Ck, _, Dks) in cliques
     Ckdim = length(Ck)
     # Use two-stage decomposition
-    if opts.decomp_mode isa DoubleDecomp || opts.decomp_mode isa DoubleRelaxDecomp
+    if opts.decomp_mode == :double_decomp || opts.decomp_mode == :double_relax_decomp
       # This is the case for k == 1 and k == p
       if length(Dks) == 1
         @assert length(Dks[1]) == Ckdim

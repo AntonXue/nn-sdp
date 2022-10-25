@@ -26,7 +26,7 @@ REACH_MOSEK_OPTS =
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 DOPTS = DeepSdpOptions(use_dual=true, mosek_opts=REACH_MOSEK_OPTS, verbose=true)
-C2OPTS = ChordalSdpOptions(mosek_opts=REACH_MOSEK_OPTS, verbose=true, decomp_mode=DoubleDecomp())
+C2OPTS = ChordalSdpOptions(mosek_opts=REACH_MOSEK_OPTS, verbose=true, decomp_mode=:double_decomp)
 
 function solveAndPlotEllipses(network_file::String, x1min::Vector, x1max::Vector, βs::VecInt, opts;
                               legend_title="",

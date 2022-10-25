@@ -1,6 +1,6 @@
 
 @with_kw struct QcActivSector <: QcActiv
-  activ::Activ
+  activ::Symbol
   acxdim::Int
   β::Int
   base_smin::Real
@@ -16,7 +16,7 @@
   @assert all(smax .<= base_smax)
   # vardim::Int = sum((acxdim-β):acxdim)
   _λdim::Int = sum((acxdim-β):acxdim) # The base amount
-  vardim::Int = (activ isa ReluActiv) ? _λdim + 2 * acxdim : _λdim
+  vardim::Int = (activ == :relu) ? _λdim + 2 * acxdim : _λdim
 end
 
 # The construction of Q, which will be used in Zac
@@ -46,7 +46,7 @@ function makeQ(γac, qc::QcActivSector)
   _Q23 = spzeros(size(_Q22)[1])
   _Q33 = 0
 
-  if qc.activ isa ReluActiv
+  if qc.activ == :relu
     λend = qc._λdim
     ηstart, ηend = (qc._λdim + 1), (qc._λdim + qc.acxdim)
     νstart, νend = ηend + 1, qc.vardim
@@ -60,10 +60,10 @@ function makeQ(γac, qc::QcActivSector)
 end
 
 # Calculate smin and smax info given some interval information
-function makeSectorMinMax(acxmin::VecReal, acxmax::VecReal, activ::Activ)
+function makeSectorMinMax(acxmin::VecReal, acxmax::VecReal, activ::Symbol)
   @assert length(acxmin) == length(acxmax)
   ε = 1e-4
-  if activ isa ReluActiv
+  if activ == :relu
     Ipos = findall(z -> z > ε, acxmin)
     Ineg = findall(z -> z < -ε, acxmax)
     smin, smax = zeros(length(acxmin)), ones(length(acxmax))
@@ -71,7 +71,7 @@ function makeSectorMinMax(acxmin::VecReal, acxmax::VecReal, activ::Activ)
     smax[Ineg] .= 0.0
     return smin, smax
 
-  elseif activ isa TanhActiv
+  elseif activ == :tanh
     smin, smax = spzeros(length(acxmin)), ones(length(acxmax))
     for i in 1:length(acxmin)
       if acxmin[i] * acxmax[i] >= 0

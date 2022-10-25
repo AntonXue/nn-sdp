@@ -38,8 +38,8 @@ x1min, x1max = ones(2) .- 5e-1, ones(2) .+ 5e-1
 
 
 DOPTS = DeepSdpOptions(use_dual=true, mosek_opts=mosek_opts, verbose=true)
-COPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=SingleDecomp())
-C2OPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=DoubleDecomp())
+COPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:single_decomp)
+C2OPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:double_decomp)
 
 x1min = ones(2) .- 5e-1
 x1max = ones(2) .+ 5e-1

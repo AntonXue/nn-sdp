@@ -4,8 +4,8 @@ function intervalsWorstCase(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet)
 
   # The activation function
   function ϕ(x)
-    if ffnet.activ isa ReluActiv; return max.(x, 0)
-    elseif ffnet.activ isa TanhActiv; return tanh.(x)
+    if ffnet.activ == :relu; return max.(x, 0)
+    elseif ffnet.activ == :tanh; return tanh.(x)
     else; error("unsupported network: $(ffnet)")
     end
   end
@@ -42,8 +42,8 @@ function intervalsSampled(x1min::VecReal, x1max::VecReal, ffnet::FeedFwdNet; N =
 
   # The activation function
   function ϕ(x)
-    if ffnet.activ isa ReluActiv; return max.(x, 0)
-    elseif ffnet.activ isa TanhActiv; return tanh.(x)
+    if ffnet.activ == :relu; return max.(x, 0)
+    elseif ffnet.activ == :tanh; return tanh.(x)
     else; error("unsupported network: $(ffnet)")
     end
   end

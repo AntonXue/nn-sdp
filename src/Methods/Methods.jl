@@ -138,7 +138,6 @@ export DeepSdpOptions, ChordalSdpOptions
 
 include("chordal_sdp.jl")
 export ChordalSdpOptions
-export DecompMode, SingleDecomp, DoubleDecomp, DoubleRelaxDecomp
 
 #
 export runQuery

@@ -14,7 +14,7 @@ end
 nnet_bridge = pyimport("NNet")
 
 # Load directly from an NNet file
-function loadFromNnet(nnet_file::String, activ::Activ = ReluActiv())
+function loadFromNnet(nnet_file::String, activ = :relu)
   nnet = NNet(nnet_file)
   Ms = [[nnet.weights[k] nnet.biases[k]] for k in 1:nnet.numLayers]
   ffnet = FeedFwdNet(activ=activ, xdims=nnet.layerSizes, Ms=Ms)
@@ -33,11 +33,11 @@ end
 
 # Convert from NNet to ONNX file
 # A NNet file does not have activation info, so we explicitly supply it
-function nnet2onnx(nnet_file::String, onnx_file::String, activ::Activ)
+function nnet2onnx(nnet_file::String, onnx_file::String, activ::Symbol)
   # These need to match the ONNX operator naming conventions
-  if activ isa ReluActiv
+  if activ == :relu
     activ_str = "Relu"
-  elseif activ isa TanhActiv
+  elseif activ == :tanh
     activ_str = "Tanh"
   else
     error("unsupported activation: $(ffnet.activ)")
@@ -46,14 +46,14 @@ function nnet2onnx(nnet_file::String, onnx_file::String, activ::Activ)
 end
 
 # Load an ONNX file by first converting it to a NNet file
-function loadFromOnnx(onnx_file::String, activ::Activ = ReluActiv())
+function loadFromOnnx(onnx_file::String, activ = :relu)
   nnet_file = tempname()
   onnx2nnet(onnx_file, nnet_file)
   return loadFromNnet(nnet_file, activ)
 end
 
 # Check the extension and load accordingly
-function loadFromFile(file::String, activ::Activ = ReluActiv())
+function loadFromFile(file::String, activ = :relu)
   ext = split(file, ".")[end]
   if ext == "nnet"
     return loadFromNnet(file, activ)
@@ -82,7 +82,7 @@ Observe that: f'(x) = prod(αs) f(x)
 Again, this only works for piecewise-linear activations like relu
 =#
 function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
-  ffnet = loadFromFile(file, ReluActiv())
+  ffnet = loadFromFile(file, :relu)
   xdims, Ms, K = ffnet.xdims, ffnet.Ms, ffnet.K
   Ws, bs = [M[:,1:end-1] for M in Ms], [M[:,end] for M in Ms]
 
@@ -109,7 +109,7 @@ function loadFromFileScaled(file::String, scaling::ScalingMethod = NoScaling())
   scaled_Ws = [αs[k] * Ws[k] for k in 1:K]
   scaled_bs = [prod(αs[1:k]) * bs[k] for k in 1:K]
   scaled_Ms = [[scaled_Ws[k] scaled_bs[k]] for k in 1:K]
-  scaled_ffnet = FeedFwdNet(activ=ReluActiv(), xdims=xdims, Ms=scaled_Ms)
+  scaled_ffnet = FeedFwdNet(activ=:relu, xdims=xdims, Ms=scaled_Ms)
   return scaled_ffnet, αs
 end
 
