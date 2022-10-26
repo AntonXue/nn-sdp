@@ -86,7 +86,7 @@ def make_closed_loop_cartpole(nc=50):
     nn.ReLU(),
     nn.Linear(nc,nc),
     nn.ReLU(),
-    nn.Linear(nc, 1))
+    nn.Linear(nc, 4))
 
 def concat_sequentials(seq1, seq2):
   assert isinstance(seq1, nn.Sequential) and isinstance(seq2, nn.Sequential)

@@ -56,6 +56,34 @@ end
 # Load stuff from torch
 function load(::TorchFormat, file::String; activ = ReluActiv())
   torch = pyimport("torch")
+  # Sequential(Linear, Relu, Linear, Relu, ... Relu, Linear)
+  nnseq = torch.load(file, torch.device("cpu"))
+  isinst = pybuiltin(:isinstance)
+  @assert isinst(nnseq, torch.nn.Sequential)
+  activ = nothing
+  Ms = Vector{Matrix}()
+  for (i, m) in enumerate(nnseq.children())
+    # Even: expect Relu or tanh
+    if i % 2 == 0
+      if isinst(m, torch.nn.ReLU) && activ == nothing; activ = ReluActiv()
+      elseif isinst(m, torch.nn.ReLU) && activ isa ReluActiv;
+      elseif isinst(m, torch.nn.Tanh) && activ == nothing; activ = TanhActiv()
+      elseif isinst(m, torch.nn.Tanh) && activ isa TanhActiv;
+      else error("mod is $(m) and activ is $(activ)")
+      end
+    # Odd: expect linear
+    else
+      @assert isinst(m, torch.nn.Linear)
+      W, b = 1.0 * m.weight.data.numpy(), 1.0 * m.bias.data.numpy()
+      push!(Ms, [W b])
+    end
+  end
+  xdims = [size(M)[1] for M in Ms]
+  xdims = [size(Ms[1])[2]-1; xdims]
+  ffnet = FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
+  return ffnet
+
+  #=
   d = torch.load(file, torch.device("cpu"))
   params = sort(collect(d), lt=(a,b) -> natural(a[1], b[1]))
   bs = map(kv -> kv[2].numpy()*1.0, filter(kv -> occursin("bias", kv[1]), params))
@@ -66,6 +94,7 @@ function load(::TorchFormat, file::String; activ = ReluActiv())
   xdims = [xdims; size(bs[end])[1]]
   ffnet = FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
   return ffnet
+  =#
 end
 
 # Guess the extension

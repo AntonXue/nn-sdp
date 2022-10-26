@@ -32,6 +32,34 @@ precompile(solveQuery, (Query, DeepSdpOptions))
 precompile(solveQuery, (Query, ChordalSdpOptions))
 
 #
+function findReachBox(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, opts::QueryOptions)
+  qc_input = QcInputBox(x1min=x1min, x1max=x1max)
+  qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
+
+  outs = Vector{Any}()
+  dK1 = ffnet.xdims[end]
+  for i in 1:dK1
+    eplus, eminus = Vector(e(i, dK1)), Vector(-e(i, dK1))
+    push!(outs, (eplus, QcReachHplane(normal=eplus)))
+    push!(outs, (eminus, QcReachHplane(normal=eminus)))
+  end
+
+  solveds = Vector{Any}()
+  for (ei, qc_out) in outs
+    println("Trying to do: $(ei)")
+    reach_query = ReachQuery(ffnet = ffnet,
+                             qc_input = qc_input,
+                             qc_activs = qc_activs,
+                             qc_reach = qc_out,
+                             obj_func = x -> x[1])
+    soln = Methods.runQuery(reach_query, opts)
+    ρ = soln.values[:γout][1]
+    push!(solveds, (ei, ρ))
+  end
+  return solveds
+end
+
+#
 function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, opts::QueryOptions)
   # Calculate qc input first
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
@@ -43,8 +71,11 @@ function findEllipsoid(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::In
   invP = Symmetric(inv(P))
 
   qc_ellipsoid = QcReachEllipsoid(invP=invP, yc=yc)
-  obj_func = x -> x[1]
-  reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_ellipsoid, obj_func=obj_func)
+  reach_query = ReachQuery(ffnet = ffnet,
+                           qc_input = qc_input,
+                           qc_activs = qc_activs,
+                           qc_reach = qc_ellipsoid,
+                           obj_func = x -> x[1])
   soln = Methods.runQuery(reach_query, opts)
 
   ρ = soln.values[:γout][1]
@@ -63,8 +94,11 @@ function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, 
   # The output
   yc = run(ffnet, (x1max + x1min) / 2)
   qc_circle = QcReachCircle(yc=yc)
-  obj_func = x -> x[1]
-  reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_circle, obj_func=obj_func)
+  reach_query = ReachQuery(ffnet = ffnet,
+                           qc_input = qc_input,
+                           qc_activs = qc_activs,
+                           qc_reach = qc_circle,
+                           obj_func = x -> x[1])
   soln = Methods.runQuery(reach_query, opts)
   return soln
 end
@@ -85,7 +119,11 @@ function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::
     
     qc_reach = QcReachHplane(normal=normal)
     obj_func = x -> x[1]
-    reach_query = ReachQuery(ffnet=ffnet, qc_input=qc_input, qc_activs=qc_activs, qc_reach=qc_reach, obj_func=obj_func)
+    reach_query = ReachQuery(ffnet = ffnet,
+                             qc_input = qc_input,
+                             qc_activs = qc_activs,
+                             qc_reach = qc_reach,
+                             obj_func = x -> x[1])
     soln = Methods.runQuery(reach_query, opts)
     push!(hplanes, (normal, soln.objective_value))
     push!(solns, soln)

@@ -49,10 +49,10 @@ def train_controller(ctrl_model, dynamics, epochs=32, nbatches=100, bsize=64, L=
       pbar.set_postfix(loss=str(round(avg_loss, 3)))
 
     if ((ep + 1) % 2) == 0:
-      torch.save(ctrl_model.state_dict(), saveto)
+      torch.save(ctrl_model, saveto)
       print(f"saved model to {saveto} | now is {datetime.now()}")
 
-  torch.save(ctrl_model.state_dict(), saveto)
+  torch.save(ctrl_model, saveto)
 
   return ctrl_model
 
@@ -88,10 +88,10 @@ def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=32, nbatche
       pbar.set_postfix(loss=str(round(avg_loss, 3)))
 
     if ((ep + 1) % 2) == 0:
-      torch.save(cart_model.state_dict(), saveto)
+      torch.save(cart_model, saveto)
       print(f"saved model to {saveto} | now is {datetime.now()}")
 
-  torch.save(cart_model.state_dict(), saveto)
+  torch.save(cart_model, saveto)
 
   return cart_model
    

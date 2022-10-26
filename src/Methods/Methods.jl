@@ -111,10 +111,10 @@ function runQuery(query::Query, opts::QueryOptions)
     total_time_str = string(round(total_time, digits=3))
     obj_value_str = string(round(objective_value(model), digits=5))
     obj_status_str = string(summary.termination_status)
-    λmaxZ_str = string(round(eigmax(Symmetric(Matrix(values[:Z]))), digits=7))
     λminZ_str = string(round(eigmin(Symmetric(Matrix(values[:Z]))), digits=7))
+    λmaxZ_str = string(round(eigmax(Symmetric(Matrix(values[:Z]))), digits=7))
     times_str = "setup: $(setup_time_str) \tsolve: $(solve_time_str) \ttotal: $(total_time_str)"
-    values_str = "obj: $(obj_value_str) ($(obj_status_str)) \tλmax, λmin: ($(λmaxZ_str), $(λminZ_str))"
+    values_str = "obj: $(obj_value_str) ($(obj_status_str)) \tλmin, λmax: ($(λminZ_str), $(λmaxZ_str))"
     println("$(times_str) \t$(values_str)")
   end
   return QuerySolution(
