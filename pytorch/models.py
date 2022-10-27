@@ -1,10 +1,13 @@
+import sys
+import os
 import torch
 import torch.nn as nn
+import copy
 
 DT = 0.05
 
 # Cartpoly dynamics
-def cartpole_dynamics(z, u, m_cart=2.0, m_pole=1.0, l=2.0, g=9.81):
+def old_cartpole_dynamics(z, u, m_cart=0.25, m_pole=0.1, l=0.4, g=9.81):
   assert z.ndim == 3
   bsize, L, _ = z.shape
   assert u.shape == torch.Size([bsize, L, 1])
@@ -35,6 +38,28 @@ def cartpole_dynamics(z, u, m_cart=2.0, m_pole=1.0, l=2.0, g=9.81):
   # Accumulate stuff and return
   ddx = Bc[:,:,0]
   ddtheta = Bc[:,:,1]
+  dz = torch.cat([dx, ddx, dtheta, ddtheta], dim=2)
+  return dz
+
+def cartpole_dynamics(z, u, m_cart=0.25, m_pole=0.1, l=0.4, g=9.81):
+  assert z.ndim == 3
+  bsize, L, _ = z.shape
+  assert u.shape == torch.Size([bsize, L, 1])
+  assert z.device == u.device
+  dev = z.device
+
+  x, dx, theta, dtheta = z[:,:,0:1], z[:,:,1:2], z[:,:,2:3], z[:,:,3:4]
+
+  M = m_cart + m_pole
+
+  ddtheta_top_1 = (-u - m_pole * l * dtheta**2 * torch.sin(theta)) / M
+  ddtheta_top = g*torch.sin(theta) + torch.cos(theta) * ddtheta_top_1
+  ddtheta_bot = l*((4/3) - (m_pole * torch.cos(theta)**2 / M))
+  ddtheta = ddtheta_top / ddtheta_bot
+
+  ddx_top = u + m_pole*l * (dtheta**2 * torch.sin(theta) - ddtheta*torch.cos(theta))
+  ddx = ddx_top / M
+
   dz = torch.cat([dx, ddx, dtheta, ddtheta], dim=2)
   return dz
 
@@ -78,7 +103,13 @@ def make_neural_controller(nc=50):
     nn.ReLU(),
     nn.Linear(nc, 1))
 
-def make_closed_loop_cartpole(nc=50):
+def make_zero_controller():
+  lin = nn.Linear(4, 1, bias=True)
+  lin.weight.data[:] = 0
+  lin.bias.data[:] = 0
+  return nn.Sequential(lin)
+
+def make_closed_loop_cartpole(nc=40):
   return nn.Sequential(
     nn.Linear(4, nc),
     nn.ReLU(),
@@ -90,6 +121,7 @@ def make_closed_loop_cartpole(nc=50):
 
 def concat_sequentials(seq1, seq2):
   assert isinstance(seq1, nn.Sequential) and isinstance(seq2, nn.Sequential)
+  seq1, seq2 = copy.deepcopy(seq1), copy.deepcopy(seq2)
   xs, ys = list(seq1.children()), list(seq2.children())
   xlast, yfirst = xs[-1], ys[0]
   assert isinstance(xlast, nn.Linear) and isinstance(yfirst, nn.Linear)
@@ -104,4 +136,24 @@ def concat_sequentials(seq1, seq2):
   mods = xs[:-1] + [lin] + ys[1:]
   seq = nn.Sequential(*mods)
   return seq
+
+
+def unroll_and_save(model, models_dir, base_name="cartpole"):
+  model1 = copy.deepcopy(model)
+  model2 = concat_sequentials(model1, model1)
+  model3 = concat_sequentials(model2, model1)
+  model4 = concat_sequentials(model3, model1)
+  model5 = concat_sequentials(model4, model1)
+  model6 = concat_sequentials(model5, model1)
+  model7 = concat_sequentials(model6, model1)
+  model8 = concat_sequentials(model7, model1)
+
+  torch.save(model1, os.path.join(models_dir, base_name + "1.pth"))
+  torch.save(model2, os.path.join(models_dir, base_name + "2.pth"))
+  torch.save(model3, os.path.join(models_dir, base_name + "3.pth"))
+  torch.save(model4, os.path.join(models_dir, base_name + "4.pth"))
+  torch.save(model5, os.path.join(models_dir, base_name + "5.pth"))
+  torch.save(model6, os.path.join(models_dir, base_name + "6.pth"))
+  torch.save(model7, os.path.join(models_dir, base_name + "7.pth"))
+  torch.save(model8, os.path.join(models_dir, base_name + "8.pth"))
 

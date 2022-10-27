@@ -67,7 +67,7 @@ end
 
 # TODO: add more varieties as needed
 function makeQcActivs(ffnet::FeedFwdNet; x1min = nothing, x1max = nothing, β=nothing)
-  @assert x1min isa VecReal && x1max isa VecReal && β isa Int
+  @assert (x1min isa VecReal) && (x1max isa VecReal) && (β isa Int)
   return makeQcActivsIntvs(ffnet, x1min, x1max, β)
 end
 

@@ -42,6 +42,9 @@ function findReachBox(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int
     eplus, eminus = Vector(e(i, dK1)), Vector(-e(i, dK1))
     push!(outs, (eplus, QcReachHplane(normal=eplus)))
     push!(outs, (eminus, QcReachHplane(normal=eminus)))
+    
+    # TODO: remove this
+    break
   end
 
   solveds = Vector{Any}()
@@ -54,7 +57,7 @@ function findReachBox(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int
                              obj_func = x -> x[1])
     soln = Methods.runQuery(reach_query, opts)
     ρ = soln.values[:γout][1]
-    push!(solveds, (ei, ρ))
+    push!(solveds, (ei, ρ, soln.termination_status))
   end
   return solveds
 end

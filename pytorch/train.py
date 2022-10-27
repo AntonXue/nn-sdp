@@ -13,11 +13,14 @@ torch.manual_seed(1234)
 BASE_DIR = os.path.join(os.path.dirname(__file__), "..")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
+cpu = torch.device("cpu")
+cuda = torch.device("cuda")
+
 def make_x0(bsize):
-  x = torch.clamp(torch.randn(bsize, 1, 1), -1.0, 1.0)
-  dx = torch.clamp(torch.randn(bsize, 1, 1), -1.0, 1.0)
-  theta = torch.clamp(torch.randn(bsize, 1, 1), -1.0, 1.0)
-  dtheta = torch.clamp(torch.randn(bsize, 1, 1), -0.5, 0.5)
+  x = torch.clamp(torch.randn(bsize, 1, 1), 2.0, 2.2)
+  dx = torch.clamp(torch.randn(bsize, 1, 1), 1.0, 1.2)
+  theta = torch.clamp(torch.randn(bsize, 1, 1), -0.174, -0.104)
+  dtheta = torch.clamp(torch.randn(bsize, 1, 1), -1.0, -0.8)
   z = torch.cat([x, dx, theta, dtheta], dim=2)
   return z
 
@@ -41,7 +44,8 @@ def train_controller(ctrl_model, dynamics, epochs=32, nbatches=100, bsize=64, L=
       x0 = x0.cuda()
       xs_pred = dynamics_traj(dynamics, ctrl_model, x0, L)
       xs_pred = xs_pred.cpu()
-      loss = loss_fn(xs_pred, torch.zeros_like(xs_pred))
+      thetas_pred = xs_pred[:,:,2]
+      loss = loss_fn(thetas_pred, torch.zeros_like(thetas_pred))
       loss_sum += loss
       loss.backward()
       optimizer.step()
@@ -56,7 +60,7 @@ def train_controller(ctrl_model, dynamics, epochs=32, nbatches=100, bsize=64, L=
 
   return ctrl_model
 
-def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=32, nbatches=100, bsize=64, L=60, saveto=None):
+def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=100, nbatches=100, bsize=64, L=60, saveto=None):
   if saveto is None:
     saveto = os.path.join(MODELS_DIR, "cart.pth")
 
@@ -75,6 +79,7 @@ def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=32, nbatche
     pbar = tqdm(range(0, nbatches))
     pbar.set_description(f"Epoch {ep+1}/{epochs}")
     for i in pbar:
+      optimizer.zero_grad()
       x0 = make_x0(bsize)
       x0 = x0.cuda()
       xs_pred = closed_loop_traj(cart_model, x0, L)
@@ -95,19 +100,15 @@ def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=32, nbatche
 
   return cart_model
    
-
-cpu = torch.device("cpu")
-cuda = torch.device("cuda")
-
 ctrl = make_neural_controller()
+zero_ctrl = make_zero_controller()
 cart = make_closed_loop_cartpole()
 
 try:
   neural_ctrl = make_neural_controller()
-  neural_ctrl.load_state_dict(torch.load(os.path.join(MODELS_DIR, "ctrl.pth"), cpu))
+  neural_ctrl = torch.load(os.path.join(MODELS_DIR, "ctrl.pth"), cpu)
+  trained_cart = torch.load(os.path.join(MODELS_DIR, "cart.pth"), cpu)
 except:
   pass
-
-neural_ctrl
 
 
