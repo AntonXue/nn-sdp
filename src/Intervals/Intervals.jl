@@ -15,6 +15,7 @@ struct IntervalsAutoLirpaOneShot <: IntervalsMethod end
 
 # Default methods
 makeIntervalsInfo(x1min, x1max, ffnet) = makeIntervalsInfo(IntervalsAutoLirpaSliced(), x1min, x1max, ffnet)
+# makeIntervalsInfo(x1min, x1max, ffnet) = makeIntervalsInfo(IntervalsSampled(), x1min, x1max, ffnet)
 makeIntervalsInfo(::IntervalsMethod, x1min, x1max, ffnet) = error("not implemented")
 
 # The result of interval propagation

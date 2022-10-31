@@ -42,7 +42,7 @@ function sampleTrajs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, N=Int(1e
   xgaps = x1max - x1min
   box01points = rand(ffnet.xdims[1], N)
   x1s = [x1min + (p .* xgaps) for p in eachcol(box01points)]
-  ys = [run(ffnet, x1) for x1 in x1s]
+  ys = [evalNet(ffnet, x1) for x1 in x1s]
   return ys
 end
 

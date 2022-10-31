@@ -1,6 +1,7 @@
 start_time = time()
 
 using LinearAlgebra
+using Distributions
 using ArgParse
 using Printf
 using Dates
@@ -32,14 +33,77 @@ x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
 makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
-ts = [1; 2; 3; 4; 5]
-dims = [1; 2]
-βs = [0; 1]
-
+ffnet_cartpole = makeCartpole(1)
+ts = [1; 2; 3; 4; 5; 6; 7; 8]
+# dims = [1; 2]
+# βs = [0; 1]
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
+function cartpole(z::Vector, F::Real; m_cart=0.25, m_pole=0.1, l=0.4, g=9.81)
+  @assert length(z) == 4
+  x, dx, θ, dθ = z[1], z[2], z[3], z[4]
+  M = m_pole + m_cart
+  ddθ_top = g*sin(θ) + cos(θ) * ((-F - m_pole * l * dθ^2 * sin(θ)) / M)
+  ddθ_bot = l * ((4/3) - (m_pole * cos(θ)^2 / M))
+  ddθ = ddθ_top / ddθ_bot
+  ddx_top = F + m_pole * l * (dθ^2 * sin(θ) - ddθ*cos(θ))
+  ddx = ddx_top / M
+  dz = [dx; ddx; dθ; ddθ]
+  return dz
+end
+
+function cartpoleTraj(z1::Vector, T; dt = 0.05)
+  zs = [z1]
+  zt = z1
+  for t in 2:T
+    dzt = cartpole(zt, 0.0)
+    zt = zt + dt*zt
+    push!(zs, zt)
+  end
+  return zs
+end
+
+function randx1(z1min, z1max)
+  x1 = rand(Uniform(z1min[1], z1max[1]))
+  x2 = rand(Uniform(z1min[2], z1max[2]))
+  x3 = rand(Uniform(z1min[3], z1max[3]))
+  x4 = rand(Uniform(z1min[4], z1max[4]))
+  z1 = Vector{Float64}([x1; x2; x3; x4])
+  return z1
+end
+
+function randomCartpoleTrajs(z1min, z1max, T; N = 1000)
+  trajs = Vector{Any}()
+  for n in 1:N
+    z1 = randx1(z1min, z1max)
+    traj = cartpoleTraj(z1, T)
+    push!(trajs, traj)
+  end
+  return trajs
+end
+
+function runFeedFwdNetTraj(ffnet, x1, T)
+  xs, xt = [x1], x1
+  for t in 2:T
+    xt = evalNet(ffnet, xt)
+    push!(xs, xt)
+  end
+  return xs
+end
+
+function randomNeuralCartpoleTrajs(z1min, z1max, T; N = 1000)
+  trajs = Vector{Any}()
+  for n in 1:N
+    z1 = randx1(z1min, z1max)
+    traj = runFeedFwdNetTraj(ffnet_cartpole, z1, T)
+    push!(trajs, traj)
+  end
+  return trajs
+end
+
+# Neural trajectory of cartpole
 
 # Run a single β, dim pair
 function go(β, dim, opts; dosave = true)
@@ -53,8 +117,8 @@ function go(β, dim, opts; dosave = true)
                  neg_setup_secs = Real[],
                  pos_solve_secs = Real[],
                  neg_solve_secs = Real[],
-                 pos_total_sects = Real[],
-                 neg_total_sects = Real[],
+                 pos_total_secs = Real[],
+                 neg_total_secs = Real[],
                  pos_term_status = String[],
                  neg_term_status = String[],
                  pos_eigmax = Real[],
@@ -102,22 +166,35 @@ function go(β, dim, opts; dosave = true)
   end
 end
 
-# β = 0
-go(0, 1, DOPTS)
-go(0, 2, DOPTS)
-go(0, 3, DOPTS)
-go(0, 4, DOPTS)
+function goAll()
+  # β = 0
+  go(0, 1, DOPTS)
+  go(0, 2, DOPTS)
+  go(0, 3, DOPTS)
+  go(0, 4, DOPTS)
 
-# β = 1
-go(1, 1, C2OPTS)
-go(1, 2, C2OPTS)
-go(1, 3, C2OPTS)
-go(1, 4, C2OPTS)
+  # β = 1
+  go(1, 1, C2OPTS)
+  go(1, 2, C2OPTS)
+  go(1, 3, C2OPTS)
+  go(1, 4, C2OPTS)
 
-# β = 2
-go(2, 1, C2OPTS)
-go(2, 2, C2OPTS)
-go(2, 3, C2OPTS)
-go(2, 4, C2OPTS)
+  # β = 2
+  go(2, 1, C2OPTS)
+  go(2, 2, C2OPTS)
+  go(2, 3, C2OPTS)
+  go(2, 4, C2OPTS)
 
+  # β = 3
+  go(3, 1, C2OPTS)
+  go(3, 2, C2OPTS)
+  go(3, 3, C2OPTS)
+  go(3, 4, C2OPTS)
+
+  # β = 4
+  go(4, 1, C2OPTS)
+  go(4, 2, C2OPTS)
+  go(4, 3, C2OPTS)
+  go(4, 4, C2OPTS)
+end
 

@@ -35,7 +35,7 @@ activString(::TanhActiv) = "Tanh"
 end
 
 # Evaluate the network
-function run(ffnet::FeedFwdNet, x)
+function evalNet(ffnet::FeedFwdNet, x)
   @assert length(x) == ffnet.xdims[1]
   xk = x
   for Mk in ffnet.Ms[1:end-1]; xk = ffnet.activ_func(Mk * [xk; 1]) end
@@ -43,7 +43,7 @@ function run(ffnet::FeedFwdNet, x)
   return xk
 end
 
-export FeedFwdNet, makeActiv, run
+export FeedFwdNet, makeActiv, evalNet
 
 include("network_files.jl")
 export Activ, ReluActiv, TanhActiv
