@@ -78,23 +78,10 @@ function load(::TorchFormat, file::String; activ = ReluActiv())
       push!(Ms, [W b])
     end
   end
-  xdims = [size(M)[1] for M in Ms]
-  xdims = [size(Ms[1])[2]-1; xdims]
+  xdims = [size(M, 1) for M in Ms]
+  xdims = [size(Ms[1], 2)-1; xdims]
   ffnet = FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
   return ffnet
-
-  #=
-  d = torch.load(file, torch.device("cpu"))
-  params = sort(collect(d), lt=(a,b) -> natural(a[1], b[1]))
-  bs = map(kv -> kv[2].numpy()*1.0, filter(kv -> occursin("bias", kv[1]), params))
-  Ws = map(kv -> kv[2].numpy()*1.0, filter(kv -> occursin("weight", kv[1]), params))
-  @assert length(bs) == length(Ws)
-  Ms = [[W b] for (W, b) in zip(Ws, bs)]
-  xdims = [size(W)[2] for W in Ws]
-  xdims = [xdims; size(bs[end])[1]]
-  ffnet = FeedFwdNet(activ=activ, xdims=xdims, Ms=Ms)
-  return ffnet
-  =#
 end
 
 # Guess the extension
@@ -200,8 +187,8 @@ function writeNnet(ffnet::FeedFwdNet, nnet_file="$(homedir())/dump/hello.nnet")
     # Component 9
     for k in 1:ffnet.K
       Mk, bk = ffnet.Ms[k][:, 1:end-1], ffnet.Ms[k][:, end]
-      for i in 1:size(Mk)[1]
-        for j in 1:size(Mk)[2]
+      for i in 1:size(Mk, 1)
+        for j in 1:size(Mk, 2)
           write(f, "$(Mk[i,j]),")
         end
         write(f, "\n")

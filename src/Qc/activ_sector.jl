@@ -41,9 +41,9 @@ function makeQ(γac, qc::QcActivSector)
   smin, smax = qc.smin, qc.smax
   _Q11 = -2 * Diagonal(smin .* smax.* initγac) - 2 * (base_smin * base_smax * T)
   _Q12 = Diagonal((smin + smax) .* initγac) + (base_smin + base_smax) * T
-  _Q13 = spzeros(size(_Q11)[1])
+  _Q13 = spzeros(size(_Q11, 1))
   _Q22 = -2 * T
-  _Q23 = spzeros(size(_Q22)[1])
+  _Q23 = spzeros(size(_Q22, 1))
   _Q33 = 0
 
   if qc.activ isa ReluActiv

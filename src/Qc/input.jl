@@ -11,7 +11,7 @@ end
 @with_kw struct QcInputPoly <: QcInput
   H::MatReal
   h::VecReal
-  @assert size(H)[1] == length(h)
+  @assert size(H, 1) == length(h)
   vardim::Int = length(h)^2
 end
 

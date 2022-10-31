@@ -127,7 +127,7 @@ function setupReach!(model, query::ReachQuery, opts::ChordalSdpOptions)
 
   # And also the Zout and also the objective
   γout = @variable(model, [1:query.qc_reach.vardim])
-  @constraint(model, γout[1:query.qc_reach.vardim] .>= 0)
+  # @constraint(model, γout[1:query.qc_reach.vardim] .>= 0)
   @objective(model, Min, query.obj_func(γout))
   Zout = makeZout(γout, query.qc_reach, query.ffnet)
   vars[:γout] = γout

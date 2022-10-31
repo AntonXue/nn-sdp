@@ -2,6 +2,7 @@ using ..MyNeuralNetwork
 
 include("activ_bounded.jl")
 include("activ_sector.jl")
+include("activ_final.jl")
 
 # Make the A matrix
 function makeA(ffnet::FeedFwdNet)
@@ -33,8 +34,8 @@ function makeZac(γac, qc::QcActiv, ffnet::FeedFwdNet)
   _R11 = makeA(ffnet)
   _R12 = makeb(ffnet)
   _R21 = makeB(ffnet)
-  _R22 = zeros(size(_R21)[1])
-  _R31 = zeros(1, size(_R21)[2])
+  _R22 = zeros(size(_R21, 1))
+  _R31 = zeros(1, size(_R21, 2))
   _R32 = 1
   R = [_R11 _R12; _R21 _R22; _R31 _R32]
   Zac = R' * Q * R
@@ -61,7 +62,11 @@ function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β
   smin, smax = makeSectorMinMax(sec_acxmin, sec_acxmax, ffnet.activ)
   qc_sector = QcActivSector(activ=ffnet.activ, acxdim=acdim, β=β, smin=smin, smax=smax, base_smin=0.0, base_smax=1.0)
 
-  qc_activs = [qc_bounded; qc_sector]
+  # Set up the qc final
+  ymin, ymax = intv_info.x_intvs[end]
+  qc_final = QcActivFinal(ffnet=ffnet, ymin=ymin, ymax=ymax)
+
+  qc_activs = [qc_bounded; qc_sector; qc_final]
   return qc_activs
 end
 

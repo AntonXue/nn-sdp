@@ -32,6 +32,13 @@ C2OPTS = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:dou
 x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
+#=
+x1center = [2.1; 1.1; -0.135; -0.9]
+x1min = x1center .- 1e-4
+x1max = x1center .+ 1e-4
+=#
+
+
 makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
 ffnet_cartpole = makeCartpole(1)
 ts = [1; 2; 3; 4; 5; 6; 7; 8]
@@ -197,4 +204,47 @@ function goAll()
   go(4, 3, C2OPTS)
   go(4, 4, C2OPTS)
 end
+
+
+qc_input = QcInputBox(x1min=x1min, x1max=x1max)
+qc_activs = makeQcActivs(ffnet_cartpole, x1min=x1min, x1max=x1max, β=2)
+
+query_pos = ReachQuery(ffnet = ffnet_cartpole,
+                       qc_input = qc_input,
+                       qc_activs = qc_activs,
+                       qc_reach = QcReachHplane(normal=Vector(e(1,4))),
+                       obj_func = x -> x[1])
+
+
+function quickreach(normal)
+  query = ReachQuery(ffnet = ffnet_cartpole,
+                     qc_input = qc_input,
+                     qc_activs = qc_activs,
+                     qc_reach = QcReachHplane(normal=normal),
+                     obj_func = x -> x[1])
+  return query
+end
+
+normal = [0; -1; 0; 0]
+
+query_neg = ReachQuery(ffnet = ffnet_cartpole,
+                       qc_input = qc_input,
+                       qc_activs = qc_activs,
+                       # qc_reach = QcReachHplane(normal=Vector(-e(1,4))),
+                       qc_reach = QcReachHplane(normal=normal),
+                       obj_func = x -> x[1])
+# soln_neg = Methods.runQuery(query_neg, opts)
+
+intvs = makeIntervalsInfo(x1min, x1max, ffnet_cartpole)
+ymin, ymax = intvs.x_intvs[end]
+
+query_1_pos = quickreach([1;0;0;0])
+query_1_neg = quickreach([-1;0;0;0])
+
+query_2_pos = quickreach([0;1;0;0])
+query_2_neg = quickreach([0;-1;0;0])
+
+query_3_pos = quickreach([0;0;1;0])
+query_3_neg = quickreach([0;0;-1;0])
+
 
