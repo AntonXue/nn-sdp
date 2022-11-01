@@ -60,7 +60,7 @@ def train_controller(ctrl_model, dynamics, epochs=32, nbatches=100, bsize=64, L=
 
   return ctrl_model
 
-def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=100, nbatches=100, bsize=64, L=60, saveto=None):
+def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=100, nbatches=100, bsize=128, L=60, saveto=None):
   if saveto is None:
     saveto = os.path.join(MODELS_DIR, "cart.pth")
 

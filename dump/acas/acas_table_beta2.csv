@@ -1,0 +1,7 @@
+acas,spec,verif_status,num_queries,queries_ran,avg_query_time,total_time
+ACASXU_run2a_1_1_batch_2000.onnx,prop_5.vnnlib,safe,4,4,360.527379989624,1442.109519958496
+ACASXU_run2a_1_1_batch_2000.onnx,prop_6.vnnlib,unsafe,8,5,302.9182757139206,1568.3856549263
+ACASXU_run2a_1_9_batch_2000.onnx,prop_7.vnnlib,safe,6,2,334.7031401395798,669.4062802791595
+ACASXU_run2a_2_9_batch_2000.onnx,prop_8.vnnlib,unsafe,6,2,Inf,572.7702898979187
+ACASXU_run2a_3_3_batch_2000.onnx,prop_9.vnnlib,safe,4,4,358.2977537512779,1433.1910150051117
+ACASXU_run2a_4_5_batch_2000.onnx,prop_10.vnnlib,safe,4,4,254.59366500377655,1018.3746600151062
