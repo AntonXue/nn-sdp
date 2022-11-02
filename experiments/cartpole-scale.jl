@@ -35,7 +35,7 @@ x1max = [2.200; 1.200; -0.104; -0.800]
 makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
 ffnet_cartpole = makeCartpole(1)
 all_ts = 1:12
-all_βs = 0:6
+all_βs = 0:4
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
@@ -43,7 +43,7 @@ opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" e
 # Given a time step and opt, run the specified βs
 function go(t, opts, βs; dosave = true)
   saveto = joinpath(DUMP_DIR, "cartpole_t$(t)_$(opts2string(opts)).csv")
-  prinstyled("Running $(opts2string(opts)) at t: $(t)\n", color=:green)
+  printstyled("Running $(opts2string(opts)) at t: $(t)\n", color=:green)
 
   df = DataFrame(beta = Int[],
                  obj_val = Real[],
@@ -67,8 +67,8 @@ function go(t, opts, βs; dosave = true)
     soln = Methods.runQuery(query, opts)
     obj_val = soln.objective_value
     setup_secs = soln.setup_time
-    solve_time = soln.solve_time
-    total_time = soln.total_time
+    solve_secs = soln.solve_time
+    total_secs = soln.total_time
     term_status = soln.termination_status
     λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
     entry = (β, obj_val, setup_secs, solve_secs, total_secs, term_status, λmax)
@@ -82,17 +82,21 @@ end
 
 # A warmup methods
 function warmup()
-  goOne(1, dopts, 0:1, dosave=false)
-  goOne(1, copts, 0:1, dosave=false)
-  goOne(1, c2opts, 0:1, dosave=false)
+  go(1, dopts, 0:1, dosave=false)
+  go(1, copts, 0:1, dosave=false)
+  go(1, c2opts, 0:1, dosave=false)
 end
 
 # Solve for a particular t wrt all the methods
 function runme(t; βs = all_βs)
-  goOne(t, dopts, βs)
-  goOne(t, copts, βs)
-  goOne(t, c2opts, βs)
+  go(t, c2opts, βs)
+  go(t, copts, βs)
+  go(t, dopts, βs)
 end
+
+printstyled("Warming up!\n", color=:green)
+warmup()
+printstyled("Warmup done!\n", color=:green)
 
 # runme(1)
 # runme(2)

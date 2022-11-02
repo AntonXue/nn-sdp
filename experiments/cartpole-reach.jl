@@ -108,9 +108,11 @@ function runme()
   go(0, 4, dopts)
 
   # β = 1
+  #=
   go(1, 1, c2opts)
   go(1, 2, c2opts)
   go(1, 3, c2opts)
   go(1, 4, c2opts)
+  =#
 end
 
