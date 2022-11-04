@@ -140,30 +140,13 @@ def concat_sequentials(seq1, seq2):
   return seq
 
 
-def unroll_and_save(model, models_dir, base_name="cartpole"):
+def unroll_and_save(model, models_dir, T=20, base_name="cartpole"):
   model1 = copy.deepcopy(model)
-  model2 = concat_sequentials(model1, model1)
-  model3 = concat_sequentials(model2, model1)
-  model4 = concat_sequentials(model3, model1)
-  model5 = concat_sequentials(model4, model1)
-  model6 = concat_sequentials(model5, model1)
-  model7 = concat_sequentials(model6, model1)
-  model8 = concat_sequentials(model7, model1)
-  model9 = concat_sequentials(model8, model1)
-  model10 = concat_sequentials(model9, model1)
-  model11 = concat_sequentials(model10, model1)
-  model12 = concat_sequentials(model11, model1)
-
   torch.save(model1, os.path.join(models_dir, base_name + "1.pth"))
-  torch.save(model2, os.path.join(models_dir, base_name + "2.pth"))
-  torch.save(model3, os.path.join(models_dir, base_name + "3.pth"))
-  torch.save(model4, os.path.join(models_dir, base_name + "4.pth"))
-  torch.save(model5, os.path.join(models_dir, base_name + "5.pth"))
-  torch.save(model6, os.path.join(models_dir, base_name + "6.pth"))
-  torch.save(model7, os.path.join(models_dir, base_name + "7.pth"))
-  torch.save(model8, os.path.join(models_dir, base_name + "8.pth"))
-  torch.save(model9, os.path.join(models_dir, base_name + "9.pth"))
-  torch.save(model10, os.path.join(models_dir, base_name + "10.pth"))
-  torch.save(model11, os.path.join(models_dir, base_name + "11.pth"))
-  torch.save(model12, os.path.join(models_dir, base_name + "12.pth"))
+
+  # Now unroll
+  this_model = model1
+  for i in range(2,T+1):
+    this_model = concat_sequentials(this_model, model1)
+    torch.save(this_model, os.path.join(models_dir, base_name + f"{i}.pth"))
 

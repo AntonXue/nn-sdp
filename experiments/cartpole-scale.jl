@@ -18,7 +18,7 @@ DUMP_DIR = joinpath(@__DIR__, "..", "dump", "cartpole-scale")
 
 mosek_opts =
   Dict("QUIET" => false,
-       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 3, # seconds
+       "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 4, # seconds
        "MSK_IPAR_INTPNT_SCALING" => 1,
        "MSK_DPAR_INTPNT_TOL_STEP_SIZE" => 1e-8,
        "INTPNT_CO_TOL_REL_GAP" => 1e-6,
@@ -91,6 +91,11 @@ end
 function runme(t; βs = all_βs)
   go(t, c2opts, βs)
   go(t, copts, βs)
+  go(t, dopts, βs)
+end
+
+function runtwo(t; βs = all_βs)
+  go(t, c2opts, βs)
   go(t, dopts, βs)
 end
 
