@@ -32,18 +32,23 @@ x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
 makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
-ffnet_cartpole = makeCartpole(1)
-ts = 1:12
+ffnet_cartpole = makeCartpole(3)
+βs = 0:10
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
-# Run a single β, dim pair
-function go(β, dim, opts; dosave = true)
-  saveto = joinpath(DUMP_DIR, "cartpole_beta$(β)_dim$(dim)_$(opts2string(opts)).csv")
-  printstyled("running with β: $(β) at dim $(dim) | now is: $(now())\n", color=:green)
+# Run a single dim
+function go(dim, opts; dosave = true)
+  saveto = joinpath(DUMP_DIR, "cartpole_dim$(dim)_$(opts2string(opts)).csv")
+  printstyled("running with dim $(dim) | now is: $(now())\n", color=:green)
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
-  df = DataFrame(t = Int[],
+
+  ffnet = ffnet_cartpole
+  println("the ffnet is:")
+  println(ffnet)
+
+  df = DataFrame(beta = Int[],
                  pos_val = Real[],
                  neg_val = Real[],
                  pos_setup_secs = Real[],
@@ -57,82 +62,55 @@ function go(β, dim, opts; dosave = true)
                  pos_eigmax = Real[],
                  neg_eigmax = Real[])
 
-  printstyled("\tβ: $(β), dim: $(dim), t: $(t) | now is: $(now())\n", color=:green)
-  # ffnet = makeCartpole(t)
+  for β in βs
+    printstyled("\tdim: $(dim), β: $(β) | now is: $(now())\n", color=:green)
 
-  ffnet = make_cartpole(1)
-  println("the ffnet is:")
-  println(ffnet)
+    qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
 
-  qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
+    printstyled("\t\tpositive:\n", color=:green)
+    query_pos = ReachQuery(ffnet = ffnet,
+                           qc_input = qc_input,
+                           qc_activs = qc_activs,
+                           qc_reach = QcReachHplane(normal=Vector(e(dim,4))),
+                           obj_func = x -> x[1])
+    soln_pos = Methods.runQuery(query_pos, opts)
+    λmax_pos = eigmax(Symmetric(Matrix(soln_pos.values[:Z])))
 
-  printstyled("\t\tpositive:\n", color=:green)
-  query_pos = ReachQuery(ffnet = ffnet,
-                         qc_input = qc_input,
-                         qc_activs = qc_activs,
-                         qc_reach = QcReachHplane(normal=Vector(e(dim,4))),
-                         obj_func = x -> x[1])
-  soln_pos = Methods.runQuery(query_pos, opts)
-  λmax_pos = eigmax(Symmetric(Matrix(soln_pos.values[:Z])))
-
-  printstyled("\t\tnegative:\n", color=:green)
-  query_neg = ReachQuery(ffnet = ffnet,
-                         qc_input = qc_input,
-                         qc_activs = qc_activs,
-                         qc_reach = QcReachHplane(normal=Vector(-e(dim,4))),
-                         obj_func = x -> x[1])
-  soln_neg = Methods.runQuery(query_neg, opts)
-  λmax_neg = eigmax(Symmetric(Matrix(soln_neg.values[:Z])))
-  entry = (t,
-           soln_pos.objective_value, 
-           soln_neg.objective_value,
-           soln_pos.setup_time,
-           soln_neg.setup_time,
-           soln_pos.solve_time,
-           soln_neg.solve_time,
-           soln_pos.total_time,
-           soln_neg.total_time,
-           soln_pos.termination_status,
-           soln_neg.termination_status,
-           λmax_pos,
-           λmax_neg)
-  push!(df, entry)
-  if dosave
-    CSV.write(saveto, df)
-    printstyled("updated $(saveto)\n", color=:green)
+    printstyled("\t\tnegative:\n", color=:green)
+    query_neg = ReachQuery(ffnet = ffnet,
+                           qc_input = qc_input,
+                           qc_activs = qc_activs,
+                           qc_reach = QcReachHplane(normal=Vector(-e(dim,4))),
+                           obj_func = x -> x[1])
+    soln_neg = Methods.runQuery(query_neg, opts)
+    λmax_neg = eigmax(Symmetric(Matrix(soln_neg.values[:Z])))
+    entry = (β,
+             soln_pos.objective_value, 
+             soln_neg.objective_value,
+             soln_pos.setup_time,
+             soln_neg.setup_time,
+             soln_pos.solve_time,
+             soln_neg.solve_time,
+             soln_pos.total_time,
+             soln_neg.total_time,
+             soln_pos.termination_status,
+             soln_neg.termination_status,
+             λmax_pos,
+             λmax_neg)
+    push!(df, entry)
+    if dosave
+      CSV.write(saveto, df)
+      printstyled("updated $(saveto)\n", color=:green)
+    end
   end
 end
 
 # It doesn't matter which opts we use once β is fixed since we're doing reach
 function runme()
-  # β = 0
-  go(0, 1, dopts)
-  go(0, 2, dopts)
-  go(0, 3, dopts)
-  go(0, 4, dopts)
-
-  # β = 1
-  go(1, 1, dopts)
-  go(1, 2, dopts)
-  go(1, 3, dopts)
-  go(1, 4, dopts)
-
-  # β = 2
-  go(2, 1, dopts)
-  go(2, 2, dopts)
-  go(2, 3, dopts)
-  go(2, 4, dopts)
-
-  # β = 3
-  go(3, 1, dopts)
-  go(3, 2, dopts)
-  go(1, 3, dopts)
-  go(3, 4, dopts)
-
-  # β = 4
-  go(4, 1, dopts)
-  go(4, 2, dopts)
-  go(4, 3, dopts)
-  go(4, 4, dopts)
+  # All four dims
+  go(1, dopts)
+  go(2, dopts)
+  go(3, dopts)
+  go(4, dopts)
 end
 

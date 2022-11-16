@@ -104,10 +104,13 @@ ctrl = make_neural_controller()
 zero_ctrl = make_zero_controller()
 cart = make_closed_loop_cartpole()
 
+thin_cart = make_closed_loop_cartpole(10)
+
 try:
   neural_ctrl = make_neural_controller()
   neural_ctrl = torch.load(os.path.join(MODELS_DIR, "ctrl.pth"), cpu)
   trained_cart = torch.load(os.path.join(MODELS_DIR, "cart.pth"), cpu)
+  trained_thin_cart = torch.load(os.path.join(MODELS_DIR, "thin_cart.pth"), cpu)
 except:
   pass
 

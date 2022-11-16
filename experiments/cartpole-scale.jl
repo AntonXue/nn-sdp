@@ -26,6 +26,7 @@ mosek_opts =
        "INTPNT_CO_TOL_DFEAS" => 1e-6)
 
 dopts = DeepSdpOptions(use_dual=true, mosek_opts=mosek_opts, verbose=true)
+dndopts = DeepSdpOptions(use_dual=false, mosek_opts=mosek_opts, verbose=true)
 copts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:single_decomp)
 c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:double_decomp)
 
@@ -33,6 +34,7 @@ x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
 makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
+makeThinCartpole(t) = load(joinpath(@__DIR__, "..", "models", "thin_cartpole$(t).pth"))
 ffnet_cartpole = makeCartpole(1)
 all_ts = 1:12
 all_βs = 0:4
@@ -41,8 +43,12 @@ opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
 # Given a time step and opt, run the specified βs
-function go(t, opts, βs; dosave = true)
-  saveto = joinpath(DUMP_DIR, "cartpole_t$(t)_$(opts2string(opts)).csv")
+function go(t, opts, βs; dosave = true, dothin = false)
+  if dothin
+    saveto = joinpath(DUMP_DIR, "thin_cartpole_t$(t)_$(opts2string(opts)).csv")
+  else
+    saveto = joinpath(DUMP_DIR, "cartpole_t$(t)_$(opts2string(opts)).csv")
+  end
   printstyled("Running $(opts2string(opts)) at t: $(t)\n", color=:green)
 
   df = DataFrame(beta = Int[],
@@ -53,7 +59,11 @@ function go(t, opts, βs; dosave = true)
                  term_status = String[],
                  eigmax = Real[])
 
-  ffnet = makeCartpole(t)
+  if dothin
+    ffnet = makeThinCartpole(t)
+  else
+    ffnet = makeCartpole(t)
+  end
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
 
   for β in βs
@@ -82,9 +92,9 @@ end
 
 # A warmup methods
 function warmup()
-  go(1, dopts, 0:1, dosave=false)
-  go(1, copts, 0:1, dosave=false)
-  go(1, c2opts, 0:1, dosave=false)
+  go(1, dopts, 1:1, dosave=false)
+  go(1, copts, 1:1, dosave=false)
+  go(1, c2opts, 1:1, dosave=false)
 end
 
 # Solve for a particular t wrt all the methods
@@ -98,6 +108,14 @@ function runtwo(t; βs = all_βs)
   go(t, c2opts, βs)
   go(t, dopts, βs)
 end
+
+function runmeThin(t; βs = all_βs)
+  go(t, c2opts, βs, dothin=true)
+  go(t, copts, βs, dothin=true)
+  go(t, dopts, βs, dothin=true)
+  go(t, dndopts, βs, dothin=true)
+end
+
 
 printstyled("Warming up!\n", color=:green)
 warmup()

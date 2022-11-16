@@ -142,11 +142,12 @@ def concat_sequentials(seq1, seq2):
 
 def unroll_and_save(model, models_dir, T=20, base_name="cartpole"):
   model1 = copy.deepcopy(model)
-  torch.save(model1, os.path.join(models_dir, base_name + "1.pth"))
+  torch.save(model1, os.path.join(models_dir, base_name + "_step1.pth"))
 
   # Now unroll
   this_model = model1
   for i in range(2,T+1):
     this_model = concat_sequentials(this_model, model1)
-    torch.save(this_model, os.path.join(models_dir, base_name + f"{i}.pth"))
+    torch.save(this_model, os.path.join(models_dir, base_name + f"_step{i}.pth"))
+
 
