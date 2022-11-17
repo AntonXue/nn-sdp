@@ -31,7 +31,7 @@ c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:dou
 x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
-makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
+makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
 ffnet_cartpole = makeCartpole(1)
 ts = 1:12
 

@@ -33,9 +33,9 @@ c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:dou
 x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
-makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartpole$(t).pth"))
-makeThinCartpole(t) = load(joinpath(@__DIR__, "..", "models", "thin_cartpole$(t).pth"))
-ffnet_cartpole = makeCartpole(1)
+makeCartpoleW40(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
+makeCartpoleW10(t) = load(joinpath(@__DIR__, "..", "models", "cartw10_step$(t).pth"))
+ffnet_cartpole = makeCartpoleW40(1)
 all_ts = 1:12
 all_βs = 0:4
 
@@ -60,9 +60,9 @@ function go(t, opts, βs; dosave = true, dothin = false)
                  eigmax = Real[])
 
   if dothin
-    ffnet = makeThinCartpole(t)
+    ffnet = makeCartpoleW10(t)
   else
-    ffnet = makeCartpole(t)
+    ffnet = makeCartpoleW40(t)
   end
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
 

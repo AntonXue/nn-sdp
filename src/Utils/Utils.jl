@@ -46,7 +46,7 @@ end
 export abcQuadS, L2S, outNorm2S, hplaneS
 export randomNetwork
 export runNetwork, randomTrajectories, plotRandomTrajectories
-export plotBoundingPolygons!, plotBoundingEllipses!
+export plotSeq2DPoints!
 
 end # End Module
 

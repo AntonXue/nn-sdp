@@ -67,6 +67,7 @@ function makeQcActivsIntvs(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β
   qc_final = QcActivFinal(ffnet=ffnet, ymin=ymin, ymax=ymax)
 
   qc_activs = [qc_bounded; qc_sector; qc_final]
+  # qc_activs = [qc_bounded; qc_sector]
   return qc_activs
 end
 
