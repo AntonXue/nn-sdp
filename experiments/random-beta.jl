@@ -106,7 +106,7 @@ end
 
 # Do some ellipsoid computations
 function goEllipsoid(opts; dosave = true)
-  saveto = joinpath(DUMP_DIR, "rand_ellipsoid.csv")
+  saveto = joinpath(DUMP_DIR, "randw$(w)_ellipsoid.csv")
   printstyled("running ellipsoid | now is: $(now())\n", color=:green)
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
 
