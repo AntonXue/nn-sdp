@@ -34,7 +34,7 @@ x1max = [1.0; 1.0; 1.0; 1.0]
 
 Random.seed!(1234)
 w = 40
-used_ffnet = Utils.randomNetwork([4;w;w;4])
+used_ffnet = Utils.randomNetwork([4;w;w;w;w;4], σ=0.5)
 βs = 0:10
 
 # Run a single dim
