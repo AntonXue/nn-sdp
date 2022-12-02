@@ -30,6 +30,11 @@ end
   vardim::Int = 1
 end
 
+# L2 gain QC reach
+@with_kw struct QcReachL2Gain <: QcReach
+  vardim::Int = 1
+end
+
 # The R to be used in R' * S * R
 function makeSide(ffnet::FeedFwdNet)
   xdims, K = ffnet.xdims, ffnet.K
@@ -101,6 +106,20 @@ function makeS(γout, qc::QcReachEllipsoid, ffnet::FeedFwdNet)
   _S22 = qc.invP' * qc.invP
   _S23 = -qc.invP' * qc.yc
   _S33 = qc.yc' * qc.yc - γout[1]
+  S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
+  return S
+end
+
+# ||f(x) - f(y)||^2 <= γout * ||x - y||^2
+function makeS(γout, qc::QcReachL2Gain, ffnet::FeedFwdNet)
+  @assert qc.vardim == length(γout) == 1
+  xdims, K = ffnet.xdims, ffnet.K
+  _S11 = -γout[1] * I(xdims[1])
+  _S12 = spzeros(xdims[1], xdims[K+1])
+  _S13 = spzeros(xdims[1], 1)
+  _S22 = I(xdims[K+1])
+  _S23 = spzeros(xdims[K+1], 1)
+  _S33 = 0
   S = [_S11 _S12 _S13; _S12' _S22 _S23; _S13' _S23' _S33]
   return S
 end

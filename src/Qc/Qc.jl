@@ -22,7 +22,8 @@ export QcInputBox, QcInputPoly
 export makeZin
 
 include("output.jl")
-export QcSafety, QcReach, QcReachHplane, QcReachCircle, QcReachEllipsoid
+export QcSafety, QcReach
+export QcReachHplane, QcReachCircle, QcReachEllipsoid, QcReachL2Gain
 export scaleS, makeZout
 
 include("activ.jl")

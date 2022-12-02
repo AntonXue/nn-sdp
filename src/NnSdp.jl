@@ -106,37 +106,8 @@ function findCircle(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, 
   return soln
 end
 
-# Check whether a network satisfies all the vnnlib stuff
-function findReach2Dpoly(ffnet::FeedFwdNet, x1min::VecReal, x1max::VecReal, β::Int, opts::QueryOptions; num_hplanes = 6)
-  # Calculate qc input first
-  qc_input = QcInputBox(x1min=x1min, x1max=x1max)
-  # Change the dependency on this one
-  qc_activs = Qc.makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
-
-  hplanes = Vector{Tuple{VecReal, Real}}()
-  solns = Vector{Any}()
-  for i in 1:num_hplanes
-    θ = ((i-1) / num_hplanes) * 2 * π
-    normal = [cos(θ); sin(θ)]
-    println("gonna run poly [$(i)/$(num_hplanes)] with normal θ = $(θ); now: $(now())")
-    
-    qc_reach = QcReachHplane(normal=normal)
-    obj_func = x -> x[1]
-    reach_query = ReachQuery(ffnet = ffnet,
-                             qc_input = qc_input,
-                             qc_activs = qc_activs,
-                             qc_reach = qc_reach,
-                             obj_func = x -> x[1])
-    soln = Methods.runQuery(reach_query, opts)
-    push!(hplanes, (normal, soln.objective_value))
-    push!(solns, soln)
-  end
-
-  return hplanes, solns
-end
-
 export solveQuery
-export findEllipsoid, findCircle, findReach2Dpoly
+export findEllipsoid, findCircle
 
 end
 

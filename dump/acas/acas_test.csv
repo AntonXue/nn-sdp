@@ -1,3 +1,0 @@
-acas,spec,verif_status,num_queries,queries_ran,avg_query_time,total_time
-ACASXU_run2a_3_3_batch_2000.nnet,prop_9.vnnlib,unsafe,4,1,Inf,348.1227550506592
-ACASXU_run2a_4_5_batch_2000.nnet,prop_10.vnnlib,safe,4,4,382.9821879863739,1531.9287519454956
