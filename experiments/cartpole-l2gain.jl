@@ -32,14 +32,15 @@ x1max = [2.200; 1.200; -0.104; -0.800]
 
 makeCartpole(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
 ffnet_cartpole = makeCartpole(1)
-βs = 1:8
+# βs = 0:20
+βs = 0:5
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
 # Run a single β, dim pair
 function go(t, opts; dosave = true)
-  saveto = joinpath(DUMP_DIR, "cartw40_step$(t)_$(opts2string(opts)).csv")
+  saveto = joinpath(DUMP_DIR, "cartw40_t$(t)_$(opts2string(opts)).csv")
   printstyled("running with t: $(t) at dim $(dim) | now is: $(now())\n", color=:green)
   ffnet = makeCartpole(t)
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
@@ -81,8 +82,10 @@ end
 
 # It doesn't matter which opts we use once β is fixed since we're doing reach
 function runme()
-  go(1, c2opts)
+  # go(1, c2opts)
   go(2, c2opts)
   go(3, c2opts)
-  go(4, c2opts)
+  # go(4, c2opts)
 end
+
+

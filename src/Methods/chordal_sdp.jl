@@ -14,11 +14,11 @@ end
 function setupZs!(model, cliques, query::Query, opts::ChordalSdpOptions)
   Zdim = sum(query.ffnet.zdims)
   Zs, Ecs = Vector{Any}(), Vector{Any}()
-  for (Ck, _, Dks) in cliques
+  for (k, (Ck, _, Dks)) in enumerate(cliques)
     Ckdim = length(Ck)
     # Use two-stage decomposition
     if opts.decomp_mode == :double_decomp || opts.decomp_mode == :double_relax_decomp
-      # This is the case for k == 1 and k == p
+      # We have only one part for Y?
       if length(Dks) == 1
         @assert length(Dks[1]) == Ckdim
         Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
@@ -37,10 +37,9 @@ function setupZs!(model, cliques, query::Query, opts::ChordalSdpOptions)
         Zk = zeros(AffExpr, (Ckdim, Ckdim))
         Zk[Dk1, Dk1] += Yk1
         Zk[Dk2, Dk2] += Yk2
-
       end
 
-    # In the non-two stage case, the original stuff
+    # In the single-decomp case, the original stuff
     else
       Zk = @variable(model, [1:Ckdim, 1:Ckdim], Symmetric)
       @constraint(model, -Zk in PSDCone())
@@ -60,13 +59,13 @@ function setupZksum!(model, query::Query, opts::ChordalSdpOptions)
   Zs, _ = setupZs!(model, cliques, query, opts)
   @assert length(Zs) == length(cliques)
   # Go through each Zs and manually insert it into Zksum
-  for (k, (Ck, Ckparts, _)) in enumerate(cliques)
+  for (k, (Ck, Ckparts, Dks)) in enumerate(cliques)
     Ckdim = length(Ck)
-    # For the last clique there is only one part (Zp) so we just add it in
-    if k == length(cliques)
-      Zksum[(end-Ckdim+1:end), (end-Ckdim+1:end)] += Zs[k]
+    # If there is only one item in Ckparts just add Ck
+    if length(Ckparts) == 1
+      Zksum[Ck, Ck] += Zs[k]
 
-    # Otherwise we take apart Ckparts
+    # Otherwise we must have two items in Ckparts
     else
       @assert length(Ckparts) == 2
       Ck1, Ck2 = Ckparts[1], Ckparts[2]

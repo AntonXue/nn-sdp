@@ -33,42 +33,38 @@ c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:dou
 x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
 
-makeCartpoleW40(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
-makeCartpoleW10(t) = load(joinpath(@__DIR__, "..", "models", "cartw10_step$(t).pth"))
-ffnet_cartpole = makeCartpoleW40(1)
-all_ts = 1:12
-all_βs = 0:4
+makeCart40(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
+makeCart10(t) = load(joinpath(@__DIR__, "..", "models", "cartw10_step$(t).pth"))
+
+cart40_ts = 1:25
+cart10_ts = 1:3
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
-# Given a time step and opt, run the specified βs
-function go(t, opts, βs; dosave = true, dothin = false)
-  if dothin
-    saveto = joinpath(DUMP_DIR, "thin_cartpole_t$(t)_$(opts2string(opts)).csv")
+# Run this function with some ts that you wanna do
+function go(ts, opts; dosave = true, mode=:cart40)
+  if mode == :cart40
+    saveto = joinpath(DUMP_DIR, "cart40_$(opts2string(opts)).csv")
+  elseif mode == :cart10
+    saveto = joinpath(DUMP_DIR, "cart10_$(opts2string(opts)).csv")
   else
-    saveto = joinpath(DUMP_DIR, "cartpole_t$(t)_$(opts2string(opts)).csv")
+    error("Unrecognized mode: $(mode)")
   end
-  printstyled("Running $(opts2string(opts)) at t: $(t)\n", color=:green)
+  printstyled("Running $(opts2string(opts)) with ts: $(ts)\n", color=:green)
 
-  df = DataFrame(beta = Int[],
+  df = DataFrame(t = Int[],
                  obj_val = Real[],
                  setup_secs = Real[],
                  solve_secs = Real[],
                  total_secs = Real[],
                  term_status = String[],
                  eigmax = Real[])
-
-  if dothin
-    ffnet = makeCartpoleW10(t)
-  else
-    ffnet = makeCartpoleW40(t)
-  end
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
-
-  for β in βs
-    printstyled("\t$(opts2string(opts)) | t: $(t) | β: $(β)\n", color=:green)
-    qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
+  for t in ts
+    printstyled("\t$(opts2string(opts)) | $(mode) | t: $(t)\n", color=:green)
+    ffnet = if mode == :cart40; makeCart40(t) else makeCart10(t) end
+    qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=0)
     query = ReachQuery(ffnet = ffnet,
                        qc_input = qc_input,
                        qc_activs = qc_activs,
@@ -81,7 +77,7 @@ function go(t, opts, βs; dosave = true, dothin = false)
     total_secs = soln.total_time
     term_status = soln.termination_status
     λmax = eigmax(Symmetric(Matrix(soln.values[:Z])))
-    entry = (β, obj_val, setup_secs, solve_secs, total_secs, term_status, λmax)
+    entry = (t, obj_val, setup_secs, solve_secs, total_secs, term_status, λmax)
     push!(df, entry)
     if dosave
       CSV.write(saveto, df)
@@ -90,33 +86,31 @@ function go(t, opts, βs; dosave = true, dothin = false)
   return df
 end
 
+################
+
 # A warmup methods
 function warmup()
-  go(1, dopts, 1:1, dosave=false)
-  go(1, copts, 1:1, dosave=false)
-  go(1, c2opts, 1:1, dosave=false)
+  go(1:2, dopts, dosave=false)
+  go(1:2, copts, dosave=false)
+  go(1:2, c2opts, dosave=false)
 end
 
-# Solve for a particular t wrt all the methods
-function runme(t; βs = all_βs)
-  go(t, c2opts, βs)
-  go(t, copts, βs)
-  go(t, dopts, βs)
+function runCart10s()
+  go(cart10_ts, dopts, dosave=true)
+  go(cart10_ts, copts, dosave=true)
+  go(cart10_ts, c2opts, dosave=true)
+  go(cart10_ts, dndopts, dosave=false)
 end
 
-function runtwo(t; βs = all_βs)
-  go(t, c2opts, βs)
-  go(t, dopts, βs)
-end
-
-function runmeThin(t; βs = all_βs)
-  go(t, c2opts, βs, dothin=true)
-  go(t, copts, βs, dothin=true)
-  go(t, dopts, βs, dothin=true)
-  go(t, dndopts, βs, dothin=true)
+function runCart40s()
+  go(cart40_ts, dopts, dosave=true)
+  go(cart40_ts, c2opts, dosave=true)
+  # go(cart10_ts, dndopts, dosave=false)
 end
 
 
+#################
+#
 printstyled("Warming up!\n", color=:green)
 warmup()
 printstyled("Warmup done!\n", color=:green)
