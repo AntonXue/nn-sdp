@@ -37,16 +37,18 @@ makeCart40(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
 makeCart10(t) = load(joinpath(@__DIR__, "..", "models", "cartw10_step$(t).pth"))
 
 cart40_ts = 1:25
-cart10_ts = 1:3
+cart10_ts = 1:7
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
 # Run this function with some ts that you wanna do
-function go(ts, opts; dosave = true, mode=:cart40)
+function go(mode, ts, opts; dosave = true)
   if mode == :cart40
+    make_cart_func = makeCart40
     saveto = joinpath(DUMP_DIR, "cart40_$(opts2string(opts)).csv")
   elseif mode == :cart10
+    make_cart_func = makeCart10
     saveto = joinpath(DUMP_DIR, "cart10_$(opts2string(opts)).csv")
   else
     error("Unrecognized mode: $(mode)")
@@ -63,7 +65,7 @@ function go(ts, opts; dosave = true, mode=:cart40)
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   for t in ts
     printstyled("\t$(opts2string(opts)) | $(mode) | t: $(t)\n", color=:green)
-    ffnet = if mode == :cart40; makeCart40(t) else makeCart10(t) end
+    ffnet = make_cart_func(t)
     qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=0)
     query = ReachQuery(ffnet = ffnet,
                        qc_input = qc_input,
@@ -90,22 +92,22 @@ end
 
 # A warmup methods
 function warmup()
-  go(1:2, dopts, dosave=false)
-  go(1:2, copts, dosave=false)
-  go(1:2, c2opts, dosave=false)
+  go(:cart10, 2:2, dopts, dosave=false)
+  go(:cart10, 2:2, copts, dosave=false)
+  go(:cart10, 2:2, c2opts, dosave=false)
 end
 
 function runCart10s()
-  go(cart10_ts, dopts, dosave=true)
-  go(cart10_ts, copts, dosave=true)
-  go(cart10_ts, c2opts, dosave=true)
-  go(cart10_ts, dndopts, dosave=false)
+  go(:cart10, cart10_ts, dopts, dosave=true)
+  go(:cart10, cart10_ts, c2opts, dosave=true)
+  go(:cart10, cart10_ts, copts, dosave=true)
+  go(:cart10, cart10_ts, dndopts, dosave=true)
 end
 
 function runCart40s()
-  go(cart40_ts, dopts, dosave=true)
-  go(cart40_ts, c2opts, dosave=true)
-  # go(cart10_ts, dndopts, dosave=false)
+  go(:cart40, cart40_ts, c2opts, dosave=true)
+  go(:cart40, cart40_ts, dopts, dosave=true)
+  # go(cart40_ts, dndopts, dosave=true)
 end
 
 
