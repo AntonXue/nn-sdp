@@ -41,7 +41,7 @@ opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" e
 # Run a single β, dim pair
 function go(t, opts; dosave = true)
   saveto = joinpath(DUMP_DIR, "cartw40_t$(t)_$(opts2string(opts)).csv")
-  printstyled("running with t: $(t) at dim $(dim) | now is: $(now())\n", color=:green)
+  printstyled("running with t: $(t) a | now is: $(now())\n", color=:green)
   ffnet = makeCartpole(t)
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
 

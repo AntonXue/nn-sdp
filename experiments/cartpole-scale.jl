@@ -29,6 +29,7 @@ dopts = DeepSdpOptions(use_dual=true, mosek_opts=mosek_opts, verbose=true)
 dndopts = DeepSdpOptions(use_dual=false, mosek_opts=mosek_opts, verbose=true)
 copts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:single_decomp)
 c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:double_decomp)
+c2dopts = ChordalSdpOptions(use_dual=true, mosek_opts=mosek_opts, verbose=true, decomp_mode=:double_decomp)
 
 x1min = [2.000; 1.000; -0.174; -1.000]
 x1max = [2.200; 1.200; -0.104; -0.800]
@@ -110,6 +111,10 @@ function runCart40s()
   # go(cart40_ts, dndopts, dosave=true)
 end
 
+
+function runCart40sDual()
+  go(:cart40, cart40_ts, c2dopts, dosave=true)
+end
 
 #################
 #

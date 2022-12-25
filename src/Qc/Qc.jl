@@ -27,7 +27,7 @@ export QcReachHplane, QcReachCircle, QcReachEllipsoid, QcReachL2Gain
 export scaleS, makeZout
 
 include("activ.jl")
-export QcActivBounded, QcActivSector
+export QcActivBounded, QcActivSector, QcActivFinal
 export makeSectorMinMax, makeQ, makeA, makeb, makeB
 export makeQcActivs, makeZac
 

@@ -15,7 +15,7 @@ const nn = NnSdp
 
 @printf("load done: %.3f\n", time() - start_time)
 
-DUMP_DIR = joinpath(@__DIR__, "..", "dump", "cartpole-l2gain") 
+DUMP_DIR = joinpath(@__DIR__, "..", "dump", "cartpole-abstractions") 
 mosek_opts =
   Dict("QUIET" => false,
        "MSK_DPAR_OPTIMIZER_MAX_TIME" => 60.0 * 60 * 3, # seconds
@@ -28,8 +28,16 @@ dopts = DeepSdpOptions(use_dual=true, mosek_opts=mosek_opts, verbose=true)
 copts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:single_decomp)
 c2opts = ChordalSdpOptions(mosek_opts=mosek_opts, verbose=true, decomp_mode=:double_decomp)
 
-x1min = [2.000; 1.000; -0.174; -1.000]
-x1max = [2.200; 1.200; -0.104; -0.800]
+opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
+opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
+
+
+_x1min = [2.000; 1.000; -0.174; -1.000]
+_x1max = [2.200; 1.200; -0.104; -0.800]
+_xcenter = (_x1min + _x1max) / 2
+
+x1min = ones(4) .- 0.5
+x1max = ones(4) .+ 0.5
 
 makeCart40(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
 todo_ts = 1:5
@@ -51,10 +59,10 @@ function go(todo_qc_activs, opts; dosave = true)
   for t in todo_ts
     printstyled("\tt: $(t) | now is: $(now())\n", color=:green)
     ffnet = makeCart40(t)
-    all_qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
+    all_qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=0)
 
     # Do some filtering on the qc_activs
-    qc_activs = Vector{QcActivs}()
+    qc_activs = Vector{QcActiv}()
     for qca in all_qc_activs
       should_add = (qca isa QcActivBounded && :bounded in todo_qc_activs) ||
                    (qca isa QcActivSector && :sector in todo_qc_activs) ||
@@ -88,20 +96,25 @@ function go(todo_qc_activs, opts; dosave = true)
 
 end
 
-function runme_bounded()
+function runme_singles()
   go([:bounded], dopts, dosave=true)
-end
-
-function runme_sector()
   go([:sector], dopts, dosave=true)
-end
-
-function runme_final()
   go([:final], dopts, dosave=true)
 end
 
-function runme_all()
+function runme_doubles()
+  go([:bounded, :sector], dopts, dosave=true)
+  go([:sector, :final], dopts, dosave=true)
+  go([:bounded, :final], dopts, dosave=true)
+end
+
+function runme_triples()
   go([:bounded, :sector, :final], dopts, dosave=true)
 end
 
+function runme_everything()
+  runme_singles()
+  runme_doubles()
+  runme_triples()
+end
 

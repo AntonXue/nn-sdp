@@ -38,10 +38,14 @@ ts = 1:8
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
 opts2string(opts::ChordalSdpOptions) = "chordal" * (if opts.use_dual; "__dual" else "" end) * "__$(opts.decomp_mode)"
 
-# Run a single β, dim pair
-function go(β, dim, opts; dosave = true)
-  saveto = joinpath(DUMP_DIR, "cartw40_beta$(β)_dim$(dim)_$(opts2string(opts)).csv")
-  printstyled("running with β: $(β) at dim $(dim) | now is: $(now())\n", color=:green)
+# Run a single dim 
+function go(dim, opts; only_bounded = true, dosave = true)
+  if only_bounded
+    saveto = joinpath(DUMP_DIR, "cart40_bounded_dim$(dim)_$(opts2string(opts)).csv")
+  else
+    saveto = joinpath(DUMP_DIR, "cart40_dim$(dim)_$(opts2string(opts)).csv")
+  end
+  printstyled("running with dim $(dim) | now is: $(now())\n", color=:green)
   qc_input = QcInputBox(x1min=x1min, x1max=x1max)
   df = DataFrame(t = Int[],
                  pos_val = Real[],
@@ -57,9 +61,21 @@ function go(β, dim, opts; dosave = true)
                  pos_eigmax = Real[],
                  neg_eigmax = Real[])
   for t in ts
-    printstyled("\tβ: $(β), dim: $(dim), t: $(t) | now is: $(now())\n", color=:green)
+    printstyled("\tdim: $(dim), t: $(t) | now is: $(now())\n", color=:green)
     ffnet = makeCartpole(t)
-    qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=β)
+    all_qc_activs = makeQcActivs(ffnet, x1min=x1min, x1max=x1max, β=0)
+    qc_activs = Vector{QcActiv}()
+
+    if only_bounded
+      for qca in all_qc_activs
+        if qca isa QcActivBounded
+          push!(qc_activs, qca)
+          break
+        end
+      end
+    else
+      qc_activs = all_qc_activs
+    end
 
     printstyled("\t\tpositive:\n", color=:green)
     query_pos = ReachQuery(ffnet = ffnet,
@@ -99,12 +115,19 @@ function go(β, dim, opts; dosave = true)
   end
 end
 
-# It doesn't matter which opts we use once β is fixed since we're doing reach
+# Run this
 function runme()
-  # β = 0
-  go(0, 1, dopts)
-  go(0, 2, dopts)
-  go(0, 3, dopts)
-  go(0, 4, dopts)
+  go(1, dopts)
+  go(2, dopts)
+  go(3, dopts)
+  go(4, dopts)
 end
+
+function runme_bounded()
+  go(1, dopts, only_bounded=true)
+  go(2, dopts, only_bounded=true)
+  go(3, dopts, only_bounded=true)
+  go(4, dopts, only_bounded=true)
+end
+
 
