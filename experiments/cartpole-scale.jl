@@ -37,7 +37,7 @@ x1max = [2.200; 1.200; -0.104; -0.800]
 makeCart40(t) = load(joinpath(@__DIR__, "..", "models", "cartw40_step$(t).pth"))
 makeCart10(t) = load(joinpath(@__DIR__, "..", "models", "cartw10_step$(t).pth"))
 
-cart40_ts = 1:25
+cart40_ts = 1:30
 cart10_ts = 1:7
 
 opts2string(opts::DeepSdpOptions) = "deepsdp" * (if opts.use_dual; "__dual" else "" end)
@@ -105,16 +105,20 @@ function runCart10s()
   go(:cart10, cart10_ts, dndopts, dosave=true)
 end
 
+function runCart10sChordals()
+  go(:cart10, 1:30, c2opts, dosave=true)
+  go(:cart10, 1:30, copts, dosave=true)
+end
+
 function runCart40s()
   go(:cart40, cart40_ts, c2opts, dosave=true)
   go(:cart40, cart40_ts, dopts, dosave=true)
-  # go(cart40_ts, dndopts, dosave=true)
 end
-
 
 function runCart40sDual()
   go(:cart40, cart40_ts, c2dopts, dosave=true)
 end
+
 
 #################
 #

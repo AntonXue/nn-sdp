@@ -100,18 +100,17 @@ def train_closed_loop_model(cart_model, dynamics, ctrl_model, epochs=100, nbatch
 
   return cart_model
    
-ctrl = make_neural_controller()
 zero_ctrl = make_zero_controller()
-cart = make_closed_loop_cartpole()
-
-thin_cart = make_closed_loop_cartpole(10)
+cart40 = make_closed_loop_cartpole(40)
+cart10 = make_closed_loop_cartpole(10)
 
 try:
-  neural_ctrl = make_neural_controller()
-  neural_ctrl = torch.load(os.path.join(MODELS_DIR, "ctrl.pth"), cpu)
-  trained_cart = torch.load(os.path.join(MODELS_DIR, "cart.pth"), cpu)
-  trained_thin_cart = torch.load(os.path.join(MODELS_DIR, "thin_cart.pth"), cpu)
+  trained_cart40 = torch.load(os.path.join(MODELS_DIR, "cartw40_step1.pth"))
+  trained_cart10 = torch.load(os.path.join(MODELS_DIR, "cartw10_step1.pth"))
+  unroll_and_save(trained_cart40, MODELS_DIR, T=30, base_name="cartw40")
+  unroll_and_save(trained_cart10, MODELS_DIR, T=30, base_name="cartw10")
 except:
   pass
+
 
 
